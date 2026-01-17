@@ -1,0 +1,11 @@
+[project]
+name = "buzz"
+version = "0.1.0"
+description = "Minimal self-hosted static site hosting server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

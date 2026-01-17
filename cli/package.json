@@ -1,0 +1,30 @@
+{
+  "name": "buzz-cli",
+  "version": "1.0.0",
+  "description": "CLI for deploying static sites to Buzz hosting",
+  "type": "module",
+  "bin": {
+    "buzz": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "static-site",
+    "hosting",
+    "deploy",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "archiver": "^7.0.0",
+    "commander": "^13.0.0"
+  }
+}

@@ -1,0 +1,36 @@
+services:
+  server:
+    build: .
+    restart: unless-stopped
+    environment:
+      - BUZZ_DATA_DIR=/data
+      - BUZZ_DOMAIN=${BUZZ_DOMAIN}
+      - BUZZ_TOKEN=${BUZZ_TOKEN}
+    volumes:
+      - buzz-data:/data
+    expose:
+      - "8080"
+
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - BUZZ_DOMAIN=${BUZZ_DOMAIN}
+      - CF_API_TOKEN=${CF_API_TOKEN}
+      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+
+volumes:
+  buzz-data:
+  caddy-data:
+  caddy-config:
