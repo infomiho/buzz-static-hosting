@@ -1,15 +1,24 @@
 {
   "name": "buzz-cli",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "CLI for deploying static sites to Buzz hosting",
   "type": "module",
   "bin": {
     "buzz": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/infomiho/buzz-static-hosting.git"
+  },
+  "homepage": "https://github.com/infomiho/buzz-static-hosting#readme",
   "keywords": [
     "static-site",
     "hosting",
