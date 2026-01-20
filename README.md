@@ -112,3 +112,17 @@ Configuration is stored at `~/.buzz.config.json`.
 3. Caddy routes requests based on Host header to the Python server
 4. Python server serves static files with support for clean URLs (`/about` serves `/about.html`)
 5. SQLite stores site metadata (name, size, creation date)
+
+## Releasing
+
+The CLI is published to npm automatically using [Release Please](https://github.com/googleapis/release-please).
+
+When you push commits to `main`, use conventional commit format:
+
+```bash
+git commit -m "fix: handle empty directory error"    # patch (0.1.0 → 0.1.1)
+git commit -m "feat: add verbose flag"               # minor (0.1.0 → 0.2.0)
+git commit -m "feat!: change config format"          # major (0.1.0 → 1.0.0)
+```
+
+Release Please will open a PR with version bump and changelog. Merge it to publish to npm.
