@@ -1,6 +1,6 @@
 {
   "name": "@infomiho/buzz-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CLI for deploying static sites to Buzz hosting",
   "type": "module",
   "bin": {
