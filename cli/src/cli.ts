@@ -82,10 +82,15 @@ async function deploy(directory: string, subdomain: string | undefined) {
     process.exit(1);
   }
 
-  // Check for CNAME file if no subdomain specified
-  const cnamePath = join(directory, "CNAME");
-  if (!subdomain && existsSync(cnamePath)) {
-    subdomain = readFileSync(cnamePath, "utf-8").trim();
+  // Check for CNAME file if no subdomain specified (check cwd first, then directory)
+  const cwdCnamePath = join(process.cwd(), "CNAME");
+  if (!subdomain && existsSync(cwdCnamePath)) {
+    subdomain = readFileSync(cwdCnamePath, "utf-8").trim();
+  } else if (!subdomain) {
+    const dirCnamePath = join(directory, "CNAME");
+    if (existsSync(dirCnamePath)) {
+      subdomain = readFileSync(dirCnamePath, "utf-8").trim();
+    }
   }
 
   console.log(`Zipping ${directory}...`);
@@ -120,9 +125,9 @@ async function deploy(directory: string, subdomain: string | undefined) {
 
     if (response.ok) {
       console.log(`Deployed to ${data.url}`);
-      // Save subdomain to CNAME file
+      // Save subdomain to CNAME file in cwd
       const deployedSubdomain = new URL(data.url).hostname.split(".")[0];
-      writeFileSync(cnamePath, deployedSubdomain + "\n");
+      writeFileSync(cwdCnamePath, deployedSubdomain + "\n");
     } else {
       console.error(`Error: ${data.error || "Unknown error"}`);
       process.exit(1);
