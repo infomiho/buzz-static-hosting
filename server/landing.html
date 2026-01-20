@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buzz - Static Site Hosting</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #111; min-height: 100vh; padding: 2rem; }
+        .container { max-width: 700px; margin: 0 auto; }
+        h1 { font-size: 2.5rem; margin-bottom: 0.5rem; color: #000; }
+        .subtitle { color: #666; margin-bottom: 2rem; font-size: 1.1rem; }
+        .step { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
+        .step-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+        .step-num { background: #000; color: #fff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.9rem; }
+        .step h2 { font-size: 1.1rem; color: #000; }
+        .step p { color: #666; margin-bottom: 0.75rem; font-size: 0.95rem; }
+        pre { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 1rem; overflow-x: auto; font-size: 0.9rem; }
+        code { color: #000; font-family: 'SF Mono', Consolas, monospace; }
+        .highlight { font-weight: 600; }
+        a { color: #000; text-decoration: underline; }
+        a:hover { color: #666; }
+        .footer { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e5e5e5; color: #888; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Buzz</h1>
+        <p class="subtitle">Fast static site hosting with GitHub authentication</p>
+
+        <div class="step">
+            <div class="step-header">
+                <span class="step-num">1</span>
+                <h2>Install the CLI</h2>
+            </div>
+            <pre><code>npm install -g @infomiho/buzz-cli</code></pre>
+        </div>
+
+        <div class="step">
+            <div class="step-header">
+                <span class="step-num">2</span>
+                <h2>Connect to this server</h2>
+            </div>
+            <pre><code>buzz config server https://{{DOMAIN}}</code></pre>
+        </div>
+
+        <div class="step">
+            <div class="step-header">
+                <span class="step-num">3</span>
+                <h2>Login with GitHub</h2>
+            </div>
+            <pre><code>buzz login</code></pre>
+        </div>
+
+        <div class="step">
+            <div class="step-header">
+                <span class="step-num">4</span>
+                <h2>Deploy your site</h2>
+            </div>
+            <p>Deploy any directory containing static files:</p>
+            <pre><code>buzz deploy ./dist <span class="highlight">--subdomain my-site</span></code></pre>
+            <p style="margin-top: 0.75rem;">Your site will be live at <code>https://<span class="highlight">my-site</span>.{{DOMAIN}}</code></p>
+        </div>
+
+        <div class="footer">
+            <p>View source on <a href="https://github.com/infomiho/buzz-static-hosting" target="_blank">GitHub</a></p>
+        </div>
+    </div>
+</body>
+</html>

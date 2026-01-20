@@ -50,8 +50,8 @@ function getOptions(): Options {
   const config = loadConfig();
   const opts = program.opts();
   return {
-    server: opts.server || config.server || DEFAULT_SERVER,
     // Priority: CLI flag > env var > config file
+    server: opts.server || process.env.BUZZ_SERVER || config.server || DEFAULT_SERVER,
     token: opts.token || process.env.BUZZ_TOKEN || config.token,
   };
 }
@@ -67,6 +67,58 @@ function authHeaders(token?: string): Record<string, string> {
     return { Authorization: `Bearer ${token}` };
   }
   return {};
+}
+
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function apiRequest(
+  path: string,
+  options: RequestInit = {},
+  { requireAuth = true }: { requireAuth?: boolean } = {}
+): Promise<Response> {
+  const opts = getOptions();
+
+  if (requireAuth && !opts.token) {
+    console.error("Error: Not authenticated. Run 'buzz login' first");
+    process.exit(1);
+  }
+
+  try {
+    const response = await fetch(`${opts.server}${path}`, {
+      ...options,
+      headers: {
+        ...authHeaders(opts.token),
+        ...options.headers,
+      },
+    });
+
+    if (response.status === 401) {
+      console.error("Error: Session expired. Run 'buzz login' to re-authenticate");
+      process.exit(1);
+    }
+
+    if (response.status === 403) {
+      const data = await response.json();
+      throw new ApiError(data.error || "Permission denied", 403);
+    }
+
+    return response;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    console.error(
+      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
+    );
+    process.exit(1);
+  }
 }
 
 async function createZipBuffer(directory: string): Promise<Buffer> {
@@ -164,28 +216,8 @@ async function deploy(directory: string, subdomain: string | undefined) {
 }
 
 async function list() {
-  const options = getOptions();
-
-  if (!options.token) {
-    console.error("Error: Not authenticated. Run 'buzz login' first");
-    process.exit(1);
-  }
-
   try {
-    const response = await fetch(`${options.server}/sites`, {
-      headers: authHeaders(options.token),
-    });
-
-    if (response.status === 401) {
-      console.error("Error: Session expired. Run 'buzz login' to re-authenticate");
-      process.exit(1);
-    }
-
-    if (response.status === 403) {
-      console.error("Error: Deploy tokens cannot list sites. Use 'buzz login' for a session token.");
-      process.exit(1);
-    }
-
+    const response = await apiRequest("/sites");
     const sites: Site[] = await response.json();
 
     if (sites.length === 0) {
@@ -203,36 +235,20 @@ async function list() {
       );
     }
   } catch (error) {
-    console.error(
-      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-    process.exit(1);
+    if (error instanceof ApiError) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 }
 
 async function deleteSite(subdomain: string) {
-  const options = getOptions();
-
-  if (!options.token) {
-    console.error("Error: Not authenticated. Run 'buzz login' first");
-    process.exit(1);
-  }
-
   try {
-    const response = await fetch(`${options.server}/sites/${subdomain}`, {
-      method: "DELETE",
-      headers: authHeaders(options.token),
-    });
+    const response = await apiRequest(`/sites/${subdomain}`, { method: "DELETE" });
 
     if (response.status === 204) {
       console.log(`Deleted ${subdomain}`);
-    } else if (response.status === 401) {
-      console.error("Error: Session expired. Run 'buzz login' to re-authenticate");
-      process.exit(1);
-    } else if (response.status === 403) {
-      const data = await response.json();
-      console.error(`Error: ${data.error || "You don't have permission to delete this site"}`);
-      process.exit(1);
     } else if (response.status === 404) {
       console.error(`Error: Site '${subdomain}' not found`);
       process.exit(1);
@@ -242,10 +258,11 @@ async function deleteSite(subdomain: string) {
       process.exit(1);
     }
   } catch (error) {
-    console.error(
-      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-    process.exit(1);
+    if (error instanceof ApiError) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 }
 
@@ -369,69 +386,22 @@ async function logout() {
 }
 
 async function whoami() {
-  const options = getOptions();
-
-  if (!options.token) {
-    console.log("Not logged in");
-    console.log("Run 'buzz login' to authenticate");
-    process.exit(1);
-  }
-
   try {
-    const response = await fetch(`${options.server}/auth/me`, {
-      headers: authHeaders(options.token),
-    });
-
-    if (response.status === 401) {
-      console.error("Session expired. Run 'buzz login' to re-authenticate");
-      process.exit(1);
-    }
-
-    if (!response.ok) {
-      const data = await response.json();
-      console.error(`Error: ${data.error || "Unknown error"}`);
-      process.exit(1);
-    }
-
+    const response = await apiRequest("/auth/me");
     const user = await response.json();
     console.log(`Logged in as ${user.login}${user.name ? ` (${user.name})` : ""}`);
   } catch (error) {
-    console.error(
-      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-    process.exit(1);
+    if (error instanceof ApiError) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 }
 
 async function listTokens() {
-  const options = getOptions();
-
-  if (!options.token) {
-    console.error("Not logged in. Run 'buzz login' first");
-    process.exit(1);
-  }
-
   try {
-    const response = await fetch(`${options.server}/tokens`, {
-      headers: authHeaders(options.token),
-    });
-
-    if (response.status === 401) {
-      console.error("Session expired. Run 'buzz login' to re-authenticate");
-      process.exit(1);
-    }
-
-    if (response.status === 403) {
-      console.error("Deploy tokens cannot list tokens. Use a session token.");
-      process.exit(1);
-    }
-
-    if (!response.ok) {
-      const data = await response.json();
-      console.error(`Error: ${data.error || "Unknown error"}`);
-      process.exit(1);
-    }
-
+    const response = await apiRequest("/tokens");
     const tokens: DeploymentToken[] = await response.json();
 
     if (tokens.length === 0) {
@@ -451,44 +421,24 @@ async function listTokens() {
       );
     }
   } catch (error) {
-    console.error(
-      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-    process.exit(1);
+    if (error instanceof ApiError) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 }
 
 async function createToken(siteName: string, cmdOptions: { name?: string }) {
-  const options = getOptions();
-
-  if (!options.token) {
-    console.error("Not logged in. Run 'buzz login' first");
-    process.exit(1);
-  }
-
   try {
-    const response = await fetch(`${options.server}/tokens`, {
+    const response = await apiRequest("/tokens", {
       method: "POST",
-      headers: {
-        ...authHeaders(options.token),
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         site_name: siteName,
         name: cmdOptions.name || "Deployment token",
       }),
     });
-
-    if (response.status === 401) {
-      console.error("Session expired. Run 'buzz login' to re-authenticate");
-      process.exit(1);
-    }
-
-    if (response.status === 403) {
-      const data = await response.json();
-      console.error(`Error: ${data.error}`);
-      process.exit(1);
-    }
 
     if (response.status === 404) {
       console.error(`Error: Site '${siteName}' not found`);
@@ -507,35 +457,21 @@ async function createToken(siteName: string, cmdOptions: { name?: string }) {
     console.log("Save this token - it won't be shown again!");
     console.log("\nUse in CI by setting BUZZ_TOKEN environment variable.");
   } catch (error) {
-    console.error(
-      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-    process.exit(1);
+    if (error instanceof ApiError) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 }
 
 async function deleteToken(tokenId: string) {
-  const options = getOptions();
-
-  if (!options.token) {
-    console.error("Not logged in. Run 'buzz login' first");
-    process.exit(1);
-  }
-
   try {
-    const response = await fetch(`${options.server}/tokens/${tokenId}`, {
-      method: "DELETE",
-      headers: authHeaders(options.token),
-    });
+    const response = await apiRequest(`/tokens/${tokenId}`, { method: "DELETE" });
 
     if (response.status === 204) {
       console.log("Token deleted");
       return;
-    }
-
-    if (response.status === 401) {
-      console.error("Session expired. Run 'buzz login' to re-authenticate");
-      process.exit(1);
     }
 
     if (response.status === 404) {
@@ -547,10 +483,11 @@ async function deleteToken(tokenId: string) {
     console.error(`Error: ${data.error || "Unknown error"}`);
     process.exit(1);
   } catch (error) {
-    console.error(
-      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-    process.exit(1);
+    if (error instanceof ApiError) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 }
 

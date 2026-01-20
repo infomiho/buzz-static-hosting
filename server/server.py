@@ -1,23 +1,49 @@
 #!/usr/bin/env python3
 """Minimal static site hosting server."""
+from __future__ import annotations
 
 import argparse
-import cgi
 import hashlib
 import io
 import json
 import os
 import random
+import re
 import secrets
 import shutil
 import sqlite3
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.request import urlopen, Request
-from urllib.parse import urlencode
+from typing import Any, Generator
 from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+
+def parse_multipart(body: bytes, boundary: bytes) -> dict[str, bytes]:
+    """Parse multipart form data and return dict of {name: file_content}."""
+    parts = body.split(b"--" + boundary)
+    files = {}
+    for part in parts:
+        if not part or part == b"--" or part == b"--\r\n":
+            continue
+        # Split headers from content
+        if b"\r\n\r\n" not in part:
+            continue
+        header_section, content = part.split(b"\r\n\r\n", 1)
+        # Remove trailing \r\n from content
+        if content.endswith(b"\r\n"):
+            content = content[:-2]
+        # Parse Content-Disposition header
+        header_text = header_section.decode("utf-8", errors="ignore")
+        name_match = re.search(r'name="([^"]+)"', header_text)
+        if name_match:
+            name = name_match.group(1)
+            files[name] = content
+    return files
 
 ADJECTIVES = ["cool", "fast", "blue", "red", "green", "happy", "swift", "bright", "calm", "bold"]
 NOUNS = ["site", "page", "app", "web", "hub", "box", "lab", "dev", "net", "cloud"]
@@ -29,6 +55,8 @@ DB_PATH = DATA_DIR / "data.db"
 DOMAIN = os.environ.get("BUZZ_DOMAIN")
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
+DEV_MODE = False  # Bypasses auth when True
+JSON_LOGS = False  # Output logs in JSON format
 
 # Token prefixes
 SESSION_TOKEN_PREFIX = "buzz_sess_"
@@ -38,7 +66,7 @@ DEPLOY_TOKEN_PREFIX = "buzz_deploy_"
 pending_device_codes = {}
 
 
-def init_db():
+def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
     # Sites table (with owner_id added)
     conn.execute("""CREATE TABLE IF NOT EXISTS sites (
@@ -77,21 +105,33 @@ def init_db():
     conn.close()
 
 
-def get_db():
+def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def generate_subdomain():
+@contextmanager
+def db() -> Generator[sqlite3.Connection, None, None]:
+    """Context manager for database connections."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def generate_subdomain() -> str:
     return f"{random.choice(ADJECTIVES)}-{random.choice(NOUNS)}-{random.randint(1000, 9999)}"
 
 
-def get_dir_size(path):
+def get_dir_size(path: str | Path) -> int:
     return sum(f.stat().st_size for f in Path(path).rglob("*") if f.is_file())
 
 
-def extract_subdomain(host):
+def extract_subdomain(host: str | None) -> str | None:
     if not host:
         return None
     host = host.split(":")[0]
@@ -122,22 +162,22 @@ CONTENT_TYPES = {
 }
 
 
-def hash_token(token):
+def hash_token(token: str) -> str:
     """Hash a token for storage."""
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def generate_session_token():
+def generate_session_token() -> str:
     """Generate a new session token."""
     return SESSION_TOKEN_PREFIX + secrets.token_urlsafe(32)
 
 
-def generate_deploy_token():
+def generate_deploy_token() -> str:
     """Generate a new deployment token."""
     return DEPLOY_TOKEN_PREFIX + secrets.token_urlsafe(32)
 
 
-def github_request(url, data=None, method="POST"):
+def github_request(url: str, data: dict[str, Any] | None = None, method: str = "POST") -> dict[str, Any]:
     """Make a request to GitHub API."""
     headers = {"Accept": "application/json"}
     if data:
@@ -151,8 +191,23 @@ def github_request(url, data=None, method="POST"):
 
 
 class RequestHandler(BaseHTTPRequestHandler):
-    def log_message(self, format, *args):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {args[0]}")
+    def log_message(self, format: str, *args: Any) -> None:
+        if JSON_LOGS:
+            print(json.dumps({"time": datetime.now().isoformat(), "message": args[0]}), flush=True)
+        else:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {args[0]}")
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        """Log API requests."""
+        if JSON_LOGS:
+            print(json.dumps({
+                "time": datetime.now().isoformat(),
+                "method": self.command,
+                "path": self.path,
+                "status": code,
+            }), flush=True)
+        else:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {self.command} {self.path} {code}", flush=True)
 
     def get_auth_context(self):
         """
@@ -163,6 +218,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         - site_name: str or None (for deploy tokens - restricts to this site only)
         - token_type: 'session' | 'deploy' | None
         """
+        # Dev mode: bypass auth, use user_id=1
+        if DEV_MODE:
+            return {"authenticated": True, "user_id": 1, "site_name": None, "token_type": "session"}
+
         token = self.headers.get("Authorization", "")
         if token.startswith("Bearer "):
             token = token[7:]
@@ -170,39 +229,35 @@ class RequestHandler(BaseHTTPRequestHandler):
             return {"authenticated": False, "user_id": None, "site_name": None, "token_type": None}
 
         token_hash = hash_token(token)
-        conn = get_db()
 
         # Check if it's a session token
         if token.startswith(SESSION_TOKEN_PREFIX):
-            row = conn.execute(
-                "SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?",
-                (token_hash, datetime.now().isoformat())
-            ).fetchone()
-            conn.close()
+            with db() as conn:
+                row = conn.execute(
+                    "SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?",
+                    (token_hash, datetime.now().isoformat())
+                ).fetchone()
             if row:
                 return {"authenticated": True, "user_id": row["user_id"], "site_name": None, "token_type": "session"}
             return {"authenticated": False, "user_id": None, "site_name": None, "token_type": None}
 
         # Check if it's a deploy token
         if token.startswith(DEPLOY_TOKEN_PREFIX):
-            row = conn.execute(
-                """SELECT user_id, site_name FROM deployment_tokens
-                   WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)""",
-                (token_hash, datetime.now().isoformat())
-            ).fetchone()
-            if row:
-                # Update last_used_at
-                conn.execute(
-                    "UPDATE deployment_tokens SET last_used_at = ? WHERE id = ?",
-                    (datetime.now().isoformat(), token_hash)
-                )
-                conn.commit()
-                conn.close()
-                return {"authenticated": True, "user_id": row["user_id"], "site_name": row["site_name"], "token_type": "deploy"}
-            conn.close()
+            with db() as conn:
+                row = conn.execute(
+                    """SELECT user_id, site_name FROM deployment_tokens
+                       WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)""",
+                    (token_hash, datetime.now().isoformat())
+                ).fetchone()
+                if row:
+                    # Update last_used_at
+                    conn.execute(
+                        "UPDATE deployment_tokens SET last_used_at = ? WHERE id = ?",
+                        (datetime.now().isoformat(), token_hash)
+                    )
+                    return {"authenticated": True, "user_id": row["user_id"], "site_name": row["site_name"], "token_type": "deploy"}
             return {"authenticated": False, "user_id": None, "site_name": None, "token_type": None}
 
-        conn.close()
         return {"authenticated": False, "user_id": None, "site_name": None, "token_type": None}
 
     def require_auth(self, allow_deploy_token=False):
@@ -257,76 +312,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def send_landing_page(self):
         domain = DOMAIN or "localhost:8080"
-        html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buzz - Static Site Hosting</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #111; min-height: 100vh; padding: 2rem; }}
-        .container {{ max-width: 700px; margin: 0 auto; }}
-        h1 {{ font-size: 2.5rem; margin-bottom: 0.5rem; color: #000; }}
-        .subtitle {{ color: #666; margin-bottom: 2rem; font-size: 1.1rem; }}
-        .step {{ background: #fafafa; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }}
-        .step-header {{ display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }}
-        .step-num {{ background: #000; color: #fff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.9rem; }}
-        .step h2 {{ font-size: 1.1rem; color: #000; }}
-        .step p {{ color: #666; margin-bottom: 0.75rem; font-size: 0.95rem; }}
-        pre {{ background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 1rem; overflow-x: auto; font-size: 0.9rem; }}
-        code {{ color: #000; font-family: 'SF Mono', Consolas, monospace; }}
-        .highlight {{ font-weight: 600; }}
-        a {{ color: #000; text-decoration: underline; }}
-        a:hover {{ color: #666; }}
-        .footer {{ margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e5e5e5; color: #888; font-size: 0.9rem; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Buzz</h1>
-        <p class="subtitle">Fast static site hosting with GitHub authentication</p>
-
-        <div class="step">
-            <div class="step-header">
-                <span class="step-num">1</span>
-                <h2>Install the CLI</h2>
-            </div>
-            <pre><code>npm install -g @infomiho/buzz-cli</code></pre>
-        </div>
-
-        <div class="step">
-            <div class="step-header">
-                <span class="step-num">2</span>
-                <h2>Connect to this server</h2>
-            </div>
-            <pre><code>buzz config server https://{domain}</code></pre>
-        </div>
-
-        <div class="step">
-            <div class="step-header">
-                <span class="step-num">3</span>
-                <h2>Login with GitHub</h2>
-            </div>
-            <pre><code>buzz login</code></pre>
-        </div>
-
-        <div class="step">
-            <div class="step-header">
-                <span class="step-num">4</span>
-                <h2>Deploy your site</h2>
-            </div>
-            <p>Deploy any directory containing static files:</p>
-            <pre><code>buzz deploy ./dist <span class="highlight">--subdomain my-site</span></code></pre>
-            <p style="margin-top: 0.75rem;">Your site will be live at <code>https://<span class="highlight">my-site</span>.{domain}</code></p>
-        </div>
-
-        <div class="footer">
-            <p>View source on <a href="https://github.com/infomiho/buzz-static-hosting" target="_blank">GitHub</a></p>
-        </div>
-    </div>
-</body>
-</html>"""
+        template_path = Path(__file__).parent / "landing.html"
+        html = template_path.read_text().replace("{{DOMAIN}}", domain)
         body = html.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
@@ -360,6 +347,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self.handle_list_tokens()
         if self.path == "/":
             return self.send_landing_page()
+        if self.path == "/health":
+            return self.send_json({"status": "ok"})
         self.send_text("404 Not Found", 404)
 
     def do_POST(self):
@@ -414,8 +403,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in content_type:
             return self.send_json({"error": "Expected multipart/form-data"}, 400)
-        ctype, pdict = cgi.parse_header(content_type)
-        pdict["boundary"] = pdict["boundary"].encode()
+
+        # Extract boundary from content-type
+        boundary_match = re.search(r"boundary=([^\s;]+)", content_type)
+        if not boundary_match:
+            return self.send_json({"error": "Missing boundary in Content-Type"}, 400)
+        boundary = boundary_match.group(1).encode()
+
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         subdomain = self.headers.get("x-subdomain", "").strip() or generate_subdomain()
         if not subdomain.replace("-", "").replace("_", "").isalnum():
@@ -428,47 +422,40 @@ class RequestHandler(BaseHTTPRequestHandler):
             }, 403)
 
         # Check ownership
-        conn = get_db()
-        existing = conn.execute("SELECT owner_id FROM sites WHERE name = ?", (subdomain,)).fetchone()
+        with db() as conn:
+            existing = conn.execute("SELECT owner_id FROM sites WHERE name = ?", (subdomain,)).fetchone()
         if existing and existing["owner_id"] is not None and existing["owner_id"] != ctx["user_id"]:
-            conn.close()
             return self.send_json({
                 "error": f"Site '{subdomain}' is owned by another user"
             }, 403)
 
-        fs = cgi.FieldStorage(
-            fp=io.BytesIO(body),
-            headers=self.headers,
-            environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": content_type},
-        )
-        if "file" not in fs:
-            conn.close()
+        # Parse multipart form data
+        files = parse_multipart(body, boundary)
+        if "file" not in files:
             return self.send_json({"error": "No file uploaded"}, 400)
         site_dir = SITES_DIR / subdomain
         site_dir.mkdir(parents=True, exist_ok=True)
         try:
-            with zipfile.ZipFile(io.BytesIO(fs["file"].file.read())) as zf:
+            with zipfile.ZipFile(io.BytesIO(files["file"])) as zf:
                 zf.extractall(site_dir)
         except zipfile.BadZipFile:
-            conn.close()
             return self.send_json({"error": "Invalid ZIP file"}, 400)
 
         # Insert or update site with owner
-        if existing:
-            # Update existing site, claim ownership if unclaimed
-            owner_id = existing["owner_id"] if existing["owner_id"] is not None else ctx["user_id"]
-            conn.execute(
-                "UPDATE sites SET size_bytes = ?, created_at = ?, owner_id = ? WHERE name = ?",
-                (get_dir_size(site_dir), datetime.now().isoformat(), owner_id, subdomain),
-            )
-        else:
-            # New site, set owner
-            conn.execute(
-                "INSERT INTO sites (name, size_bytes, created_at, owner_id) VALUES (?, ?, ?, ?)",
-                (subdomain, get_dir_size(site_dir), datetime.now().isoformat(), ctx["user_id"]),
-            )
-        conn.commit()
-        conn.close()
+        with db() as conn:
+            if existing:
+                # Update existing site, claim ownership if unclaimed
+                owner_id = existing["owner_id"] if existing["owner_id"] is not None else ctx["user_id"]
+                conn.execute(
+                    "UPDATE sites SET size_bytes = ?, created_at = ?, owner_id = ? WHERE name = ?",
+                    (get_dir_size(site_dir), datetime.now().isoformat(), owner_id, subdomain),
+                )
+            else:
+                # New site, set owner
+                conn.execute(
+                    "INSERT INTO sites (name, size_bytes, created_at, owner_id) VALUES (?, ?, ?, ?)",
+                    (subdomain, get_dir_size(site_dir), datetime.now().isoformat(), ctx["user_id"]),
+                )
         if DOMAIN:
             url = f"https://{subdomain}.{DOMAIN}"
         else:
@@ -481,13 +468,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not ctx:
             return
 
-        conn = get_db()
-        # Only show user's own sites
-        rows = conn.execute(
-            "SELECT name, created_at, size_bytes FROM sites WHERE owner_id = ? ORDER BY created_at DESC",
-            (ctx["user_id"],)
-        ).fetchall()
-        conn.close()
+        with db() as conn:
+            rows = conn.execute(
+                "SELECT name, created_at, size_bytes FROM sites WHERE owner_id = ? ORDER BY created_at DESC",
+                (ctx["user_id"],)
+            ).fetchall()
         self.send_json(
             [
                 {
@@ -506,21 +491,18 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         # Check ownership
-        conn = get_db()
-        site = conn.execute("SELECT owner_id FROM sites WHERE name = ?", (name,)).fetchone()
+        with db() as conn:
+            site = conn.execute("SELECT owner_id FROM sites WHERE name = ?", (name,)).fetchone()
         if not site:
-            conn.close()
             return self.send_json({"error": "Site not found"}, 404)
         if site["owner_id"] is not None and site["owner_id"] != ctx["user_id"]:
-            conn.close()
             return self.send_json({"error": "You don't own this site"}, 403)
 
         site_dir = SITES_DIR / name
         if site_dir.exists():
             shutil.rmtree(site_dir)
-        conn.execute("DELETE FROM sites WHERE name = ?", (name,))
-        conn.commit()
-        conn.close()
+        with db() as conn:
+            conn.execute("DELETE FROM sites WHERE name = ?", (name,))
         self.send_response(204)
         self.end_headers()
 
@@ -614,34 +596,32 @@ class RequestHandler(BaseHTTPRequestHandler):
             github_user = json.loads(resp.read().decode())
 
         # Create or update user in database
-        conn = get_db()
-        existing = conn.execute(
-            "SELECT id FROM users WHERE github_id = ?", (github_user["id"],)
-        ).fetchone()
+        with db() as conn:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE github_id = ?", (github_user["id"],)
+            ).fetchone()
 
-        if existing:
-            user_id = existing["id"]
+            if existing:
+                user_id = existing["id"]
+                conn.execute(
+                    "UPDATE users SET github_login = ?, github_name = ? WHERE id = ?",
+                    (github_user["login"], github_user.get("name"), user_id)
+                )
+            else:
+                cursor = conn.execute(
+                    "INSERT INTO users (github_id, github_login, github_name) VALUES (?, ?, ?)",
+                    (github_user["id"], github_user["login"], github_user.get("name"))
+                )
+                user_id = cursor.lastrowid
+
+            # Create session token
+            token = generate_session_token()
+            token_hash = hash_token(token)
+            expires_at = datetime.now() + timedelta(days=30)
             conn.execute(
-                "UPDATE users SET github_login = ?, github_name = ? WHERE id = ?",
-                (github_user["login"], github_user.get("name"), user_id)
+                "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)",
+                (token_hash, user_id, expires_at.isoformat())
             )
-        else:
-            cursor = conn.execute(
-                "INSERT INTO users (github_id, github_login, github_name) VALUES (?, ?, ?)",
-                (github_user["id"], github_user["login"], github_user.get("name"))
-            )
-            user_id = cursor.lastrowid
-
-        # Create session token
-        token = generate_session_token()
-        token_hash = hash_token(token)
-        expires_at = datetime.now() + timedelta(days=30)
-        conn.execute(
-            "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)",
-            (token_hash, user_id, expires_at.isoformat())
-        )
-        conn.commit()
-        conn.close()
 
         # Clean up device code
         del pending_device_codes[device_code]
@@ -661,12 +641,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not ctx:
             return
 
-        conn = get_db()
-        user = conn.execute(
-            "SELECT github_login, github_name FROM users WHERE id = ?",
-            (ctx["user_id"],)
-        ).fetchone()
-        conn.close()
+        with db() as conn:
+            user = conn.execute(
+                "SELECT github_login, github_name FROM users WHERE id = ?",
+                (ctx["user_id"],)
+            ).fetchone()
 
         if not user:
             return self.send_json({"error": "User not found"}, 404)
@@ -685,10 +664,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self.send_json({"error": "No valid session"}, 400)
 
         token_hash = hash_token(token)
-        conn = get_db()
-        conn.execute("DELETE FROM sessions WHERE id = ?", (token_hash,))
-        conn.commit()
-        conn.close()
+        with db() as conn:
+            conn.execute("DELETE FROM sessions WHERE id = ?", (token_hash,))
         self.send_json({"success": True})
 
     # --- Token management handlers ---
@@ -699,13 +676,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not ctx:
             return
 
-        conn = get_db()
-        rows = conn.execute(
-            """SELECT id, name, site_name, created_at, expires_at, last_used_at
-               FROM deployment_tokens WHERE user_id = ? ORDER BY created_at DESC""",
-            (ctx["user_id"],)
-        ).fetchall()
-        conn.close()
+        with db() as conn:
+            rows = conn.execute(
+                """SELECT id, name, site_name, created_at, expires_at, last_used_at
+                   FROM deployment_tokens WHERE user_id = ? ORDER BY created_at DESC""",
+                (ctx["user_id"],)
+            ).fetchall()
 
         self.send_json([
             {
@@ -735,26 +711,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self.send_json({"error": "site_name required"}, 400)
 
         # Check user owns the site
-        conn = get_db()
-        site = conn.execute(
-            "SELECT owner_id FROM sites WHERE name = ?", (site_name,)
-        ).fetchone()
+        with db() as conn:
+            site = conn.execute(
+                "SELECT owner_id FROM sites WHERE name = ?", (site_name,)
+            ).fetchone()
         if not site:
-            conn.close()
             return self.send_json({"error": "Site not found"}, 404)
         if site["owner_id"] != ctx["user_id"]:
-            conn.close()
             return self.send_json({"error": "You don't own this site"}, 403)
 
         # Create token
         token = generate_deploy_token()
         token_hash = hash_token(token)
-        conn.execute(
-            "INSERT INTO deployment_tokens (id, name, site_name, user_id) VALUES (?, ?, ?, ?)",
-            (token_hash, name, site_name, ctx["user_id"])
-        )
-        conn.commit()
-        conn.close()
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO deployment_tokens (id, name, site_name, user_id) VALUES (?, ?, ?, ?)",
+                (token_hash, name, site_name, ctx["user_id"])
+            )
 
         self.send_json({
             "id": token_hash[:16],
@@ -769,33 +742,36 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not ctx:
             return
 
-        conn = get_db()
-        # Find token by prefix match (we return truncated ID)
-        row = conn.execute(
-            "SELECT id FROM deployment_tokens WHERE id LIKE ? AND user_id = ?",
-            (token_id + "%", ctx["user_id"])
-        ).fetchone()
+        with db() as conn:
+            # Find token by prefix match (we return truncated ID)
+            row = conn.execute(
+                "SELECT id FROM deployment_tokens WHERE id LIKE ? AND user_id = ?",
+                (token_id + "%", ctx["user_id"])
+            ).fetchone()
 
-        if not row:
-            conn.close()
-            return self.send_json({"error": "Token not found"}, 404)
+            if not row:
+                return self.send_json({"error": "Token not found"}, 404)
 
-        conn.execute("DELETE FROM deployment_tokens WHERE id = ?", (row["id"],))
-        conn.commit()
-        conn.close()
+            conn.execute("DELETE FROM deployment_tokens WHERE id = ?", (row["id"],))
         self.send_response(204)
         self.end_headers()
 
 
-def main():
-    global DOMAIN
+def main() -> None:
+    global DOMAIN, DEV_MODE, JSON_LOGS
     parser = argparse.ArgumentParser(description="Static site hosting server")
     parser.add_argument("--port", type=int, default=int(os.environ.get("BUZZ_PORT", 8080)))
     parser.add_argument("--domain", help="Domain for hosted sites (env: BUZZ_DOMAIN)")
+    parser.add_argument("--dev", action="store_true", help="Dev mode: bypass authentication")
+    parser.add_argument("--json-logs", action="store_true", help="Output logs in JSON format")
     args = parser.parse_args()
     # Args override env vars
     if args.domain:
         DOMAIN = args.domain
+    if args.dev:
+        DEV_MODE = True
+    if args.json_logs:
+        JSON_LOGS = True
     SITES_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     server = HTTPServer(("", args.port), RequestHandler)
@@ -804,10 +780,15 @@ def main():
         print(f"Serving sites on *.{DOMAIN}")
     else:
         print(f"Serving sites on *.localhost:{args.port}")
-    if GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET:
+    if DEV_MODE:
+        print("DEV MODE: Authentication bypassed")
+    elif GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET:
         print("GitHub OAuth enabled")
     else:
-        print("WARNING: GitHub OAuth not configured (set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET)")
+        print("ERROR: GitHub OAuth not configured")
+        print("Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables")
+        print("Or use --dev flag for local development")
+        exit(1)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
