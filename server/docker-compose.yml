@@ -5,7 +5,8 @@ services:
     environment:
       - BUZZ_DATA_DIR=/data
       - BUZZ_DOMAIN=${BUZZ_DOMAIN}
-      - BUZZ_TOKEN=${BUZZ_TOKEN}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
     volumes:
       - buzz-data:/data
     expose:

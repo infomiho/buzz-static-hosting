@@ -8,7 +8,7 @@ const DEFAULT_SERVER = "http://localhost:8080";
 
 interface Config {
   server?: string;
-  token?: string;
+  token?: string;  // Session token from login
 }
 
 interface Site {
@@ -20,6 +20,15 @@ interface Site {
 interface Options {
   server: string;
   token?: string;
+}
+
+interface DeploymentToken {
+  id: string;
+  name: string;
+  site_name: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
 }
 
 function loadConfig(): Config {
@@ -42,7 +51,8 @@ function getOptions(): Options {
   const opts = program.opts();
   return {
     server: opts.server || config.server || DEFAULT_SERVER,
-    token: opts.token || config.token,
+    // Priority: CLI flag > env var > config file
+    token: opts.token || process.env.BUZZ_TOKEN || config.token,
   };
 }
 
@@ -74,6 +84,11 @@ async function createZipBuffer(directory: string): Promise<Buffer> {
 
 async function deploy(directory: string, subdomain: string | undefined) {
   const options = getOptions();
+
+  if (!options.token) {
+    console.error("Error: Not authenticated. Run 'buzz login' first");
+    process.exit(1);
+  }
 
   const stat = statSync(directory);
   if (!stat.isDirectory()) {
@@ -127,6 +142,15 @@ async function deploy(directory: string, subdomain: string | undefined) {
       // Save subdomain to CNAME file in cwd
       const deployedSubdomain = new URL(data.url).hostname.split(".")[0];
       writeFileSync(cwdCnamePath, deployedSubdomain + "\n");
+    } else if (response.status === 401) {
+      console.error("Error: Not authenticated. Run 'buzz login' first");
+      process.exit(1);
+    } else if (response.status === 403) {
+      console.error(`Error: ${data.error}`);
+      if (data.error?.includes("owned by another user")) {
+        console.error("Tip: Choose a different subdomain with --subdomain <name>");
+      }
+      process.exit(1);
     } else {
       console.error(`Error: ${data.error || "Unknown error"}`);
       process.exit(1);
@@ -142,13 +166,23 @@ async function deploy(directory: string, subdomain: string | undefined) {
 async function list() {
   const options = getOptions();
 
+  if (!options.token) {
+    console.error("Error: Not authenticated. Run 'buzz login' first");
+    process.exit(1);
+  }
+
   try {
     const response = await fetch(`${options.server}/sites`, {
       headers: authHeaders(options.token),
     });
 
     if (response.status === 401) {
-      console.error("Error: Unauthorized - check your token");
+      console.error("Error: Session expired. Run 'buzz login' to re-authenticate");
+      process.exit(1);
+    }
+
+    if (response.status === 403) {
+      console.error("Error: Deploy tokens cannot list sites. Use 'buzz login' for a session token.");
       process.exit(1);
     }
 
@@ -179,6 +213,11 @@ async function list() {
 async function deleteSite(subdomain: string) {
   const options = getOptions();
 
+  if (!options.token) {
+    console.error("Error: Not authenticated. Run 'buzz login' first");
+    process.exit(1);
+  }
+
   try {
     const response = await fetch(`${options.server}/sites/${subdomain}`, {
       method: "DELETE",
@@ -188,7 +227,11 @@ async function deleteSite(subdomain: string) {
     if (response.status === 204) {
       console.log(`Deleted ${subdomain}`);
     } else if (response.status === 401) {
-      console.error("Error: Unauthorized - check your token");
+      console.error("Error: Session expired. Run 'buzz login' to re-authenticate");
+      process.exit(1);
+    } else if (response.status === 403) {
+      const data = await response.json();
+      console.error(`Error: ${data.error || "You don't have permission to delete this site"}`);
       process.exit(1);
     } else if (response.status === 404) {
       console.error(`Error: Site '${subdomain}' not found`);
@@ -216,12 +259,11 @@ function configCommand(key?: string, value?: string) {
       console.log(`\nConfig file: ${CONFIG_PATH}`);
       console.log("\nUsage:");
       console.log("  buzz config server <url>    Set server URL");
-      console.log("  buzz config token <token>   Set auth token");
       return;
     }
     console.log("Current configuration:");
     if (config.server) console.log(`  server: ${config.server}`);
-    if (config.token) console.log(`  token: ${config.token.slice(0, 8)}...`);
+    if (config.token) console.log(`  token: ${config.token.slice(0, 16)}...`);
     console.log(`\nConfig file: ${CONFIG_PATH}`);
     return;
   }
@@ -230,12 +272,284 @@ function configCommand(key?: string, value?: string) {
     config.server = value;
     saveConfig(config);
     console.log(`Server set to ${value}`);
-  } else if (key === "token" && value) {
-    config.token = value;
-    saveConfig(config);
-    console.log("Token saved");
   } else {
-    console.error("Usage: buzz config <server|token> <value>");
+    console.error("Usage: buzz config server <url>");
+    console.error("Use 'buzz login' to authenticate");
+    process.exit(1);
+  }
+}
+
+async function login() {
+  const options = getOptions();
+
+  try {
+    // Start device flow
+    const deviceResponse = await fetch(`${options.server}/auth/device`, {
+      method: "POST",
+    });
+
+    if (!deviceResponse.ok) {
+      const data = await deviceResponse.json();
+      console.error(`Error: ${data.error || "Failed to start login"}`);
+      process.exit(1);
+    }
+
+    const deviceData = await deviceResponse.json();
+
+    console.log(`\nVisit: ${deviceData.verification_uri}`);
+    console.log(`Enter code: ${deviceData.user_code}\n`);
+    console.log("Waiting for authorization...");
+
+    // Poll for completion
+    const interval = (deviceData.interval || 5) * 1000;
+    const maxAttempts = Math.ceil((deviceData.expires_in || 900) / (deviceData.interval || 5));
+
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((resolve) => setTimeout(resolve, interval));
+
+      const pollResponse = await fetch(`${options.server}/auth/device/poll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_code: deviceData.device_code }),
+      });
+
+      const pollData = await pollResponse.json();
+
+      if (pollData.status === "pending") {
+        continue;
+      }
+
+      if (pollData.error) {
+        console.error(`\nError: ${pollData.error}`);
+        process.exit(1);
+      }
+
+      if (pollData.status === "complete") {
+        // Save token
+        const config = loadConfig();
+        config.token = pollData.token;
+        saveConfig(config);
+        console.log(`\nLogged in as ${pollData.user.login}`);
+        return;
+      }
+    }
+
+    console.error("\nLogin timed out");
+    process.exit(1);
+  } catch (error) {
+    console.error(
+      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
+    );
+    process.exit(1);
+  }
+}
+
+async function logout() {
+  const options = getOptions();
+
+  if (!options.token) {
+    console.log("Not logged in");
+    return;
+  }
+
+  try {
+    await fetch(`${options.server}/auth/logout`, {
+      method: "POST",
+      headers: authHeaders(options.token),
+    });
+  } catch {
+    // Ignore errors - we're logging out anyway
+  }
+
+  // Clear token from config
+  const config = loadConfig();
+  delete config.token;
+  saveConfig(config);
+  console.log("Logged out");
+}
+
+async function whoami() {
+  const options = getOptions();
+
+  if (!options.token) {
+    console.log("Not logged in");
+    console.log("Run 'buzz login' to authenticate");
+    process.exit(1);
+  }
+
+  try {
+    const response = await fetch(`${options.server}/auth/me`, {
+      headers: authHeaders(options.token),
+    });
+
+    if (response.status === 401) {
+      console.error("Session expired. Run 'buzz login' to re-authenticate");
+      process.exit(1);
+    }
+
+    if (!response.ok) {
+      const data = await response.json();
+      console.error(`Error: ${data.error || "Unknown error"}`);
+      process.exit(1);
+    }
+
+    const user = await response.json();
+    console.log(`Logged in as ${user.login}${user.name ? ` (${user.name})` : ""}`);
+  } catch (error) {
+    console.error(
+      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
+    );
+    process.exit(1);
+  }
+}
+
+async function listTokens() {
+  const options = getOptions();
+
+  if (!options.token) {
+    console.error("Not logged in. Run 'buzz login' first");
+    process.exit(1);
+  }
+
+  try {
+    const response = await fetch(`${options.server}/tokens`, {
+      headers: authHeaders(options.token),
+    });
+
+    if (response.status === 401) {
+      console.error("Session expired. Run 'buzz login' to re-authenticate");
+      process.exit(1);
+    }
+
+    if (response.status === 403) {
+      console.error("Deploy tokens cannot list tokens. Use a session token.");
+      process.exit(1);
+    }
+
+    if (!response.ok) {
+      const data = await response.json();
+      console.error(`Error: ${data.error || "Unknown error"}`);
+      process.exit(1);
+    }
+
+    const tokens: DeploymentToken[] = await response.json();
+
+    if (tokens.length === 0) {
+      console.log("No deployment tokens");
+      return;
+    }
+
+    console.log(
+      `${"ID".padEnd(18)} ${"NAME".padEnd(20)} ${"SITE".padEnd(20)} ${"LAST USED".padEnd(20)}`
+    );
+    for (const token of tokens) {
+      const lastUsed = token.last_used_at
+        ? token.last_used_at.slice(0, 19).replace("T", " ")
+        : "Never";
+      console.log(
+        `${token.id.padEnd(18)} ${token.name.slice(0, 18).padEnd(20)} ${token.site_name.slice(0, 18).padEnd(20)} ${lastUsed.padEnd(20)}`
+      );
+    }
+  } catch (error) {
+    console.error(
+      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
+    );
+    process.exit(1);
+  }
+}
+
+async function createToken(siteName: string, cmdOptions: { name?: string }) {
+  const options = getOptions();
+
+  if (!options.token) {
+    console.error("Not logged in. Run 'buzz login' first");
+    process.exit(1);
+  }
+
+  try {
+    const response = await fetch(`${options.server}/tokens`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(options.token),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        site_name: siteName,
+        name: cmdOptions.name || "Deployment token",
+      }),
+    });
+
+    if (response.status === 401) {
+      console.error("Session expired. Run 'buzz login' to re-authenticate");
+      process.exit(1);
+    }
+
+    if (response.status === 403) {
+      const data = await response.json();
+      console.error(`Error: ${data.error}`);
+      process.exit(1);
+    }
+
+    if (response.status === 404) {
+      console.error(`Error: Site '${siteName}' not found`);
+      process.exit(1);
+    }
+
+    if (!response.ok) {
+      const data = await response.json();
+      console.error(`Error: ${data.error || "Unknown error"}`);
+      process.exit(1);
+    }
+
+    const data = await response.json();
+    console.log(`Token created for site '${siteName}':\n`);
+    console.log(`  ${data.token}\n`);
+    console.log("Save this token - it won't be shown again!");
+    console.log("\nUse in CI by setting BUZZ_TOKEN environment variable.");
+  } catch (error) {
+    console.error(
+      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
+    );
+    process.exit(1);
+  }
+}
+
+async function deleteToken(tokenId: string) {
+  const options = getOptions();
+
+  if (!options.token) {
+    console.error("Not logged in. Run 'buzz login' first");
+    process.exit(1);
+  }
+
+  try {
+    const response = await fetch(`${options.server}/tokens/${tokenId}`, {
+      method: "DELETE",
+      headers: authHeaders(options.token),
+    });
+
+    if (response.status === 204) {
+      console.log("Token deleted");
+      return;
+    }
+
+    if (response.status === 401) {
+      console.error("Session expired. Run 'buzz login' to re-authenticate");
+      process.exit(1);
+    }
+
+    if (response.status === 404) {
+      console.error("Token not found");
+      process.exit(1);
+    }
+
+    const data = await response.json();
+    console.error(`Error: ${data.error || "Unknown error"}`);
+    process.exit(1);
+  } catch (error) {
+    console.error(
+      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
+    );
     process.exit(1);
   }
 }
@@ -248,9 +562,10 @@ program
   .option("-t, --token <token>", "Auth token (overrides config)");
 
 program
-  .command("deploy <directory> [subdomain]")
+  .command("deploy <directory>")
   .description("Deploy a directory to the server")
-  .action(deploy);
+  .option("--subdomain <name>", "Subdomain for the site")
+  .action((directory: string, cmdOptions: { subdomain?: string }) => deploy(directory, cmdOptions.subdomain));
 
 program
   .command("list")
@@ -264,7 +579,7 @@ program
 
 program
   .command("config [key] [value]")
-  .description("View or set configuration (server, token)")
+  .description("View or set configuration (server)")
   .action(configCommand);
 
 program
@@ -286,5 +601,42 @@ program
       console.log(`http://${subdomain}.localhost:8080`);
     }
   });
+
+// Auth commands
+program
+  .command("login")
+  .description("Login with GitHub OAuth")
+  .action(login);
+
+program
+  .command("logout")
+  .description("Logout and clear session")
+  .action(logout);
+
+program
+  .command("whoami")
+  .description("Show current logged-in user")
+  .action(whoami);
+
+// Token commands
+const tokensCmd = program
+  .command("tokens")
+  .description("Manage deployment tokens");
+
+tokensCmd
+  .command("list")
+  .description("List your deployment tokens")
+  .action(listTokens);
+
+tokensCmd
+  .command("create <site>")
+  .description("Create a deployment token for a site")
+  .option("-n, --name <name>", "Token name (for identification)")
+  .action(createToken);
+
+tokensCmd
+  .command("delete <token-id>")
+  .description("Delete a deployment token")
+  .action(deleteToken);
 
 program.parse();
