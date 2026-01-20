@@ -33,5 +33,8 @@ services:
 
 volumes:
   buzz-data:
+    name: buzz_buzz-data
   caddy-data:
+    name: buzz_caddy-data
   caddy-config:
+    name: buzz_caddy-config
