@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY server.py .
+COPY server.py landing.html ./
 
 RUN mkdir -p /data/sites
 
