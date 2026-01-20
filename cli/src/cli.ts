@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { program } from "commander";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
