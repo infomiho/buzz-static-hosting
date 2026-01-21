@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-"""Buzz static site hosting server."""
 from __future__ import annotations
 
 import argparse
@@ -15,13 +13,12 @@ from .db import init_db
 def main() -> None:
     parser = argparse.ArgumentParser(description="Static site hosting server")
     parser.add_argument("--port", type=int, default=int(os.environ.get("BUZZ_PORT", 8080)))
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--domain", help="Domain for hosted sites (env: BUZZ_DOMAIN)")
-    parser.add_argument("--dev", action="store_true", help="Dev mode: bypass authentication")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    parser.add_argument("--dev", action="store_true", help="Bypass authentication")
+    parser.add_argument("--reload", action="store_true", help="Auto-reload on changes")
     args = parser.parse_args()
 
-    # Args override env vars
     if args.domain:
         config.DOMAIN = args.domain
     if args.dev:
@@ -52,7 +49,3 @@ def main() -> None:
         port=args.port,
         reload=args.reload,
     )
-
-
-if __name__ == "__main__":
-    main()

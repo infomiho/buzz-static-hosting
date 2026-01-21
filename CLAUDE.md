@@ -6,26 +6,36 @@ Self-hosted static site hosting with CLI deployment.
 
 ```
 buzz/
-├── server/          # Python HTTP server
-│   ├── server.py    # Main server (no dependencies)
+├── server/                  # Python server (FastAPI)
+│   ├── src/server/
+│   │   ├── main.py          # Entry point
+│   │   ├── app.py           # FastAPI app
+│   │   ├── routes/          # API routes
+│   │   ├── config.py
+│   │   ├── db.py
+│   │   └── dependencies.py  # Auth dependencies
+│   ├── pyproject.toml
 │   ├── Dockerfile
-│   ├── Dockerfile.caddy
 │   └── docker-compose.yml
-└── cli/             # TypeScript CLI
-    └── src/cli.ts
+└── cli/                     # TypeScript CLI
+    └── src/
+        ├── cli.ts
+        ├── lib.ts
+        └── commands/
 ```
 
 ## Server
 
-Python 3.10+ with no external dependencies. Uses stdlib only (http.server, sqlite3, zipfile).
+Python 3.12+ with FastAPI and uvicorn. Uses uv for dependency management.
 
 Run locally:
 ```bash
 cd server
-python server.py --port 8080 --domain localhost
+uv sync
+uv run python -m server --dev
 ```
 
-Environment variables: `BUZZ_PORT`, `BUZZ_DOMAIN`, `BUZZ_TOKEN`, `BUZZ_DATA_DIR`
+Environment variables: `BUZZ_PORT`, `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BUZZ_DATA_DIR`
 
 ## CLI
 
@@ -43,7 +53,7 @@ Link globally for development:
 npm link
 ```
 
-Commands: `deploy`, `list`, `delete`, `url`, `config`
+Commands: `deploy`, `list`, `delete`, `url`, `config`, `login`, `logout`, `whoami`, `tokens`
 
 Config stored at `~/.buzz.config.json`. Per-project subdomain stored in `CNAME` file.
 
@@ -51,7 +61,7 @@ Config stored at `~/.buzz.config.json`. Per-project subdomain stored in `CNAME` 
 
 Docker Compose with Caddy (wildcard SSL via Cloudflare DNS challenge).
 
-Required env vars in `.env`: `BUZZ_DOMAIN`, `BUZZ_TOKEN`, `CF_API_TOKEN`, `ACME_EMAIL`
+Required env vars in `.env`: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `CF_API_TOKEN`, `ACME_EMAIL`
 
 ## Releasing
 

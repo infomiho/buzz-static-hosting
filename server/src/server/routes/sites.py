@@ -1,4 +1,3 @@
-"""Site management routes."""
 import io
 import shutil
 import zipfile
@@ -22,25 +21,21 @@ async def deploy(
     ctx: AuthContext = Depends(require_auth_or_deploy),
     x_subdomain: str | None = Header(default=None),
 ):
-    """Deploy a site from a ZIP file."""
     subdomain = x_subdomain.strip() if x_subdomain else generate_subdomain()
     if not subdomain.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(status_code=400, detail="Invalid subdomain")
 
-    # Check deploy token scope
     if ctx.token_type == "deploy" and ctx.site_name != subdomain:
         raise HTTPException(
             status_code=403,
             detail=f"Deploy token is scoped to site '{ctx.site_name}', cannot deploy to '{subdomain}'"
         )
 
-    # Check ownership
     with db() as conn:
         existing = conn.execute("SELECT owner_id FROM sites WHERE name = ?", (subdomain,)).fetchone()
     if existing and existing["owner_id"] is not None and existing["owner_id"] != ctx.user_id:
         raise HTTPException(status_code=403, detail=f"Site '{subdomain}' is owned by another user")
 
-    # Read and extract ZIP file
     content = await file.read()
     site_dir = SITES_DIR / subdomain
     site_dir.mkdir(parents=True, exist_ok=True)
@@ -50,7 +45,6 @@ async def deploy(
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file")
 
-    # Insert or update site with owner
     with db() as conn:
         if existing:
             owner_id = existing["owner_id"] if existing["owner_id"] is not None else ctx.user_id
@@ -74,26 +68,16 @@ async def deploy(
 
 @router.get("/sites")
 async def list_sites(ctx: Annotated[AuthContext, Depends(require_auth)]):
-    """List user's sites."""
     with db() as conn:
         rows = conn.execute(
             "SELECT name, created_at, size_bytes FROM sites WHERE owner_id = ? ORDER BY created_at DESC",
             (ctx.user_id,)
         ).fetchall()
-    return [
-        {
-            "name": r["name"],
-            "created": r["created_at"],
-            "size_bytes": r["size_bytes"],
-        }
-        for r in rows
-    ]
+    return [{"name": r["name"], "created": r["created_at"], "size_bytes": r["size_bytes"]} for r in rows]
 
 
 @router.delete("/sites/{name}")
 async def delete_site(name: str, ctx: Annotated[AuthContext, Depends(require_auth)]):
-    """Delete a site."""
-    # Check ownership
     with db() as conn:
         site = conn.execute("SELECT owner_id FROM sites WHERE name = ?", (name,)).fetchone()
     if not site:

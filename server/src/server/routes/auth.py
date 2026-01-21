@@ -1,4 +1,3 @@
-"""Authentication routes."""
 import json
 from datetime import datetime, timedelta
 from typing import Annotated
@@ -21,11 +20,9 @@ class DevicePollRequest(BaseModel):
 
 @router.post("/device")
 async def device_start():
-    """Start GitHub device flow authentication."""
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="GitHub OAuth not configured")
 
-    # Request device code from GitHub
     result = github_request(
         "https://github.com/login/device/code",
         {"client_id": GITHUB_CLIENT_ID, "scope": "read:user"}
@@ -34,13 +31,10 @@ async def device_start():
     if "device_code" not in result:
         raise HTTPException(status_code=500, detail="Failed to start device flow")
 
-    # Store pending device code
     pending_device_codes[result["device_code"]] = {
         "user_code": result["user_code"],
         "expires_at": datetime.now() + timedelta(seconds=result.get("expires_in", 900)),
         "interval": result.get("interval", 5),
-        "access_token": None,
-        "user": None,
     }
 
     return {
@@ -54,13 +48,11 @@ async def device_start():
 
 @router.post("/device/poll")
 async def device_poll(data: DevicePollRequest):
-    """Poll for device flow completion."""
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="GitHub OAuth not configured")
 
     device_code = data.device_code
 
-    # Check if we have this device code
     if device_code not in pending_device_codes:
         raise HTTPException(status_code=400, detail="Invalid or expired device code")
 
@@ -69,7 +61,6 @@ async def device_poll(data: DevicePollRequest):
         del pending_device_codes[device_code]
         raise HTTPException(status_code=400, detail="Device code expired")
 
-    # Try to exchange device code for access token
     result = github_request(
         "https://github.com/login/oauth/access_token",
         {
@@ -94,7 +85,6 @@ async def device_poll(data: DevicePollRequest):
         else:
             raise HTTPException(status_code=400, detail=result.get("error_description", error))
 
-    # Got access token! Fetch user info
     access_token = result["access_token"]
     req = Request("https://api.github.com/user")
     req.add_header("Authorization", f"Bearer {access_token}")
@@ -103,11 +93,8 @@ async def device_poll(data: DevicePollRequest):
     with urlopen(req) as resp:
         github_user = json.loads(resp.read().decode())
 
-    # Create or update user in database
     with db() as conn:
-        existing = conn.execute(
-            "SELECT id FROM users WHERE github_id = ?", (github_user["id"],)
-        ).fetchone()
+        existing = conn.execute("SELECT id FROM users WHERE github_id = ?", (github_user["id"],)).fetchone()
 
         if existing:
             user_id = existing["id"]
@@ -122,7 +109,6 @@ async def device_poll(data: DevicePollRequest):
             )
             user_id = cursor.lastrowid
 
-        # Create session token
         token = generate_session_token()
         token_hash = hash_token(token)
         expires_at = datetime.now() + timedelta(days=30)
@@ -131,22 +117,17 @@ async def device_poll(data: DevicePollRequest):
             (token_hash, user_id, expires_at.isoformat())
         )
 
-    # Clean up device code
     del pending_device_codes[device_code]
 
     return {
         "status": "complete",
         "token": token,
-        "user": {
-            "login": github_user["login"],
-            "name": github_user.get("name"),
-        }
+        "user": {"login": github_user["login"], "name": github_user.get("name")},
     }
 
 
 @router.get("/me")
 async def me(ctx: Annotated[AuthContext, Depends(require_auth)]):
-    """Get current user info."""
     with db() as conn:
         user = conn.execute(
             "SELECT github_login, github_name FROM users WHERE id = ?",
@@ -156,21 +137,15 @@ async def me(ctx: Annotated[AuthContext, Depends(require_auth)]):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return {
-        "login": user["github_login"],
-        "name": user["github_name"],
-    }
+    return {"login": user["github_login"], "name": user["github_name"]}
 
 
 @router.post("/logout")
 async def logout(authorization: str | None = Header(default=None)):
-    """Invalidate current session."""
     if not authorization:
         raise HTTPException(status_code=400, detail="No valid session")
 
-    token = authorization
-    if token.startswith("Bearer "):
-        token = token[7:]
+    token = authorization.removeprefix("Bearer ")
     if not token or not token.startswith(SESSION_TOKEN_PREFIX):
         raise HTTPException(status_code=400, detail="No valid session")
 
