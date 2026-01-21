@@ -2,7 +2,15 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY server.py landing.html ./
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy project files
+COPY pyproject.toml uv.lock ./
+COPY src/ ./src/
+
+# Install dependencies
+RUN uv sync --frozen --no-dev
 
 RUN mkdir -p /data/sites
 
@@ -10,4 +18,4 @@ VOLUME /data
 
 EXPOSE 8080
 
-CMD ["python", "server.py", "--port", "8080"]
+CMD ["uv", "run", "python", "-m", "server", "--port", "8080"]

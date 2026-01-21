@@ -1,11 +1,21 @@
 [project]
-name = "buzz"
+name = "buzz-server"
 version = "0.1.0"
-description = "Minimal self-hosted static site hosting server"
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = []
+description = "Self-hosted static site hosting server"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.scripts]
+buzz-server = "server.main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/server"]
+sources = ["src"]
