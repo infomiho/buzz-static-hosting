@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.3.0...buzz-cli-v0.4.0) (2026-01-22)
+
+
+### Features
+
+* **cli:** add progress bar and improve error handling ([7d14e82](https://github.com/infomiho/buzz-static-hosting/commit/7d14e82a28848d7843c59890bfc2937b3c3cbdd2))
+
 ## [0.3.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.2.0...buzz-cli-v0.3.0) (2026-01-20)
 
 
