@@ -113,6 +113,20 @@ Configuration is stored at `~/.buzz.config.json`.
 4. Python server serves static files with support for clean URLs (`/about` serves `/about.html`)
 5. SQLite stores site metadata (name, size, creation date)
 
+## Features
+
+**Clean URLs** - `/about` serves `about.html` or `about/index.html`
+
+**Custom 404** - Add a `404.html` file to show a custom error page for missing routes
+
+**SPA Support** - Add a `200.html` file to enable client-side routing. When a route doesn't match any file, `200.html` is served with a 200 status code, allowing your SPA router to handle the route.
+
+```bash
+# For SPAs, copy your index.html to 200.html before deploying
+cp dist/index.html dist/200.html
+buzz deploy ./dist
+```
+
 ## Releasing
 
 The CLI is published to npm automatically using [Release Please](https://github.com/googleapis/release-please).

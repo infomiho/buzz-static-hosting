@@ -62,6 +62,11 @@ async def serve_static(subdomain: str, path: str) -> Response:
             if candidate.is_file():
                 return _file_response(candidate)
 
+    # SPA fallback - serve 200.html for client-side routing
+    spa_fallback = site_dir / "200.html"
+    if spa_fallback.is_file():
+        return _file_response(spa_fallback)
+
     custom_404 = site_dir / "404.html"
     if custom_404.exists():
         content = custom_404.read_bytes()
