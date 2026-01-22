@@ -1,13 +1,12 @@
 import { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig, DEFAULT_SERVER } from "../lib.js";
+import { loadConfig, DEFAULT_SERVER, CliError } from "../lib.js";
 
 export function url() {
   const cnamePath = join(process.cwd(), "CNAME");
   if (!existsSync(cnamePath)) {
-    console.error("No CNAME file found. Deploy first with: buzz deploy .");
-    process.exit(1);
+    throw new CliError("No CNAME file found", "Deploy first with: buzz deploy .");
   }
   const subdomain = readFileSync(cnamePath, "utf-8").trim();
   const config = loadConfig();

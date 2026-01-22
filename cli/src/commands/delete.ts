@@ -1,27 +1,20 @@
 import { Command } from "commander";
-import { apiRequest, ApiError } from "../lib.js";
+import { apiRequest, CliError } from "../lib.js";
 
 export async function deleteSite(subdomain: string) {
-  try {
-    const response = await apiRequest(`/sites/${subdomain}`, { method: "DELETE" });
+  const response = await apiRequest(`/sites/${subdomain}`, { method: "DELETE" });
 
-    if (response.status === 204) {
-      console.log(`Deleted ${subdomain}`);
-    } else if (response.status === 404) {
-      console.error(`Error: Site '${subdomain}' not found`);
-      process.exit(1);
-    } else {
-      const data = await response.json();
-      console.error(`Error: ${data.error || "Unknown error"}`);
-      process.exit(1);
-    }
-  } catch (error) {
-    if (error instanceof ApiError) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-    throw error;
+  if (response.status === 204) {
+    console.log(`Deleted ${subdomain}`);
+    return;
   }
+
+  if (response.status === 404) {
+    throw new CliError(`Site '${subdomain}' not found`);
+  }
+
+  const data = await response.json();
+  throw new CliError(data.error || "Unknown error");
 }
 
 export function registerDeleteCommand(program: Command) {

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { loadConfig, saveConfig, CONFIG_PATH } from "../lib.js";
+import { loadConfig, saveConfig, CONFIG_PATH, CliError } from "../lib.js";
 
 export function configCommand(key?: string, value?: string) {
   const config = loadConfig();
@@ -25,9 +25,10 @@ export function configCommand(key?: string, value?: string) {
     saveConfig(config);
     console.log(`Server set to ${value}`);
   } else {
-    console.error("Usage: buzz config server <url>");
-    console.error("Use 'buzz login' to authenticate");
-    process.exit(1);
+    throw new CliError(
+      "Invalid config command",
+      "Usage: buzz config server <url>"
+    );
   }
 }
 

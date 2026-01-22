@@ -1,69 +1,72 @@
 import { Command } from "commander";
-import { getOptions, loadConfig, saveConfig, authHeaders, apiRequest, ApiError } from "../lib.js";
+import { getOptions, loadConfig, saveConfig, authHeaders, apiRequest, CliError } from "../lib.js";
 
 export async function login() {
   const options = getOptions();
 
+  let deviceResponse: Response;
   try {
-    // Start device flow
-    const deviceResponse = await fetch(`${options.server}/auth/device`, {
+    deviceResponse = await fetch(`${options.server}/auth/device`, {
       method: "POST",
     });
+  } catch (error) {
+    throw new CliError(
+      `Could not connect to server - ${error instanceof Error ? error.message : error}`
+    );
+  }
 
-    if (!deviceResponse.ok) {
-      const data = await deviceResponse.json();
-      console.error(`Error: ${data.error || "Failed to start login"}`);
-      process.exit(1);
-    }
+  if (!deviceResponse.ok) {
+    const data = await deviceResponse.json();
+    throw new CliError(data.error || "Failed to start login");
+  }
 
-    const deviceData = await deviceResponse.json();
+  const deviceData = await deviceResponse.json();
 
-    console.log(`\nVisit: ${deviceData.verification_uri}`);
-    console.log(`Enter code: ${deviceData.user_code}\n`);
-    console.log("Waiting for authorization...");
+  console.log(`\nVisit: ${deviceData.verification_uri}`);
+  console.log(`Enter code: ${deviceData.user_code}\n`);
+  console.log("Waiting for authorization...");
 
-    // Poll for completion
-    const interval = (deviceData.interval || 5) * 1000;
-    const maxAttempts = Math.ceil((deviceData.expires_in || 900) / (deviceData.interval || 5));
+  // Poll for completion
+  const interval = (deviceData.interval || 5) * 1000;
+  const maxAttempts = Math.ceil((deviceData.expires_in || 900) / (deviceData.interval || 5));
 
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((resolve) => setTimeout(resolve, interval));
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((resolve) => setTimeout(resolve, interval));
 
-      const pollResponse = await fetch(`${options.server}/auth/device/poll`, {
+    let pollResponse: Response;
+    try {
+      pollResponse = await fetch(`${options.server}/auth/device/poll`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ device_code: deviceData.device_code }),
       });
-
-      const pollData = await pollResponse.json();
-
-      if (pollData.status === "pending") {
-        continue;
-      }
-
-      if (pollData.error) {
-        console.error(`\nError: ${pollData.error}`);
-        process.exit(1);
-      }
-
-      if (pollData.status === "complete") {
-        // Save token
-        const config = loadConfig();
-        config.token = pollData.token;
-        saveConfig(config);
-        console.log(`\nLogged in as ${pollData.user.login}`);
-        return;
-      }
+    } catch (error) {
+      throw new CliError(
+        `Could not connect to server - ${error instanceof Error ? error.message : error}`
+      );
     }
 
-    console.error("\nLogin timed out");
-    process.exit(1);
-  } catch (error) {
-    console.error(
-      `Error: Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-    process.exit(1);
+    const pollData = await pollResponse.json();
+
+    if (pollData.status === "pending") {
+      continue;
+    }
+
+    if (pollData.error) {
+      throw new CliError(pollData.error);
+    }
+
+    if (pollData.status === "complete") {
+      // Save token
+      const config = loadConfig();
+      config.token = pollData.token;
+      saveConfig(config);
+      console.log(`\nLogged in as ${pollData.user.login}`);
+      return;
+    }
   }
+
+  throw new CliError("Login timed out");
 }
 
 export async function logout() {
@@ -91,17 +94,9 @@ export async function logout() {
 }
 
 export async function whoami() {
-  try {
-    const response = await apiRequest("/auth/me");
-    const user = await response.json();
-    console.log(`Logged in as ${user.login}${user.name ? ` (${user.name})` : ""}`);
-  } catch (error) {
-    if (error instanceof ApiError) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-    throw error;
-  }
+  const response = await apiRequest("/auth/me");
+  const user = await response.json();
+  console.log(`Logged in as ${user.login}${user.name ? ` (${user.name})` : ""}`);
 }
 
 export function registerAuthCommands(program: Command) {

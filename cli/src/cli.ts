@@ -1,5 +1,6 @@
 import { program } from "commander";
 import { registerCommands } from "./commands/index.js";
+import { CliError, handleError } from "./lib.js";
 
 program
   .name("buzz")
@@ -10,4 +11,8 @@ program
 
 registerCommands(program);
 
-program.parse();
+async function main() {
+  await program.parseAsync();
+}
+
+main().catch(handleError);
