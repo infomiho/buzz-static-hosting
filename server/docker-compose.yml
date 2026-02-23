@@ -1,4 +1,32 @@
 services:
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.cloudflare.acme.email=${ACME_EMAIL:-admin@example.com}
+      - --certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+    environment:
+      - CF_DNS_API_TOKEN=${CF_API_TOKEN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.wildcard-certs.tls.certresolver=cloudflare
+      - traefik.http.routers.wildcard-certs.tls.domains[0].main=${BUZZ_DOMAIN}
+      - traefik.http.routers.wildcard-certs.tls.domains[0].sans=*.${BUZZ_DOMAIN}
+
   server:
     build: .
     restart: unless-stopped
@@ -11,30 +39,18 @@ services:
       - buzz-data:/data
     expose:
       - "8080"
-
-  caddy:
-    build:
-      context: .
-      dockerfile: Dockerfile.caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - BUZZ_DOMAIN=${BUZZ_DOMAIN}
-      - CF_API_TOKEN=${CF_API_TOKEN}
-      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - server
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.buzz.rule=Host(`${BUZZ_DOMAIN}`)
+      - traefik.http.routers.buzz.entrypoints=websecure
+      - traefik.http.routers.buzz.tls.certresolver=cloudflare
+      - traefik.http.routers.buzz-wildcard.rule=HostRegexp(`.+\.${BUZZ_DOMAIN}`)
+      - traefik.http.routers.buzz-wildcard.entrypoints=websecure
+      - traefik.http.routers.buzz-wildcard.tls.certresolver=cloudflare
+      - traefik.http.services.buzz.loadbalancer.server.port=8080
 
 volumes:
   buzz-data:
     name: buzz_buzz-data
-  caddy-data:
-    name: buzz_caddy-data
-  caddy-config:
-    name: buzz_caddy-config
+  traefik-certs:
+    name: buzz_traefik-certs
