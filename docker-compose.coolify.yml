@@ -15,11 +15,11 @@ services:
       - coolify
     labels:
       - traefik.enable=true
-      - traefik.http.routers.buzz.rule=Host(`${BUZZ_DOMAIN}`)
+      - "traefik.http.routers.buzz.rule=Host(`${BUZZ_DOMAIN}`)"
       - traefik.http.routers.buzz.entrypoints=https
       - traefik.http.routers.buzz.tls=true
       - traefik.http.routers.buzz.tls.certresolver=letsencrypt
-      - traefik.http.routers.buzz-wildcard.rule=HostRegexp(`.+\.${BUZZ_DOMAIN}`)
+      - "traefik.http.routers.buzz-wildcard.rule=HostRegexp(`.+\\.${BUZZ_DOMAIN}`)"
       - traefik.http.routers.buzz-wildcard.entrypoints=https
       - traefik.http.routers.buzz-wildcard.tls=true
       - traefik.http.routers.buzz-wildcard.tls.certresolver=letsencrypt
