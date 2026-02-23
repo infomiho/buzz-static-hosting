@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.4.0...buzz-cli-v0.5.0) (2026-02-23)
+
+
+### Features
+
+* **cli:** add delete confirmation and fix version display ([53bed25](https://github.com/infomiho/buzz-static-hosting/commit/53bed2592e57bca4ab81b99e691aae39328c9bae))
+* migrate from Caddy to Traefik v3 and add Coolify support ([5429fb4](https://github.com/infomiho/buzz-static-hosting/commit/5429fb480d44476f738c70b33cb7f2f2efa14584))
+
 ## [0.4.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.3.0...buzz-cli-v0.4.0) (2026-01-22)
 
 
