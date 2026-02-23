@@ -2,7 +2,7 @@
 
 ## 1. Create App
 
-In Coolify, create a Docker Compose app pointing at `server/docker-compose.coolify.yml`.
+In Coolify, create a Docker Compose app pointing at `docker-compose.coolify.yml`.
 
 Set environment variables: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`.
 
