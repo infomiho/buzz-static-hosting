@@ -3,9 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
-from ..db import db
-from ..auth import hash_token, generate_deploy_token
-from ..dependencies import AuthContext, require_auth
+from ..auth_service import AuthService, NotSiteOwner, SiteNotFound, TokenNotFound
+from ..dependencies import Identity, get_auth_service, require_user
 
 router = APIRouter()
 
@@ -16,56 +15,47 @@ class CreateTokenRequest(BaseModel):
 
 
 @router.get("")
-async def list_tokens(ctx: Annotated[AuthContext, Depends(require_auth)]):
-    with db() as conn:
-        rows = conn.execute(
-            "SELECT id, name, site_name, created_at, expires_at, last_used_at FROM deployment_tokens WHERE user_id = ? ORDER BY created_at DESC",
-            (ctx.user_id,)
-        ).fetchall()
-
+async def list_tokens(
+    identity: Annotated[Identity, Depends(require_user)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+):
     return [
         {
-            "id": r["id"][:16],
-            "name": r["name"],
-            "site_name": r["site_name"],
-            "created_at": r["created_at"],
-            "expires_at": r["expires_at"],
-            "last_used_at": r["last_used_at"],
+            "id": t.id_prefix,
+            "name": t.name,
+            "site_name": t.site_name,
+            "created_at": t.created_at,
+            "expires_at": t.expires_at,
+            "last_used_at": t.last_used_at,
         }
-        for r in rows
+        for t in auth.list_deploy_tokens(identity.user.id)
     ]
 
 
 @router.post("")
-async def create_token(data: CreateTokenRequest, ctx: Annotated[AuthContext, Depends(require_auth)]):
-    with db() as conn:
-        site = conn.execute("SELECT owner_id FROM sites WHERE name = ?", (data.site_name,)).fetchone()
-    if not site:
+async def create_token(
+    data: CreateTokenRequest,
+    identity: Annotated[Identity, Depends(require_user)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+):
+    try:
+        result = auth.create_deploy_token(identity.user.id, data.site_name, data.name)
+    except SiteNotFound:
         raise HTTPException(status_code=404, detail="Site not found")
-    if site["owner_id"] != ctx.user_id:
+    except NotSiteOwner:
         raise HTTPException(status_code=403, detail="You don't own this site")
 
-    token = generate_deploy_token()
-    token_hash = hash_token(token)
-    with db() as conn:
-        conn.execute(
-            "INSERT INTO deployment_tokens (id, name, site_name, user_id) VALUES (?, ?, ?, ?)",
-            (token_hash, data.name, data.site_name, ctx.user_id)
-        )
-
-    return {"id": token_hash[:16], "token": token, "name": data.name, "site_name": data.site_name}
+    return {"id": result.id_prefix, "token": result.raw_token, "name": result.name, "site_name": result.site_name}
 
 
 @router.delete("/{token_id}")
-async def delete_token(token_id: str, ctx: Annotated[AuthContext, Depends(require_auth)]):
-    with db() as conn:
-        row = conn.execute(
-            "SELECT id FROM deployment_tokens WHERE id LIKE ? AND user_id = ?",
-            (token_id + "%", ctx.user_id)
-        ).fetchone()
-
-        if not row:
-            raise HTTPException(status_code=404, detail="Token not found")
-
-        conn.execute("DELETE FROM deployment_tokens WHERE id = ?", (row["id"],))
+async def delete_token(
+    token_id: str,
+    identity: Annotated[Identity, Depends(require_user)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+):
+    try:
+        auth.delete_deploy_token(identity.user.id, token_id)
+    except TokenNotFound:
+        raise HTTPException(status_code=404, detail="Token not found")
     return Response(status_code=204)

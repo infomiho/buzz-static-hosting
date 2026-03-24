@@ -1,7 +1,7 @@
 import pytest
 
-from server.exceptions import BadRequest, Forbidden
-from server.routes.sites import validate_subdomain, enforce_deploy_token_scope, build_site_url
+from server.exceptions import BadRequest
+from server.routes.sites import validate_subdomain, build_site_url
 
 
 class TestValidateSubdomain:
@@ -22,30 +22,6 @@ class TestValidateSubdomain:
 
         with pytest.raises(BadRequest):
             validate_subdomain("")
-
-
-class TestEnforceDeployTokenScope:
-    def test_session_token_always_passes(self):
-        class Ctx:
-            token_type = "session"
-            site_name = None
-
-        enforce_deploy_token_scope(Ctx(), "any-site")
-
-    def test_matching_deploy_token_passes(self):
-        class Ctx:
-            token_type = "deploy"
-            site_name = "my-site"
-
-        enforce_deploy_token_scope(Ctx(), "my-site")
-
-    def test_mismatched_deploy_token_raises(self):
-        class Ctx:
-            token_type = "deploy"
-            site_name = "my-site"
-
-        with pytest.raises(Forbidden, match="scoped to site"):
-            enforce_deploy_token_scope(Ctx(), "other-site")
 
 
 class TestBuildSiteUrl:

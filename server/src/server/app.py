@@ -3,14 +3,20 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from .config import DOMAIN, SITES_DIR, CONTENT_TYPES
+from .auth_service import AuthService
+from .config import DOMAIN, GITHUB_CLIENT_ID, SITES_DIR, CONTENT_TYPES
+from .db import db
 from .exceptions import BadRequest, Forbidden, NotFound
+from .github import HttpGitHubClient
 from .routes import auth, sites, tokens
 from .utils import extract_subdomain
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Buzz", description="Self-hosted static site hosting", version="0.1.0")
+    github_client = HttpGitHubClient()
+    app.state.github_client = github_client
+    app.state.auth_service = AuthService(db=db, github=github_client, github_client_id=GITHUB_CLIENT_ID)
 
     @app.exception_handler(BadRequest)
     async def bad_request_handler(request: Request, exc: BadRequest):

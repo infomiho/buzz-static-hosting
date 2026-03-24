@@ -18,10 +18,6 @@ GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
 DEV_MODE = False
 JSON_LOGS = False
 
-# Token prefixes
-SESSION_TOKEN_PREFIX = "buzz_sess_"
-DEPLOY_TOKEN_PREFIX = "buzz_deploy_"
-
 # Random subdomain generation
 ADJECTIVES = ["cool", "fast", "blue", "red", "green", "happy", "swift", "bright", "calm", "bold"]
 NOUNS = ["site", "page", "app", "web", "hub", "box", "lab", "dev", "net", "cloud"]
@@ -42,6 +38,3 @@ CONTENT_TYPES = {
     ".xml": "application/xml",
 }
 
-# In-memory storage for pending device flow codes
-# device_code -> {user_code, expires_at, access_token, user}
-pending_device_codes: dict = {}
