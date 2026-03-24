@@ -35,6 +35,12 @@ uv sync
 uv run python -m server --dev
 ```
 
+Test:
+```bash
+cd server
+uv run pytest tests/ -v
+```
+
 Environment variables: `BUZZ_PORT`, `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BUZZ_DATA_DIR`
 
 ## CLI
@@ -48,6 +54,12 @@ npm install
 npm run build
 ```
 
+Test:
+```bash
+cd cli
+npm test
+```
+
 Link globally for development:
 ```bash
 npm link
@@ -59,7 +71,7 @@ Config stored at `~/.buzz.config.json`. Per-project subdomain stored in `CNAME` 
 
 ## Deployment
 
-Docker Compose with Caddy (wildcard SSL via Cloudflare DNS challenge).
+Docker Compose with Traefik v3 (wildcard SSL via Cloudflare DNS challenge).
 
 Required env vars in `.env`: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `CF_API_TOKEN`, `ACME_EMAIL`
 

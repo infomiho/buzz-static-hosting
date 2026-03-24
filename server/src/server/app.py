@@ -1,15 +1,28 @@
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .config import DOMAIN, SITES_DIR, CONTENT_TYPES
+from .exceptions import BadRequest, Forbidden, NotFound
 from .routes import auth, sites, tokens
 from .utils import extract_subdomain
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Buzz", description="Self-hosted static site hosting", version="0.1.0")
+
+    @app.exception_handler(BadRequest)
+    async def bad_request_handler(request: Request, exc: BadRequest):
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(Forbidden)
+    async def forbidden_handler(request: Request, exc: Forbidden):
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(NotFound)
+    async def not_found_handler(request: Request, exc: NotFound):
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
     app.include_router(sites.router, tags=["sites"])
