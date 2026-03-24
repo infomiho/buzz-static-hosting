@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Buzz{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.6/dist/js/all.min.js" defer></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-background text-foreground">
+    <header class="border-b border-border">
+        <div class="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+            <a href="/" class="text-lg font-bold tracking-tight hover:opacity-80">Buzz</a>
+            {% if user %}
+            <div class="flex items-center gap-4">
+                <span class="text-sm text-muted-foreground">{{ user.github_login }}</span>
+                <form action="/dashboard/logout" method="post">
+                    <button type="submit" class="btn-sm-outline">Logout</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </header>
+    <main class="mx-auto max-w-5xl px-6 py-8">
+        {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

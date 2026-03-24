@@ -1,15 +1,20 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
-from .auth_service import AuthService
+from .auth_service import AuthService, Identity
 from .config import DOMAIN, GITHUB_CLIENT_ID, SITES_DIR, CONTENT_TYPES
 from .db import db
+from .dependencies import get_identity
 from .exceptions import BadRequest, Forbidden, NotFound
 from .github import HttpGitHubClient
-from .routes import auth, sites, tokens
+from .routes import auth, dashboard, sites, tokens
 from .utils import extract_subdomain
+
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 def create_app() -> FastAPI:
@@ -30,7 +35,10 @@ def create_app() -> FastAPI:
     async def not_found_handler(request: Request, exc: NotFound):
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
+    app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
+    app.include_router(dashboard.router, tags=["dashboard"])
     app.include_router(sites.router, tags=["sites"])
     app.include_router(tokens.router, prefix="/tokens", tags=["tokens"])
 
@@ -39,15 +47,22 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/", response_class=HTMLResponse)
-    async def landing(request: Request):
+    async def landing(request: Request, identity: Identity | None = Depends(get_identity)):
         subdomain = extract_subdomain(request.headers.get("host", ""))
         if subdomain:
             return await serve_static(subdomain, "/")
 
         domain = DOMAIN or "localhost:8080"
-        template_path = Path(__file__).parent / "landing.html"
-        html = template_path.read_text().replace("{{DOMAIN}}", domain)
-        return HTMLResponse(content=html)
+
+        if identity:
+            return templates.TemplateResponse(request, "dashboard.html", {
+                "user": identity.user,
+                "domain": domain,
+            })
+
+        return templates.TemplateResponse(request, "login.html", {
+            "domain": domain,
+        })
 
     @app.get("/{path:path}")
     async def catch_all(request: Request, path: str):

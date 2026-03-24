@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Buzz - Dashboard{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-8">
+    <div>
+        <h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
+        <p class="text-muted-foreground">Welcome back, {{ user.github_name or user.github_login }}.</p>
+    </div>
+
+    <!-- Sites -->
+    <div class="card">
+        <header>
+            <h2>Sites</h2>
+            <p>Your deployed static sites</p>
+        </header>
+        <section class="p-0" id="sites-container">
+            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground">Loading sites...</div>
+        </section>
+    </div>
+
+    <!-- Tokens -->
+    <div class="card">
+        <header>
+            <h2>Deploy Tokens</h2>
+            <p>Tokens for CI/CD deployments</p>
+        </header>
+        <section class="p-0" id="tokens-container">
+            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground">Loading tokens...</div>
+        </section>
+    </div>
+</div>
+
+<!-- Delete site dialog -->
+<dialog id="delete-site-dialog" class="dialog">
+    <div>
+        <header>
+            <h2>Delete site</h2>
+            <p>Are you sure you want to delete <strong id="delete-site-name"></strong>? This will remove all deployed files and cannot be undone.</p>
+        </header>
+        <footer>
+            <button class="btn-outline" onclick="document.getElementById('delete-site-dialog').close()">Cancel</button>
+            <button class="btn bg-destructive text-white hover:bg-destructive/90" id="confirm-delete-site">Delete</button>
+        </footer>
+    </div>
+</dialog>
+
+<!-- Delete token dialog -->
+<dialog id="delete-token-dialog" class="dialog">
+    <div>
+        <header>
+            <h2>Revoke token</h2>
+            <p>Are you sure you want to revoke this deploy token? Any CI/CD pipelines using it will stop working.</p>
+        </header>
+        <footer>
+            <button class="btn-outline" onclick="document.getElementById('delete-token-dialog').close()">Cancel</button>
+            <button class="btn bg-destructive text-white hover:bg-destructive/90" id="confirm-delete-token">Revoke</button>
+        </footer>
+    </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DOMAIN = '{{ domain }}';
+
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function formatSize(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+function formatDate(iso) {
+    return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function siteUrl(name) {
+    if (DOMAIN && DOMAIN !== 'localhost:8080') return 'https://' + name + '.' + DOMAIN;
+    return 'http://' + name + '.localhost:8080';
+}
+
+function emptyState(icon, title, description) {
+    return `<div class="flex flex-col items-center justify-center gap-3 p-10 text-center">
+        ${icon}
+        <h3 class="text-sm font-medium">${title}</h3>
+        <p class="text-sm text-muted-foreground">${description}</p>
+    </div>`;
+}
+
+const globeIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>';
+const keyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>';
+
+/* ── Sites ── */
+
+function confirmDeleteSite(name) {
+    document.getElementById('delete-site-name').textContent = name;
+    const dialog = document.getElementById('delete-site-dialog');
+    const btn = document.getElementById('confirm-delete-site');
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.addEventListener('click', async () => {
+        newBtn.disabled = true;
+        newBtn.textContent = 'Deleting...';
+        const res = await fetch('/sites/' + encodeURIComponent(name), { method: 'DELETE' });
+        dialog.close();
+        if (res.ok) loadSites();
+    });
+    dialog.showModal();
+}
+
+async function loadSites() {
+    const container = document.getElementById('sites-container');
+    try {
+        const res = await fetch('/sites');
+        if (!res.ok) throw new Error();
+        const sites = await res.json();
+
+        if (sites.length === 0) {
+            container.innerHTML = emptyState(globeIcon, 'No sites yet', 'Deploy your first site with the CLI.');
+            return;
+        }
+
+        let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
+        html += '<th>Name</th><th>Created</th><th>Size</th><th class="text-right">Actions</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const site of sites) {
+            const url = siteUrl(site.name);
+            const name = esc(site.name);
+            html += '<tr>';
+            html += '<td class="font-medium"><a href="' + esc(url) + '" target="_blank" class="underline underline-offset-4 hover:text-muted-foreground">' + name + '</a></td>';
+            html += '<td class="text-muted-foreground">' + formatDate(site.created) + '</td>';
+            html += '<td class="text-muted-foreground">' + formatSize(site.size_bytes) + '</td>';
+            html += '<td class="text-right"><button class="btn-sm bg-destructive text-white hover:bg-destructive/90" data-site="' + name + '">Delete</button></td>';
+            html += '</tr>';
+        }
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        container.querySelectorAll('[data-site]').forEach(btn => {
+            btn.addEventListener('click', () => confirmDeleteSite(btn.dataset.site));
+        });
+    } catch {
+        container.innerHTML = emptyState(globeIcon, 'Failed to load sites', 'Something went wrong. Please refresh the page.');
+    }
+}
+
+/* ── Tokens ── */
+
+function confirmDeleteToken(tokenId) {
+    const dialog = document.getElementById('delete-token-dialog');
+    const btn = document.getElementById('confirm-delete-token');
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.addEventListener('click', async () => {
+        newBtn.disabled = true;
+        newBtn.textContent = 'Revoking...';
+        const res = await fetch('/tokens/' + encodeURIComponent(tokenId), { method: 'DELETE' });
+        dialog.close();
+        if (res.ok) loadTokens();
+    });
+    dialog.showModal();
+}
+
+async function loadTokens() {
+    const container = document.getElementById('tokens-container');
+    try {
+        const res = await fetch('/tokens');
+        if (!res.ok) throw new Error();
+        const tokens = await res.json();
+
+        if (tokens.length === 0) {
+            container.innerHTML = emptyState(keyIcon, 'No deploy tokens', 'Create tokens via the CLI for CI/CD deployments.');
+            return;
+        }
+
+        let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
+        html += '<th>Name</th><th>Site</th><th>Created</th><th>Last Used</th><th class="text-right">Actions</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const token of tokens) {
+            html += '<tr>';
+            html += '<td class="font-medium">' + esc(token.name) + '</td>';
+            html += '<td><span class="badge-secondary">' + esc(token.site_name) + '</span></td>';
+            html += '<td class="text-muted-foreground">' + formatDate(token.created_at) + '</td>';
+            html += '<td class="text-muted-foreground">' + (token.last_used_at ? formatDate(token.last_used_at) : 'Never') + '</td>';
+            html += '<td class="text-right"><button class="btn-sm-outline" data-token="' + esc(token.id) + '">Revoke</button></td>';
+            html += '</tr>';
+        }
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        container.querySelectorAll('[data-token]').forEach(btn => {
+            btn.addEventListener('click', () => confirmDeleteToken(btn.dataset.token));
+        });
+    } catch {
+        container.innerHTML = emptyState(keyIcon, 'Failed to load tokens', 'Something went wrong. Please refresh the page.');
+    }
+}
+
+loadSites();
+loadTokens();
+</script>
+{% endblock %}

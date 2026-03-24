@@ -10,11 +10,15 @@ buzz/
 │   ├── src/server/
 │   │   ├── main.py          # Entry point
 │   │   ├── app.py           # FastAPI app
-│   │   ├── routes/          # API routes
+│   │   ├── routes/          # API + dashboard routes
+│   │   ├── templates/       # Jinja2 templates (Basecoat UI)
+│   │   ├── static/          # Built CSS + JS assets
 │   │   ├── config.py
 │   │   ├── db.py
+│   │   ├── cookies.py       # Session cookie helpers
 │   │   └── dependencies.py  # Auth dependencies
 │   ├── pyproject.toml
+│   ├── package.json         # Tailwind CSS + Basecoat build
 │   ├── Dockerfile
 │   └── docker-compose.yml
 └── cli/                     # TypeScript CLI
@@ -32,7 +36,13 @@ Run locally:
 ```bash
 cd server
 uv sync
+npm install && npm run css:build
 uv run python -m server --dev
+```
+
+For CSS development with hot rebuild:
+```bash
+npm run css:watch
 ```
 
 Test:

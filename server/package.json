@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "scripts": {
+    "css:build": "tailwindcss -i src/server/static/input.css -o src/server/static/style.css --minify",
+    "css:watch": "tailwindcss -i src/server/static/input.css -o src/server/static/style.css --watch"
+  },
+  "dependencies": {
+    "@tailwindcss/cli": "^4.2.2",
+    "basecoat-css": "^0.3.11",
+    "tailwindcss": "^4.2.2"
+  }
+}

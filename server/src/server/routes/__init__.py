@@ -1,4 +1,4 @@
 """API routes."""
-from . import auth, sites, tokens
+from . import auth, dashboard, sites, tokens
 
-__all__ = ["auth", "sites", "tokens"]
+__all__ = ["auth", "dashboard", "sites", "tokens"]
