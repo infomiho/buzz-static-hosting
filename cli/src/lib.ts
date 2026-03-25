@@ -143,6 +143,9 @@ export interface ProgressCallbacks {
   onProgress?: (processed: number, total: number) => void;
 }
 
+const IGNORED_DIRS = [".git", "node_modules", ".vscode", ".idea"];
+const IGNORED_FILES = ["**/.DS_Store", "**/.env", "**/.env.*"];
+
 export async function createZipBuffer(
   directory: string,
   callbacks?: ProgressCallbacks
@@ -159,7 +162,12 @@ export async function createZipBuffer(
       callbacks?.onProgress?.(progress.entries.processed, progress.entries.total);
     });
 
-    archive.directory(directory, false);
+    archive.glob("**/*", {
+      cwd: directory,
+      dot: true,
+      skip: IGNORED_DIRS,
+      ignore: IGNORED_FILES,
+    });
     archive.finalize();
   });
 }

@@ -1,89 +1,80 @@
-# Site Detail Page & Dashboard Table Refinements
+# CLI Deploy Ignore Rules
 
 ## Problem Statement
 
-The Buzz dashboard shows a flat table of deployed sites with name, date, and size. Users have no way to inspect what files are inside a deployed site without SSH-ing into the server. The site name in the table is a direct link to the live site, but there's no way to navigate to a management view for a specific site. Users need visibility into their deployments and a dedicated place to manage individual sites.
+The Buzz CLI deploys everything in the target directory with zero filtering. This means `.git` directories, `.DS_Store` files, `.env` secrets, `node_modules`, and IDE config all get zipped, uploaded, and served publicly. Users deploying from a project root (or a build output that wasn't cleaned) end up with unnecessary, potentially sensitive files in their deployed sites.
 
 ## Solution
 
-Add a site detail page at `/dashboard/sites/{name}` that shows site metadata and an indented file tree. Refine the dashboard table so the site name navigates to this detail page, with a separate external-link icon to visit the live site. The detail page also hosts the delete action, giving each site a proper management view.
+Add a hardcoded ignore list to the CLI's zip creation step. Before archiving files for upload, the CLI filters out files and directories that should never be part of a static site deployment. No custom ignore file, no `.gitignore` honoring - just sensible, opinionated defaults.
 
 ## User Stories
 
-1. As a site owner, I want to see which files are deployed in my site, so that I can verify a deployment contains the right assets.
-2. As a site owner, I want to see the size of each individual file, so that I can identify unexpectedly large assets.
-3. As a site owner, I want to see files organized by directory with indentation, so that I can understand the structure of my deployment.
-4. As a site owner, I want to click a site name in the dashboard table to go to a detail page, so that I can manage that specific site.
-5. As a site owner, I want an external-link icon next to the site name, so that I can quickly visit the live site without leaving the dashboard context.
-6. As a site owner, I want to see site metadata (name, URL, created date, total size) on the detail page, so that I have full context about the deployment.
-7. As a site owner, I want to delete a site from its detail page, so that site management actions are consolidated in one place.
-8. As a site owner, I want to navigate back to the dashboard from the detail page, so that I can manage other sites.
-9. As a site owner, I want the file tree to show directories as distinct entries, so that I can distinguish folders from files at a glance.
-10. As a site owner, I want the detail page to load quickly, so that inspecting files doesn't feel sluggish even for large deployments.
+1. As a developer, I want `.git` to be excluded from my deploy, so that my repository history isn't publicly accessible.
+2. As a developer, I want `.DS_Store` files excluded, so that macOS metadata doesn't pollute my deployed site.
+3. As a developer, I want `.env` and `.env.*` files excluded, so that secrets and environment variables are never accidentally deployed.
+4. As a developer, I want `.vscode` and `.idea` directories excluded, so that editor config doesn't end up in my site.
+5. As a developer, I want `node_modules` excluded, so that accidental project-root deploys don't upload hundreds of MBs.
+6. As a developer, I want my deploy zip to be smaller after filtering, so that uploads are faster.
+7. As a developer, I want to see how many files were filtered during deploy, so that I have confidence the ignore rules are working.
+8. As a developer, I want normal files (HTML, CSS, JS, images) to always be included, so that filtering never breaks a legitimate deployment.
+9. As a developer, I want `.well-known` to be included despite being a dotfile, so that ACME challenges and app associations still work.
 
 ## Implementation Decisions
 
-### Modules to build/modify
+### Default ignore list
 
-**SiteStore.list_files() (new method)**
-- Add a `list_files(name, owner_id)` method to `SiteStore` that walks the site directory on disk.
-- Returns a sorted list of file entries, each with: relative path, size in bytes, and whether it's a directory.
-- Validates ownership (same pattern as `delete()`). Raises `NotFound` or `Forbidden` as appropriate.
-- Directories are included as entries (size 0) so the template can render the indented tree.
-- Files are sorted: directories first, then files, alphabetically within each group. Nested items appear under their parent.
+The CLI will hardcode these ignore patterns, applied before zipping:
 
-**Dashboard route (new endpoint)**
-- `GET /dashboard/sites/{name}` - server-rendered via Jinja2.
-- Uses `SiteStore` to fetch the site record and file list.
-- Passes site metadata + file entries to the template.
-- Requires session auth (same `require_user` dependency as other dashboard routes).
+- `.git` - Git repository data
+- `.DS_Store` - macOS Finder metadata
+- `.env`, `.env.*` - Environment/secret files
+- `.vscode` - VS Code config
+- `.idea` - JetBrains IDE config
+- `node_modules` - npm/yarn dependencies
 
-**Site detail template (new: `site_detail.html`)**
-- Extends `base.html`.
-- Metadata header section: site name, external link to live URL, created date, total size.
-- File tree rendered as an indented list (always expanded, no collapse/expand). Indentation based on directory depth. Directories shown with folder styling, files with their size.
-- Files are read-only (no click action).
-- Delete site button with the existing confirmation dialog pattern.
-- Back link to dashboard.
+### Key architectural decisions
 
-**Dashboard table (modify JS in `dashboard.html`)**
-- Site name becomes a link to `/dashboard/sites/{name}` (the detail page), styled as plain bold text.
-- Add a small external-link icon next to the name that opens the live site URL in a new tab.
-- Remove the site URL from the name link itself.
+- **CLI-side filtering only.** Files are excluded before zipping, not on the server. This reduces upload size and keeps the server simple. This is consistent with how Railway, Surge, and Vercel all work.
+- **No `.gitignore` honoring.** Buzz deploys build output directories (e.g., `./dist`). Gitignore rules target source trees and would incorrectly filter out built assets that are gitignored. Surge, Vercel CLI, and Netlify all skip `.gitignore` for the same reason.
+- **No custom ignore file (`.buzzignore`).** Keep it simple. Users can clean their build output before deploying. If demand emerges, this can be added later without breaking changes.
+- **`.well-known` is explicitly preserved.** It's the only dotdir that legitimately needs to be served (SSL verification, app associations, etc.).
+- **Server stays unchanged.** The server's `SiteStore.deploy()` extracts whatever zip it receives. No server-side filtering needed.
 
-### Architectural decisions
+### Module to modify: `createZipBuffer` in the CLI
 
-- The file list is read from disk at request time (not cached, not stored in DB). Sites are small static bundles so directory walking is fast.
-- Server-rendered template (not client-side fetch) for the detail page. This avoids needing a new JSON API endpoint and is consistent with how the main dashboard shell works.
-- The detail page URL is `/dashboard/sites/{name}`, namespaced under `/dashboard` to distinguish from API routes.
-- The delete action is duplicated on both the dashboard table (hover trash icon) and the detail page. Both use the same `DELETE /sites/{name}` API endpoint.
+The `createZipBuffer` function currently uses `archive.directory(dir, false)` which includes everything. It needs to be modified to use archiver's glob-based file selection with ignore patterns, or to walk the directory manually with filtering before adding files to the archive.
+
+The ignore list should be defined as a constant array that's easy to find and modify.
 
 ## Testing Decisions
 
-A good test for `SiteStore.list_files()` tests the external behavior: given a site directory with specific files and folders, does it return the correct entries with the right paths, sizes, and directory flags? Tests should not depend on internal implementation details like sort algorithm or walk strategy.
+Good tests for `createZipBuffer` verify external behavior: given a directory with specific files (including ones that should be ignored), the resulting zip buffer contains only the expected files. Tests should not depend on how the filtering is implemented internally (glob patterns vs. manual walk vs. archiver options).
 
-**Module to test: `SiteStore.list_files()`**
+**Module to test: `createZipBuffer`**
 
-Tests (following the existing `test_site_store.py` pattern with `tmp_path` fixtures and in-memory SQLite):
-- Returns files with correct relative paths and sizes after a deployment
-- Returns directories as entries with `is_dir=True`
-- Handles nested directory structures with correct indentation-ready ordering
-- Raises `NotFound` for nonexistent site
-- Raises `Forbidden` when owner_id doesn't match
-- Returns empty list for a site with no files (edge case: directory exists but is empty)
+Tests:
+- Normal files (HTML, CSS, JS) are included in the zip
+- `.git` directory and its contents are excluded
+- `.DS_Store` files are excluded
+- `.env` and `.env.local` files are excluded
+- `.vscode` and `.idea` directories are excluded
+- `node_modules` directory is excluded
+- `.well-known` directory and its contents are included
+- Nested ignored patterns work (e.g., `subdir/.DS_Store`)
+- Empty directories after filtering are handled gracefully
 
-**Prior art:** `server/tests/test_site_store.py` uses the exact same pattern (in-memory DB via `make_db()`, `tmp_path` for disk, `make_zip()` helper for deployments).
+**Prior art:** `cli/src/deploy.test.ts` tests the deploy upload flow with mock zip buffers. The new tests should create real directories with `fs.mkdtemp`, run `createZipBuffer`, and inspect the resulting zip contents.
 
 ## Out of Scope
 
-- File content preview (viewing file contents inline or rendering images)
-- Clickable files (opening individual files in browser)
-- Deployment history / rollback
-- File upload or editing from the dashboard
-- Collapsible/expandable directory tree (tree is always fully expanded)
+- Custom ignore file (`.buzzignore` or similar)
+- `.gitignore` honoring
+- Server-side filtering
+- User-configurable ignore patterns via CLI flags
+- Retroactive cleaning of already-deployed sites
 
 ## Further Notes
 
-- The dashboard table already has hover-to-reveal trash icons from the recent UI redesign. The external-link icon should use a similar subtle style.
-- The detail page should use the same warm amber theme, DM Sans typography, and Basecoat card components established in the recent redesign.
-- For very large sites (thousands of files), consider a future enhancement to paginate or lazy-load the file tree, but this is not needed for the initial implementation.
+- The ignore patterns are intentionally kept as a short, specific list rather than broad wildcards like `.*` (all dotfiles). This avoids accidentally excluding legitimate dotfiles like `.well-known`, `.nojekyll`, or `.htaccess`.
+- If a user needs to deploy a dotfile that's in the ignore list, they currently can't override it. This is an acceptable trade-off for simplicity. A future `.buzzignore` with negation support (`!.env.example`) could solve this.
