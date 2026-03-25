@@ -17,6 +17,14 @@ class SiteRecord:
     created_at: str
 
 
+@dataclass
+class FileEntry:
+    path: str
+    size_bytes: int
+    is_dir: bool
+    depth: int
+
+
 class SiteStore:
     def __init__(self, conn: Connection, sites_dir: Path):
         self._conn = conn
@@ -71,6 +79,45 @@ class SiteStore:
             SiteRecord(name=r["name"], owner_id=r["owner_id"], size_bytes=r["size_bytes"], created_at=r["created_at"])
             for r in rows
         ]
+
+    def get_by_name(self, name: str, owner_id: int) -> SiteRecord:
+        row = self._conn.execute(
+            "SELECT name, created_at, size_bytes, owner_id FROM sites WHERE name = ?", (name,)
+        ).fetchone()
+        if not row:
+            raise NotFound(f"Site '{name}' not found")
+        if row["owner_id"] is not None and row["owner_id"] != owner_id:
+            raise Forbidden(f"You don't own site '{name}'")
+        return SiteRecord(
+            name=row["name"], owner_id=row["owner_id"],
+            size_bytes=row["size_bytes"], created_at=row["created_at"],
+        )
+
+    def list_files(self, name: str, owner_id: int) -> list[FileEntry]:
+        self.get_by_name(name, owner_id)
+        site_dir = self._sites_dir / name
+        if not site_dir.exists():
+            return []
+
+        entries: list[FileEntry] = []
+        for item in site_dir.rglob("*"):
+            rel = item.relative_to(site_dir)
+            entries.append(FileEntry(
+                path=str(rel),
+                size_bytes=item.stat().st_size if item.is_file() else 0,
+                is_dir=item.is_dir(),
+                depth=len(rel.parts) - 1,
+            ))
+
+        def sort_key(e: FileEntry) -> tuple:
+            parts = Path(e.path).parts
+            return tuple(
+                (0 if (site_dir / Path(*parts[:i+1])).is_dir() else 1, p.lower())
+                for i, p in enumerate(parts)
+            )
+
+        entries.sort(key=sort_key)
+        return entries
 
     def delete(self, name: str, owner_id: int) -> None:
         site = self._conn.execute("SELECT owner_id FROM sites WHERE name = ?", (name,)).fetchone()

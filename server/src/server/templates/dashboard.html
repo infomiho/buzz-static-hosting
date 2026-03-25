@@ -11,17 +11,23 @@
 
     <!-- Stats row -->
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3" id="stats-row">
-        <div class="rounded-lg border border-border/60 px-5 py-4">
+        <div class="rounded-lg border border-border/60 px-5 py-4 transition-colors hover:border-primary/30">
             <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sites</p>
-            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-sites">&mdash;</p>
+            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-sites">
+                <span class="inline-block h-7 w-8 animate-pulse rounded bg-muted"></span>
+            </p>
         </div>
-        <div class="rounded-lg border border-border/60 px-5 py-4">
+        <div class="rounded-lg border border-border/60 px-5 py-4 transition-colors hover:border-primary/30">
             <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total size</p>
-            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-size">&mdash;</p>
+            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-size">
+                <span class="inline-block h-7 w-14 animate-pulse rounded bg-muted"></span>
+            </p>
         </div>
-        <div class="rounded-lg border border-border/60 px-5 py-4 hidden sm:block">
+        <div class="rounded-lg border border-border/60 px-5 py-4 transition-colors hover:border-primary/30 hidden sm:block">
             <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tokens</p>
-            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-tokens">&mdash;</p>
+            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-tokens">
+                <span class="inline-block h-7 w-8 animate-pulse rounded bg-muted"></span>
+            </p>
         </div>
     </div>
 
@@ -53,20 +59,6 @@
         </section>
     </div>
 </div>
-
-<!-- Delete site dialog -->
-<dialog id="delete-site-dialog" class="dialog">
-    <div>
-        <header>
-            <h2>Delete site</h2>
-            <p>Are you sure you want to delete <strong id="delete-site-name"></strong>? This will remove all deployed files and cannot be undone.</p>
-        </header>
-        <footer>
-            <button class="btn-outline" onclick="document.getElementById('delete-site-dialog').close()">Cancel</button>
-            <button class="btn-destructive" id="confirm-delete-site">Delete</button>
-        </footer>
-    </div>
-</dialog>
 
 <!-- Delete token dialog -->
 <dialog id="delete-token-dialog" class="dialog">
@@ -119,6 +111,7 @@ function siteUrl(name) {
 }
 
 const trashIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+const extIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
 
 function emptyState(icon, title, description) {
     return `<div class="flex flex-col items-center justify-center gap-3 py-14 px-6 text-center">
@@ -132,22 +125,6 @@ const globeIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20
 const keyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>';
 
 /* -- Sites -- */
-
-function confirmDeleteSite(name) {
-    document.getElementById('delete-site-name').textContent = name;
-    const dialog = document.getElementById('delete-site-dialog');
-    const btn = document.getElementById('confirm-delete-site');
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
-    newBtn.addEventListener('click', async () => {
-        newBtn.disabled = true;
-        newBtn.textContent = 'Deleting...';
-        const res = await fetch('/sites/' + encodeURIComponent(name), { method: 'DELETE' });
-        dialog.close();
-        if (res.ok) loadSites();
-    });
-    dialog.showModal();
-}
 
 async function loadSites() {
     const container = document.getElementById('sites-container');
@@ -165,26 +142,28 @@ async function loadSites() {
             return;
         }
 
+        const settingsIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
+
         let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-        html += '<th>Name</th><th>Created</th><th>Size</th><th class="w-12"></th>';
+        html += '<th>Name</th><th>Created</th><th>Size</th><th class="text-right">Actions</th>';
         html += '</tr></thead><tbody>';
 
         for (const site of sites) {
             const url = siteUrl(site.name);
             const name = esc(site.name);
             html += '<tr class="group transition-colors hover:bg-muted/40">';
-            html += '<td class="font-medium"><a href="' + esc(url) + '" target="_blank" class="text-primary underline-offset-4 hover:underline">' + name + '</a></td>';
+            html += '<td class="font-medium">' + name + '</td>';
             html += '<td class="text-muted-foreground">' + timeAgo(site.created) + '</td>';
             html += '<td class="text-muted-foreground tabular-nums">' + formatSize(site.size_bytes) + '</td>';
-            html += '<td class="text-right"><button class="btn-sm-ghost text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all" data-site="' + name + '" title="Delete site">' + trashIcon + '</button></td>';
+            html += '<td class="text-right"><div class="flex items-center justify-end gap-2">';
+            html += '<a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="btn-sm-outline">' + settingsIcon + '<span class="ml-1.5">Manage</span></a>';
+            html += '<a href="' + esc(url) + '" target="_blank" class="btn-sm-outline">' + extIcon + '<span class="ml-1.5">View live</span></a>';
+            html += '</div></td>';
             html += '</tr>';
         }
 
         html += '</tbody></table></div>';
         container.innerHTML = html;
-        container.querySelectorAll('[data-site]').forEach(btn => {
-            btn.addEventListener('click', () => confirmDeleteSite(btn.dataset.site));
-        });
     } catch {
         container.innerHTML = emptyState(globeIcon, 'Failed to load sites', 'Something went wrong. Please refresh the page.');
     }

@@ -1,8 +1,10 @@
 import logging
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from ..auth_service import (
@@ -12,9 +14,15 @@ from ..auth_service import (
     DeviceFlowFailed,
     DeviceFlowPending,
     DeviceFlowSlowDown,
+    Identity,
 )
+from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
-from ..dependencies import get_auth_service
+from ..db import db
+from ..dependencies import get_auth_service, require_user
+from ..site_store import SiteStore
+
+templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +62,32 @@ async def login_poll(
     response = JSONResponse(content={"status": "complete"})
     set_session_cookie(response, result.token)
     return response
+
+
+@router.get("/sites/{name}", response_class=HTMLResponse)
+async def site_detail(
+    request: Request,
+    name: str,
+    identity: Annotated[Identity, Depends(require_user)],
+):
+    domain = DOMAIN or "localhost:8080"
+    with db() as conn:
+        store = SiteStore(conn, SITES_DIR)
+        site = store.get_by_name(name, identity.user.id)
+        files = store.list_files(name, identity.user.id)
+
+    if domain and domain != "localhost:8080":
+        site_url = f"https://{name}.{domain}"
+    else:
+        site_url = f"http://{name}.localhost:8080"
+
+    return templates.TemplateResponse(request, "site_detail.html", {
+        "user": identity.user,
+        "site": site,
+        "site_url": site_url,
+        "files": files,
+        "domain": domain,
+    })
 
 
 @router.post("/logout")
