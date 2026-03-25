@@ -8,3 +8,12 @@
   --color-primary: oklch(0.75 0.15 75);
   --color-primary-foreground: oklch(0.25 0.05 75);
 }
+
+.card .table th:first-child,
+.card .table td:first-child {
+  padding-left: calc(var(--spacing) * 6);
+}
+.card .table th:last-child,
+.card .table td:last-child {
+  padding-right: calc(var(--spacing) * 6);
+}
