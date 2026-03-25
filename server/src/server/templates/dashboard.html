@@ -201,16 +201,16 @@ async function loadTokens() {
         }
 
         let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-        html += '<th>Name</th><th>Site</th><th>Created</th><th>Last Used</th><th class="w-12"></th>';
+        html += '<th>Name</th><th>Site</th><th>Created</th><th>Last Used</th><th class="text-right">Actions</th>';
         html += '</tr></thead><tbody>';
 
         for (const token of tokens) {
-            html += '<tr class="group transition-colors hover:bg-muted/40">';
+            html += '<tr class="transition-colors hover:bg-muted/40">';
             html += '<td class="font-medium">' + esc(token.name) + '</td>';
             html += '<td><span class="badge-outline text-xs">' + esc(token.site_name) + '</span></td>';
             html += '<td class="text-muted-foreground">' + timeAgo(token.created_at) + '</td>';
             html += '<td class="text-muted-foreground">' + (token.last_used_at ? timeAgo(token.last_used_at) : '<span class="text-muted-foreground/50">Never</span>') + '</td>';
-            html += '<td class="text-right"><button class="btn-sm-ghost text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all" data-token="' + esc(token.id) + '" title="Revoke token">' + trashIcon + '</button></td>';
+            html += '<td class="text-right"><button class="btn-sm-outline hover:text-destructive hover:border-destructive transition-colors" data-token="' + esc(token.id) + '">' + trashIcon + '<span class="ml-1.5">Revoke</span></button></td>';
             html += '</tr>';
         }
 
