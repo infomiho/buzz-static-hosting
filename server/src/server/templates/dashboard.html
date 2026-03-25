@@ -142,8 +142,6 @@ async function loadSites() {
             return;
         }
 
-        const settingsIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
-
         let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
         html += '<th>Name</th><th>Created</th><th>Size</th><th class="text-right">Actions</th>';
         html += '</tr></thead><tbody>';
@@ -152,11 +150,10 @@ async function loadSites() {
             const url = siteUrl(site.name);
             const name = esc(site.name);
             html += '<tr class="group transition-colors hover:bg-muted/40">';
-            html += '<td class="font-medium">' + name + '</td>';
+            html += '<td class="font-medium"><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="text-amber-400 hover:text-amber-300 hover:underline transition-colors">' + name + '</a></td>';
             html += '<td class="text-muted-foreground">' + timeAgo(site.created) + '</td>';
             html += '<td class="text-muted-foreground tabular-nums">' + formatSize(site.size_bytes) + '</td>';
             html += '<td class="text-right"><div class="flex items-center justify-end gap-2">';
-            html += '<a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="btn-sm-outline">' + settingsIcon + '<span class="ml-1.5">Manage</span></a>';
             html += '<a href="' + esc(url) + '" target="_blank" class="btn-sm-outline">' + extIcon + '<span class="ml-1.5">View live</span></a>';
             html += '</div></td>';
             html += '</tr>';
