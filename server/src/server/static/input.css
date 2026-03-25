@@ -1,3 +1,10 @@
 @import "tailwindcss";
 @import "basecoat-css";
 @source "../templates";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-primary: oklch(0.75 0.15 75);
+  --color-primary-foreground: oklch(0.25 0.05 75);
+}

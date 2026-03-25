@@ -3,31 +3,53 @@
 {% block title %}Buzz - Dashboard{% endblock %}
 
 {% block content %}
-<div class="flex flex-col gap-8">
+<div class="flex flex-col gap-10">
     <div>
-        <h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p class="text-muted-foreground">Welcome back, {{ user.github_name or user.github_login }}.</p>
+        <h1 class="text-3xl font-bold tracking-tight">Welcome back, {{ user.github_name or user.github_login }}</h1>
+        <p class="mt-1 text-muted-foreground">Manage your deployed sites and tokens.</p>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3" id="stats-row">
+        <div class="rounded-lg border border-border/60 px-5 py-4">
+            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sites</p>
+            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-sites">&mdash;</p>
+        </div>
+        <div class="rounded-lg border border-border/60 px-5 py-4">
+            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total size</p>
+            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-size">&mdash;</p>
+        </div>
+        <div class="rounded-lg border border-border/60 px-5 py-4 hidden sm:block">
+            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tokens</p>
+            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-tokens">&mdash;</p>
+        </div>
     </div>
 
     <!-- Sites -->
     <div class="card">
         <header>
-            <h2>Sites</h2>
+            <div class="flex items-center gap-2.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                <h2>Sites</h2>
+            </div>
             <p>Your deployed static sites</p>
         </header>
         <section class="p-0" id="sites-container">
-            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground">Loading sites...</div>
+            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground animate-pulse">Loading sites...</div>
         </section>
     </div>
 
     <!-- Tokens -->
     <div class="card">
         <header>
-            <h2>Deploy Tokens</h2>
+            <div class="flex items-center gap-2.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>
+                <h2>Deploy Tokens</h2>
+            </div>
             <p>Tokens for CI/CD deployments</p>
         </header>
         <section class="p-0" id="tokens-container">
-            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground">Loading tokens...</div>
+            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground animate-pulse">Loading tokens...</div>
         </section>
     </div>
 </div>
@@ -41,7 +63,7 @@
         </header>
         <footer>
             <button class="btn-outline" onclick="document.getElementById('delete-site-dialog').close()">Cancel</button>
-            <button class="btn bg-destructive text-white hover:bg-destructive/90" id="confirm-delete-site">Delete</button>
+            <button class="btn-destructive" id="confirm-delete-site">Delete</button>
         </footer>
     </div>
 </dialog>
@@ -55,7 +77,7 @@
         </header>
         <footer>
             <button class="btn-outline" onclick="document.getElementById('delete-token-dialog').close()">Cancel</button>
-            <button class="btn bg-destructive text-white hover:bg-destructive/90" id="confirm-delete-token">Revoke</button>
+            <button class="btn-destructive" id="confirm-delete-token">Revoke</button>
         </footer>
     </div>
 </dialog>
@@ -82,23 +104,34 @@ function formatDate(iso) {
     return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function timeAgo(iso) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days < 1) return 'Today';
+    if (days === 1) return 'Yesterday';
+    if (days < 30) return days + 'd ago';
+    return formatDate(iso);
+}
+
 function siteUrl(name) {
     if (DOMAIN && DOMAIN !== 'localhost:8080') return 'https://' + name + '.' + DOMAIN;
     return 'http://' + name + '.localhost:8080';
 }
 
+const trashIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+
 function emptyState(icon, title, description) {
-    return `<div class="flex flex-col items-center justify-center gap-3 p-10 text-center">
-        ${icon}
-        <h3 class="text-sm font-medium">${title}</h3>
-        <p class="text-sm text-muted-foreground">${description}</p>
+    return `<div class="flex flex-col items-center justify-center gap-3 py-14 px-6 text-center">
+        <div class="rounded-full bg-muted p-3">${icon}</div>
+        <h3 class="text-sm font-semibold">${title}</h3>
+        <p class="text-sm text-muted-foreground max-w-xs">${description}</p>
     </div>`;
 }
 
-const globeIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>';
-const keyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>';
+const globeIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>';
+const keyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>';
 
-/* ── Sites ── */
+/* -- Sites -- */
 
 function confirmDeleteSite(name) {
     document.getElementById('delete-site-name').textContent = name;
@@ -123,23 +156,27 @@ async function loadSites() {
         if (!res.ok) throw new Error();
         const sites = await res.json();
 
+        document.getElementById('stat-sites').textContent = sites.length;
+        const totalBytes = sites.reduce((sum, s) => sum + (s.size_bytes || 0), 0);
+        document.getElementById('stat-size').textContent = formatSize(totalBytes);
+
         if (sites.length === 0) {
-            container.innerHTML = emptyState(globeIcon, 'No sites yet', 'Deploy your first site with the CLI.');
+            container.innerHTML = emptyState(globeIcon, 'No sites yet', 'Deploy your first site using the CLI to see it here.');
             return;
         }
 
         let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-        html += '<th>Name</th><th>Created</th><th>Size</th><th class="text-right">Actions</th>';
+        html += '<th>Name</th><th>Created</th><th>Size</th><th class="w-12"></th>';
         html += '</tr></thead><tbody>';
 
         for (const site of sites) {
             const url = siteUrl(site.name);
             const name = esc(site.name);
-            html += '<tr>';
-            html += '<td class="font-medium"><a href="' + esc(url) + '" target="_blank" class="underline underline-offset-4 hover:text-muted-foreground">' + name + '</a></td>';
-            html += '<td class="text-muted-foreground">' + formatDate(site.created) + '</td>';
-            html += '<td class="text-muted-foreground">' + formatSize(site.size_bytes) + '</td>';
-            html += '<td class="text-right"><button class="btn-sm bg-destructive text-white hover:bg-destructive/90" data-site="' + name + '">Delete</button></td>';
+            html += '<tr class="group transition-colors hover:bg-muted/40">';
+            html += '<td class="font-medium"><a href="' + esc(url) + '" target="_blank" class="text-primary underline-offset-4 hover:underline">' + name + '</a></td>';
+            html += '<td class="text-muted-foreground">' + timeAgo(site.created) + '</td>';
+            html += '<td class="text-muted-foreground tabular-nums">' + formatSize(site.size_bytes) + '</td>';
+            html += '<td class="text-right"><button class="btn-sm-ghost text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all" data-site="' + name + '" title="Delete site">' + trashIcon + '</button></td>';
             html += '</tr>';
         }
 
@@ -153,7 +190,7 @@ async function loadSites() {
     }
 }
 
-/* ── Tokens ── */
+/* -- Tokens -- */
 
 function confirmDeleteToken(tokenId) {
     const dialog = document.getElementById('delete-token-dialog');
@@ -177,22 +214,24 @@ async function loadTokens() {
         if (!res.ok) throw new Error();
         const tokens = await res.json();
 
+        document.getElementById('stat-tokens').textContent = tokens.length;
+
         if (tokens.length === 0) {
             container.innerHTML = emptyState(keyIcon, 'No deploy tokens', 'Create tokens via the CLI for CI/CD deployments.');
             return;
         }
 
         let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-        html += '<th>Name</th><th>Site</th><th>Created</th><th>Last Used</th><th class="text-right">Actions</th>';
+        html += '<th>Name</th><th>Site</th><th>Created</th><th>Last Used</th><th class="w-12"></th>';
         html += '</tr></thead><tbody>';
 
         for (const token of tokens) {
-            html += '<tr>';
+            html += '<tr class="group transition-colors hover:bg-muted/40">';
             html += '<td class="font-medium">' + esc(token.name) + '</td>';
-            html += '<td><span class="badge-secondary">' + esc(token.site_name) + '</span></td>';
-            html += '<td class="text-muted-foreground">' + formatDate(token.created_at) + '</td>';
-            html += '<td class="text-muted-foreground">' + (token.last_used_at ? formatDate(token.last_used_at) : 'Never') + '</td>';
-            html += '<td class="text-right"><button class="btn-sm-outline" data-token="' + esc(token.id) + '">Revoke</button></td>';
+            html += '<td><span class="badge-outline text-xs">' + esc(token.site_name) + '</span></td>';
+            html += '<td class="text-muted-foreground">' + timeAgo(token.created_at) + '</td>';
+            html += '<td class="text-muted-foreground">' + (token.last_used_at ? timeAgo(token.last_used_at) : '<span class="text-muted-foreground/50">Never</span>') + '</td>';
+            html += '<td class="text-right"><button class="btn-sm-ghost text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all" data-token="' + esc(token.id) + '" title="Revoke token">' + trashIcon + '</button></td>';
             html += '</tr>';
         }
 
