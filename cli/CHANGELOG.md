@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.5.0...buzz-cli-v0.6.0) (2026-03-25)
+
+
+### Features
+
+* filter .git, .DS_Store, .env, IDE config, and node_modules from deploys ([2de9e5d](https://github.com/infomiho/buzz-static-hosting/commit/2de9e5d2cdc56bec6334dab12e669e881a1c1571))
+
 ## [0.5.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.4.0...buzz-cli-v0.5.0) (2026-03-24)
 
 
