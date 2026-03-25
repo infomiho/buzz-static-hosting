@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 from .auth_service import AuthService, Identity
 from .config import DOMAIN, GITHUB_CLIENT_ID, SITES_DIR, CONTENT_TYPES
+from .site_path import InvalidSubdomain, resolve_site_file
 from .db import db
 from .dependencies import get_identity
 from .exceptions import BadRequest, Forbidden, NotFound
@@ -75,40 +76,18 @@ def create_app() -> FastAPI:
 
 
 async def serve_static(subdomain: str, path: str) -> Response:
-    site_dir = SITES_DIR / subdomain
-    if not site_dir.exists():
+    try:
+        filepath = resolve_site_file(SITES_DIR, subdomain, path)
+    except InvalidSubdomain:
         return Response(content="Site not found", status_code=404, media_type="text/plain")
 
-    path = path.split("?")[0]
-    if path.endswith("/"):
-        path += "index.html"
+    if filepath:
+        content_type = CONTENT_TYPES.get(filepath.suffix.lower(), "application/octet-stream")
+        return FileResponse(filepath, media_type=content_type)
 
-    filepath = site_dir / path.lstrip("/")
-
-    if filepath.is_file():
-        return _file_response(filepath)
-
-    if not path.endswith(".html"):
-        for candidate in [
-            site_dir / (path.lstrip("/") + ".html"),
-            site_dir / path.lstrip("/") / "index.html",
-        ]:
-            if candidate.is_file():
-                return _file_response(candidate)
-
-    # SPA fallback - serve 200.html for client-side routing
-    spa_fallback = site_dir / "200.html"
-    if spa_fallback.is_file():
-        return _file_response(spa_fallback)
-
+    site_dir = (SITES_DIR / subdomain).resolve()
     custom_404 = site_dir / "404.html"
-    if custom_404.exists():
-        content = custom_404.read_bytes()
-        return Response(content=content, status_code=404, media_type="text/html")
+    if site_dir.is_dir() and custom_404.is_file():
+        return Response(content=custom_404.read_bytes(), status_code=404, media_type="text/html")
 
     return Response(content="404 Not Found", status_code=404, media_type="text/plain")
-
-
-def _file_response(filepath: Path) -> Response:
-    content_type = CONTENT_TYPES.get(filepath.suffix.lower(), "application/octet-stream")
-    return FileResponse(filepath, media_type=content_type)

@@ -6,6 +6,7 @@ from ..config import DOMAIN, SITES_DIR
 from ..db import db
 from ..dependencies import Identity, require_user, require_identity
 from ..exceptions import BadRequest, Forbidden
+from ..site_path import InvalidSubdomain, validated_subdomain
 from ..site_store import SiteStore
 from ..utils import generate_subdomain
 
@@ -13,10 +14,10 @@ router = APIRouter()
 
 
 def validate_subdomain(subdomain: str) -> str:
-    subdomain = subdomain.strip()
-    if not subdomain.replace("-", "").replace("_", "").isalnum():
+    try:
+        return validated_subdomain(subdomain)
+    except InvalidSubdomain:
         raise BadRequest("Invalid subdomain")
-    return subdomain
 
 
 def build_site_url(subdomain: str, domain: str | None, fallback_port: int) -> str:
