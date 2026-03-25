@@ -150,7 +150,7 @@ async function loadSites() {
             const url = siteUrl(site.name);
             const name = esc(site.name);
             html += '<tr class="group transition-colors hover:bg-muted/40">';
-            html += '<td class="font-medium"><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="text-amber-400 hover:text-amber-300 hover:underline transition-colors">' + name + '</a></td>';
+            html += '<td class="font-medium"><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="text-primary hover:underline underline-offset-4 transition-colors">' + name + '</a></td>';
             html += '<td class="text-muted-foreground">' + timeAgo(site.created) + '</td>';
             html += '<td class="text-muted-foreground tabular-nums">' + formatSize(site.size_bytes) + '</td>';
             html += '<td class="text-right"><div class="flex items-center justify-end gap-2">';
