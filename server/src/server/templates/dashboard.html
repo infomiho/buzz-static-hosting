@@ -2,6 +2,10 @@
 
 {% block title %}Buzz - Dashboard{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+{% endblock %}
+
 {% block content %}
 <div class="flex flex-col gap-10">
     <div>
@@ -29,6 +33,44 @@
                 <span class="inline-block h-7 w-8 animate-pulse rounded bg-muted"></span>
             </p>
         </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="card">
+        <header>
+            <div class="flex items-center gap-2.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                <h2>Deploy a site</h2>
+            </div>
+            <p>Drop a folder, an HTML file, or a ZIP to deploy instantly.</p>
+        </header>
+        <section class="p-6">
+            <div id="drop-zone" class="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border/60 px-6 py-12 text-center transition-colors hover:border-primary/50 cursor-pointer" tabindex="0" role="button" aria-label="Drop files or click to browse">
+                <div class="rounded-full bg-muted p-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium">Drag &amp; drop to deploy</p>
+                    <p class="text-xs text-muted-foreground mt-1">Folder, <code class="font-mono">index.html</code>, or <code class="font-mono">.zip</code></p>
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button type="button" class="btn-sm-outline" id="pick-files">Choose file</button>
+                    <button type="button" class="btn-sm-outline" id="pick-folder">Choose folder</button>
+                </div>
+            </div>
+
+            <input type="file" id="file-input" class="hidden" multiple />
+            <input type="file" id="folder-input" class="hidden" webkitdirectory directory multiple />
+
+            <div class="mt-4 flex flex-col gap-1.5 sm:flex-row sm:items-end sm:gap-3">
+                <div class="flex-1">
+                    <label for="subdomain-input" class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Subdomain (optional)</label>
+                    <input id="subdomain-input" class="input mt-1 w-full" placeholder="auto-generated if blank" autocomplete="off" spellcheck="false" />
+                </div>
+            </div>
+
+            <div id="upload-status" class="mt-4 hidden"></div>
+        </section>
     </div>
 
     <!-- Sites -->
@@ -138,7 +180,7 @@ async function loadSites() {
         document.getElementById('stat-size').textContent = formatSize(totalBytes);
 
         if (sites.length === 0) {
-            container.innerHTML = emptyState(globeIcon, 'No sites yet', 'Deploy your first site using the CLI to see it here.');
+            container.innerHTML = emptyState(globeIcon, 'No sites yet', 'Drop a folder above, or deploy from the CLI with buzz deploy.');
             return;
         }
 
@@ -221,6 +263,289 @@ async function loadTokens() {
     }
 }
 
+/* -- Upload -- */
+
+const IGNORED_DIR_NAMES = new Set(['.git', 'node_modules', '.vscode', '.idea']);
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const WARN_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+function isIgnoredPath(path) {
+    const base = path.split('/').pop() || '';
+    if (base === '.DS_Store') return true;
+    if (base === '.env' || /^\.env\./.test(base)) return true;
+    return path.split('/').some(seg => IGNORED_DIR_NAMES.has(seg));
+}
+
+function setUploadStatus(variant, html) {
+    const box = document.getElementById('upload-status');
+    box.classList.remove('hidden');
+    if (variant === 'error') {
+        box.innerHTML = '<div class="alert-destructive"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg><h2>' + html + '</h2></div>';
+    } else if (variant === 'success') {
+        box.innerHTML = '<div class="rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-sm">' + html + '</div>';
+    } else {
+        box.innerHTML = '<div class="rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm">' + html + '</div>';
+    }
+}
+
+function clearUploadStatus() {
+    const box = document.getElementById('upload-status');
+    box.classList.add('hidden');
+    box.innerHTML = '';
+}
+
+function progressMarkup(label, percent) {
+    const pct = Math.max(0, Math.min(100, Math.round(percent)));
+    return '<div class="flex items-center justify-between gap-3 text-sm"><span>' + esc(label) + '</span><span class="tabular-nums text-muted-foreground">' + pct + '%</span></div>' +
+        '<div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"><div class="h-full bg-primary transition-all" style="width:' + pct + '%"></div></div>';
+}
+
+function zipOptions(onPercent) {
+    return {
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 },
+        onUpdate: onPercent ? (meta) => onPercent(meta.percent) : undefined,
+    };
+}
+
+function readEntriesBatch(reader) {
+    return new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+}
+
+function entryToFile(entry) {
+    return new Promise((resolve, reject) => entry.file(resolve, reject));
+}
+
+async function walkEntry(entry, zip, prefix) {
+    if (entry.isFile) {
+        const path = prefix ? prefix + '/' + entry.name : entry.name;
+        if (isIgnoredPath(path)) return;
+        const file = await entryToFile(entry);
+        zip.file(path, file);
+        return;
+    }
+    if (entry.isDirectory) {
+        if (IGNORED_DIR_NAMES.has(entry.name)) return;
+        const nextPrefix = prefix ? prefix + '/' + entry.name : entry.name;
+        const reader = entry.createReader();
+        while (true) {
+            const batch = await readEntriesBatch(reader);
+            if (!batch.length) break;
+            for (const child of batch) await walkEntry(child, zip, nextPrefix);
+        }
+    }
+}
+
+async function zipFromEntries(entries) {
+    const zip = new JSZip();
+    // If a single top-level directory was dropped, strip its name so site root is
+    // the directory's contents (matches CLI: archiver.glob('**/*', { cwd: dir })).
+    const stripRoot = entries.length === 1 && entries[0].isDirectory;
+    if (stripRoot) {
+        if (IGNORED_DIR_NAMES.has(entries[0].name)) throw new Error('That folder is in the ignore list.');
+        const reader = entries[0].createReader();
+        while (true) {
+            const batch = await readEntriesBatch(reader);
+            if (!batch.length) break;
+            for (const child of batch) await walkEntry(child, zip, '');
+        }
+    } else {
+        for (const entry of entries) await walkEntry(entry, zip, '');
+    }
+    return zip;
+}
+
+function zipFromRelativeFiles(files) {
+    const zip = new JSZip();
+    // Strip a common top-level segment if all paths share one (matches drag folder behavior).
+    const paths = files.map(f => f.webkitRelativePath || f.name);
+    const firstSeg = paths[0].split('/')[0];
+    const stripRoot = paths.length > 0 && paths.every(p => p.split('/')[0] === firstSeg && p.includes('/'));
+    for (const f of files) {
+        let path = f.webkitRelativePath || f.name;
+        if (stripRoot) path = path.substring(firstSeg.length + 1);
+        if (isIgnoredPath(path)) continue;
+        zip.file(path, f);
+    }
+    return zip;
+}
+
+function zipFromLooseFiles(files) {
+    const zip = new JSZip();
+    for (const f of files) {
+        if (isIgnoredPath(f.name)) continue;
+        zip.file(f.name, f);
+    }
+    return zip;
+}
+
+async function generateZipBlob(zip, label) {
+    return zip.generateAsync(zipOptions((percent) => {
+        setUploadStatus('progress', progressMarkup(label + '…', percent));
+    }));
+}
+
+function uploadBlob(blob, subdomain) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/deploy');
+        if (subdomain) xhr.setRequestHeader('x-subdomain', subdomain);
+        xhr.upload.addEventListener('progress', (ev) => {
+            if (!ev.lengthComputable) return;
+            const percent = (ev.loaded / ev.total) * 100;
+            setUploadStatus('progress', progressMarkup('Uploading…', percent));
+        });
+        xhr.addEventListener('load', () => {
+            let body = null;
+            try { body = JSON.parse(xhr.responseText); } catch {}
+            if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+            else reject({ status: xhr.status, detail: body && body.detail });
+        });
+        xhr.addEventListener('error', () => reject({ status: 0 }));
+        xhr.addEventListener('abort', () => reject({ status: 0, detail: 'Upload aborted' }));
+        const form = new FormData();
+        form.append('file', blob, 'site.zip');
+        xhr.send(form);
+    });
+}
+
+function errorMessageFor(err) {
+    if (!err || err.status === 0) return 'Could not reach the server. Check your connection and try again.';
+    if (err.status === 401) return 'Session expired. Please refresh and sign in again.';
+    if (err.detail) return err.detail;
+    if (err.status === 403) return 'Not allowed to deploy to that subdomain.';
+    if (err.status === 400) return 'Invalid upload.';
+    if (err.status === 413) return 'Upload is too large.';
+    return 'Deploy failed (HTTP ' + err.status + ').';
+}
+
+function totalSize(files) {
+    let total = 0;
+    for (const f of files) total += f.size || 0;
+    return total;
+}
+
+async function runDeploy(makeBlob, subdomain) {
+    try {
+        const blob = await makeBlob();
+        if (!blob || (blob.size !== undefined && blob.size === 0)) {
+            setUploadStatus('error', 'Nothing to upload (all files were filtered out).');
+            return;
+        }
+        setUploadStatus('progress', progressMarkup('Uploading…', 0));
+        const data = await uploadBlob(blob, subdomain);
+        const url = (data && data.url) || '';
+        const safeUrl = esc(url);
+        setUploadStatus('success',
+            '<div class="flex items-start gap-3">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary mt-0.5 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>' +
+            '<div><p class="font-medium">Deploy complete</p>' +
+            '<a href="' + safeUrl + '" target="_blank" rel="noopener" class="mt-1 inline-flex items-center gap-1.5 text-primary hover:underline underline-offset-4">' + safeUrl + extIcon + '</a></div>' +
+            '</div>'
+        );
+        document.getElementById('subdomain-input').value = '';
+        document.getElementById('file-input').value = '';
+        document.getElementById('folder-input').value = '';
+        loadSites();
+    } catch (err) {
+        setUploadStatus('error', esc(errorMessageFor(err)));
+    }
+}
+
+async function handleDroppedItems(items, files) {
+    const entries = [];
+    for (const item of items) {
+        const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
+        if (entry) entries.push(entry);
+    }
+    const hasDir = entries.some(e => e && e.isDirectory);
+    const subdomain = document.getElementById('subdomain-input').value.trim();
+
+    if (hasDir) {
+        await runDeploy(async () => {
+            setUploadStatus('progress', progressMarkup('Reading folder…', 0));
+            const zip = await zipFromEntries(entries);
+            return generateZipBlob(zip, 'Zipping');
+        }, subdomain);
+        return;
+    }
+
+    const fileList = [...files];
+    if (fileList.length === 0) {
+        setUploadStatus('error', 'Drop a file or folder to deploy.');
+        return;
+    }
+    await handlePlainFiles(fileList, subdomain);
+}
+
+async function handlePlainFiles(files, subdomain) {
+    const size = totalSize(files);
+    if (size > MAX_UPLOAD_BYTES) {
+        setUploadStatus('error', 'Too large: ' + formatSize(size) + ' exceeds the ' + formatSize(MAX_UPLOAD_BYTES) + ' limit.');
+        return;
+    }
+    if (size > WARN_UPLOAD_BYTES) {
+        setUploadStatus('progress', 'Large upload (' + formatSize(size) + ') — this may take a while.');
+    }
+    // Pass-through for a single .zip
+    if (files.length === 1 && /\.zip$/i.test(files[0].name)) {
+        await runDeploy(async () => files[0], subdomain);
+        return;
+    }
+    const hasRelPaths = files.some(f => f.webkitRelativePath && f.webkitRelativePath.includes('/'));
+    await runDeploy(async () => {
+        const zip = hasRelPaths ? zipFromRelativeFiles(files) : zipFromLooseFiles(files);
+        return generateZipBlob(zip, 'Zipping');
+    }, subdomain);
+}
+
+function initUploader() {
+    const zone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const folderInput = document.getElementById('folder-input');
+
+    document.getElementById('pick-files').addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+    document.getElementById('pick-folder').addEventListener('click', (e) => { e.stopPropagation(); folderInput.click(); });
+    zone.addEventListener('click', () => fileInput.click());
+    zone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+    });
+
+    fileInput.addEventListener('change', () => {
+        if (!fileInput.files.length) return;
+        const subdomain = document.getElementById('subdomain-input').value.trim();
+        handlePlainFiles([...fileInput.files], subdomain);
+    });
+    folderInput.addEventListener('change', () => {
+        if (!folderInput.files.length) return;
+        const subdomain = document.getElementById('subdomain-input').value.trim();
+        handlePlainFiles([...folderInput.files], subdomain);
+    });
+
+    ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.add('border-primary', 'bg-primary/5');
+    }));
+    ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.remove('border-primary', 'bg-primary/5');
+    }));
+    zone.addEventListener('drop', (e) => {
+        // Extract entries synchronously — DataTransferItem is only valid during the event.
+        const items = e.dataTransfer.items ? [...e.dataTransfer.items] : [];
+        const files = e.dataTransfer.files;
+        handleDroppedItems(items, files);
+    });
+
+    // Prevent accidental full-page navigation if user drops outside the zone.
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
+}
+
+initUploader();
 loadSites();
 loadTokens();
 </script>
