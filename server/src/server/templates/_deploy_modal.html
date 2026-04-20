@@ -24,6 +24,16 @@
             <input type="file" id="file-input" class="hidden" multiple />
             <input type="file" id="folder-input" class="hidden" webkitdirectory directory multiple />
 
+            <div id="staged-selection" class="hidden rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="font-medium truncate" id="staged-name"></p>
+                        <p class="text-xs text-muted-foreground" id="staged-detail"></p>
+                    </div>
+                    <button type="button" class="btn-sm-ghost shrink-0" id="staged-clear">Choose different</button>
+                </div>
+            </div>
+
             <div>
                 <label for="subdomain-input" class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Subdomain</label>
                 <input id="subdomain-input" class="input mt-1 w-full" placeholder="auto-generated if blank" autocomplete="off" spellcheck="false" />
@@ -34,6 +44,7 @@
         </section>
         <footer>
             <button class="btn-outline" id="deploy-dialog-close">Close</button>
+            <button class="btn" id="deploy-dialog-submit" disabled>Deploy</button>
         </footer>
     </div>
 </dialog>
@@ -237,56 +248,125 @@
             document.getElementById('file-input').value = '';
             document.getElementById('folder-input').value = '';
             if (typeof window.onDeploySuccess === 'function') window.onDeploySuccess(data);
+            return true;
         } catch (err) {
             setUploadStatus('error', esc(errorMessageFor(err)));
+            return false;
         }
     }
 
-    async function handleDroppedItems(items, files) {
+    let staged = null;        // { kind: 'zip'|'files'|'entries', payload, label, detail }
+    let isRedeployMode = false;
+
+    function clearStaged() {
+        staged = null;
+        document.getElementById('staged-selection').classList.add('hidden');
+        document.getElementById('staged-name').textContent = '';
+        document.getElementById('staged-detail').textContent = '';
+        document.getElementById('deploy-dialog-submit').disabled = true;
+        document.getElementById('file-input').value = '';
+        document.getElementById('folder-input').value = '';
+    }
+
+    function renderStaged() {
+        document.getElementById('staged-name').textContent = staged.label;
+        document.getElementById('staged-detail').textContent = staged.detail || '';
+        document.getElementById('staged-selection').classList.remove('hidden');
+        document.getElementById('deploy-dialog-submit').disabled = false;
+        clearUploadStatus();
+        if (!isRedeployMode) {
+            const sd = document.getElementById('subdomain-input');
+            // Defer focus so it survives the modal's own focus-handling.
+            setTimeout(() => sd.focus(), 0);
+        }
+    }
+
+    function stageZip(file) {
+        staged = { kind: 'zip', payload: file, label: file.name, detail: formatSize(file.size) };
+        renderStaged();
+    }
+
+    function stageFiles(files) {
+        const size = totalSize(files);
+        if (size > MAX_UPLOAD_BYTES) {
+            clearStaged();
+            setUploadStatus('error', 'Too large: ' + formatSize(size) + ' exceeds the ' + formatSize(MAX_UPLOAD_BYTES) + ' limit.');
+            return;
+        }
+        if (files.length === 1 && /\.zip$/i.test(files[0].name)) {
+            stageZip(files[0]);
+            return;
+        }
+        const paths = files.map(f => f.webkitRelativePath || f.name);
+        const firstSeg = paths[0].split('/')[0];
+        const sharedRoot = paths.length > 0 && paths.every(p => p.split('/')[0] === firstSeg && p.includes('/'));
+        let label;
+        if (sharedRoot) label = firstSeg + '/';
+        else if (files.length === 1) label = files[0].name;
+        else label = files.length + ' files';
+        const detail = files.length + ' file' + (files.length === 1 ? '' : 's') + ' · ' + formatSize(size);
+        staged = { kind: 'files', payload: files, label, detail };
+        renderStaged();
+        if (size > WARN_UPLOAD_BYTES) {
+            setUploadStatus('progress', 'Large upload (' + formatSize(size) + ') — this may take a while.');
+        }
+    }
+
+    function stageEntries(entries) {
+        const label = entries.length === 1
+            ? entries[0].name + (entries[0].isDirectory ? '/' : '')
+            : entries.length + ' items';
+        staged = { kind: 'entries', payload: entries, label, detail: 'Folder — file list will be read on deploy.' };
+        renderStaged();
+    }
+
+    function stageDroppedItems(items, files) {
         const entries = [];
         for (const item of items) {
             const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
             if (entry) entries.push(entry);
         }
         const hasDir = entries.some(e => e && e.isDirectory);
-        const subdomain = document.getElementById('subdomain-input').value.trim();
-
         if (hasDir) {
-            await runDeploy(async () => {
-                setUploadStatus('progress', progressMarkup('Reading folder…', 0));
-                const zip = await zipFromEntries(entries);
-                return generateZipBlob(zip, 'Zipping');
-            }, subdomain);
+            stageEntries(entries);
             return;
         }
-
         const fileList = [...files];
         if (fileList.length === 0) {
             setUploadStatus('error', 'Drop a file or folder to deploy.');
             return;
         }
-        await handlePlainFiles(fileList, subdomain);
+        stageFiles(fileList);
     }
 
-    async function handlePlainFiles(files, subdomain) {
-        const size = totalSize(files);
-        if (size > MAX_UPLOAD_BYTES) {
-            setUploadStatus('error', 'Too large: ' + formatSize(size) + ' exceeds the ' + formatSize(MAX_UPLOAD_BYTES) + ' limit.');
-            return;
+    async function deployStaged() {
+        if (!staged) return;
+        const submitBtn = document.getElementById('deploy-dialog-submit');
+        submitBtn.disabled = true;
+        const subdomain = document.getElementById('subdomain-input').value.trim();
+        let ok = false;
+        try {
+            if (staged.kind === 'zip') {
+                ok = await runDeploy(async () => staged.payload, subdomain);
+            } else if (staged.kind === 'files') {
+                const files = staged.payload;
+                const hasRelPaths = files.some(f => f.webkitRelativePath && f.webkitRelativePath.includes('/'));
+                ok = await runDeploy(async () => {
+                    const zip = hasRelPaths ? zipFromRelativeFiles(files) : zipFromLooseFiles(files);
+                    return generateZipBlob(zip, 'Zipping');
+                }, subdomain);
+            } else if (staged.kind === 'entries') {
+                ok = await runDeploy(async () => {
+                    setUploadStatus('progress', progressMarkup('Reading folder…', 0));
+                    const zip = await zipFromEntries(staged.payload);
+                    return generateZipBlob(zip, 'Zipping');
+                }, subdomain);
+            }
+        } finally {
+            // Re-enable on failure so the user can retry; leave disabled on success
+            // (the staged blob has already been published; close + reopen for a fresh deploy).
+            submitBtn.disabled = !!ok;
         }
-        if (size > WARN_UPLOAD_BYTES) {
-            setUploadStatus('progress', 'Large upload (' + formatSize(size) + ') — this may take a while.');
-        }
-        // Pass-through for a single .zip
-        if (files.length === 1 && /\.zip$/i.test(files[0].name)) {
-            await runDeploy(async () => files[0], subdomain);
-            return;
-        }
-        const hasRelPaths = files.some(f => f.webkitRelativePath && f.webkitRelativePath.includes('/'));
-        await runDeploy(async () => {
-            const zip = hasRelPaths ? zipFromRelativeFiles(files) : zipFromLooseFiles(files);
-            return generateZipBlob(zip, 'Zipping');
-        }, subdomain);
     }
 
     function openDeployDialog(redeploySubdomain) {
@@ -296,10 +376,10 @@
         const subdomainInput = document.getElementById('subdomain-input');
         const subdomainHint = document.getElementById('subdomain-hint');
 
+        clearStaged();
         clearUploadStatus();
-        document.getElementById('file-input').value = '';
-        document.getElementById('folder-input').value = '';
 
+        isRedeployMode = !!redeploySubdomain;
         if (redeploySubdomain) {
             title.textContent = 'Redeploy ' + redeploySubdomain;
             subtitle.textContent = 'Drop a folder, an HTML file, or a ZIP. The existing site will be replaced.';
@@ -336,13 +416,11 @@
 
         fileInput.addEventListener('change', () => {
             if (!fileInput.files.length) return;
-            const subdomain = document.getElementById('subdomain-input').value.trim();
-            handlePlainFiles([...fileInput.files], subdomain);
+            stageFiles([...fileInput.files]);
         });
         folderInput.addEventListener('change', () => {
             if (!folderInput.files.length) return;
-            const subdomain = document.getElementById('subdomain-input').value.trim();
-            handlePlainFiles([...folderInput.files], subdomain);
+            stageFiles([...folderInput.files]);
         });
 
         ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, (e) => {
@@ -358,9 +436,14 @@
         zone.addEventListener('drop', (e) => {
             const items = e.dataTransfer.items ? [...e.dataTransfer.items] : [];
             const files = e.dataTransfer.files;
-            handleDroppedItems(items, files);
+            stageDroppedItems(items, files);
         });
 
+        document.getElementById('staged-clear').addEventListener('click', () => {
+            clearStaged();
+            clearUploadStatus();
+        });
+        document.getElementById('deploy-dialog-submit').addEventListener('click', deployStaged);
         document.getElementById('deploy-dialog-close').addEventListener('click', closeDeployDialog);
 
         // Prevent accidental full-page navigation if user drops outside the zone.
