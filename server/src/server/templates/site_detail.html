@@ -24,10 +24,16 @@
                 <span>{{ site.size_bytes | filesizeformat }}</span>
             </div>
         </div>
-        <button class="btn-sm-outline hover:text-destructive hover:border-destructive transition-colors" onclick="document.getElementById('delete-site-dialog').showModal()">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-            <span class="ml-1.5">Delete site</span>
-        </button>
+        <div class="flex items-center gap-2">
+            <button class="btn-sm-outline" onclick="openDeployDialog('{{ site.name }}')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                <span class="ml-1.5">Redeploy</span>
+            </button>
+            <button class="btn-sm-outline hover:text-destructive hover:border-destructive transition-colors" onclick="document.getElementById('delete-site-dialog').showModal()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                <span class="ml-1.5">Delete site</span>
+            </button>
+        </div>
     </div>
 
     <!-- File tree -->
@@ -84,6 +90,8 @@
     </div>
 </div>
 
+{% include "_deploy_modal.html" %}
+
 <!-- Delete site dialog -->
 <dialog id="delete-site-dialog" class="dialog">
     <div>
@@ -101,6 +109,8 @@
 
 {% block scripts %}
 <script>
+window.onDeploySuccess = function() { setTimeout(() => location.reload(), 800); };
+
 document.getElementById('confirm-delete-site').addEventListener('click', async function() {
     this.disabled = true;
     this.textContent = 'Deleting...';

@@ -1,5 +1,9 @@
 # Coolify Deployment
 
+## Continuous deployment
+
+Coolify is wired to this repo and auto-deploys on every push to `main`. No manual redeploy step is needed — merge a PR (or push directly) and Coolify rebuilds the `./server` image and restarts the container. The CI workflow in this repo (`.github/workflows/release-please.yml`) only handles the CLI npm publish; the server rollout is Coolify's responsibility.
+
 ## 1. Create App
 
 In Coolify, create a Docker Compose app pointing at `docker-compose.coolify.yml`.
