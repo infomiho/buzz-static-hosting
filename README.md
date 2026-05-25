@@ -32,6 +32,7 @@ buzz delete my-site   # Delete a site
 - A VPS with Docker installed
 - A domain with DNS managed by Cloudflare
 - A Cloudflare API token
+- A GitHub OAuth app for dashboard login
 
 ## Server Setup
 
@@ -48,7 +49,7 @@ This gives you `static.yourdomain.com` as the main endpoint and `*.static.yourdo
 
 ### 2. Cloudflare API Token
 
-Wildcard SSL certificates require DNS validation. Caddy handles this automatically but needs a Cloudflare API token.
+Wildcard SSL certificates require DNS validation. Traefik handles this with Cloudflare DNS-01 and needs a Cloudflare API token.
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens)
 2. Click "Create Token"
@@ -56,7 +57,15 @@ Wildcard SSL certificates require DNS validation. Caddy handles this automatical
 4. Under "Zone Resources", select your domain
 5. Create and copy the token
 
-### 3. Deploy
+### 3. GitHub OAuth
+
+Create a GitHub OAuth app and set the callback URL to:
+
+```text
+https://static.yourdomain.com/auth/github/callback
+```
+
+### 4. Deploy
 
 Copy the `server/` directory to your VPS and configure:
 
@@ -69,13 +78,15 @@ Edit `.env`:
 
 ```
 BUZZ_DOMAIN=static.yourdomain.com
-BUZZ_TOKEN=generate-a-random-secret-token
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
 CF_API_TOKEN=your-cloudflare-api-token
 ACME_EMAIL=your-email@example.com
 ```
 
 - `BUZZ_DOMAIN` - your subdomain (matches DNS setup)
-- `BUZZ_TOKEN` - secret token for API authentication (generate with `openssl rand -hex 32`)
+- `GITHUB_CLIENT_ID` - GitHub OAuth app client ID
+- `GITHUB_CLIENT_SECRET` - GitHub OAuth app client secret
 - `CF_API_TOKEN` - Cloudflare API token from step 2
 - `ACME_EMAIL` - email for Let's Encrypt certificate notifications
 
@@ -85,7 +96,18 @@ Start the server:
 docker compose up -d
 ```
 
-Caddy will automatically obtain SSL certificates on first request.
+Traefik will automatically obtain the wildcard SSL certificate on first request.
+
+### Coolify
+
+Use `docker-compose.coolify.yml` for Coolify deployments.
+
+- Enable **Raw Docker Compose Deployment**.
+- Leave the app **FQDN/Domains** field empty. Routing is handled by Traefik labels.
+- Set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` on the app.
+- Configure Coolify's proxy through **Servers > Proxy**, not only by editing `/data/coolify/proxy/docker-compose.yml` over SSH.
+- The proxy must use Cloudflare DNS-01 and a single wildcard certificate for `BUZZ_DOMAIN` and `*.BUZZ_DOMAIN`.
+- Buzz app labels should use `tls=true` without `tls.certresolver`; the proxy-level wildcard cert router owns ACME issuance.
 
 ## CLI Setup
 
@@ -109,7 +131,7 @@ Configuration is stored at `~/.buzz.config.json`.
 
 1. CLI zips the directory and uploads to the server
 2. Server extracts files to a subdomain directory
-3. Caddy routes requests based on Host header to the Python server
+3. Traefik routes requests based on Host header to the Python server
 4. Python server serves static files with support for clean URLs (`/about` serves `/about.html`)
 5. SQLite stores site metadata (name, size, creation date)
 

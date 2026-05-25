@@ -85,6 +85,12 @@ Docker Compose with Traefik v3 (wildcard SSL via Cloudflare DNS challenge).
 
 Required env vars in `.env`: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `CF_API_TOKEN`, `ACME_EMAIL`
 
+Coolify production uses `docker-compose.coolify.yml`. Enable Raw Docker Compose Deployment, leave the app FQDN empty, and set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` on the app.
+
+Coolify proxy config must be saved through **Servers > Proxy**. Direct edits to `/data/coolify/proxy/docker-compose.yml` are not durable because Coolify stores proxy config in its DB and can rewrite that file during proxy actions or upgrades.
+
+For wildcard certificates, Coolify's Traefik proxy should use Cloudflare DNS-01 and a single `wildcard-certs` router for `BUZZ_DOMAIN` and `*.BUZZ_DOMAIN`. Buzz app labels should set `tls=true` without `tls.certresolver`; otherwise Traefik can create duplicate ACME challenges for the same `_acme-challenge` record.
+
 ## Releasing
 
 Automated via Release Please. Push commits to `main` using conventional format:

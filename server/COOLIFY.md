@@ -16,7 +16,9 @@ Set environment variables: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SEC
 
 ## 2. Configure Wildcard SSL on Coolify's Traefik
 
-Go to **Servers > Proxy** and edit the Traefik compose config. You need three changes:
+Go to **Servers > Proxy** and edit the Traefik compose config. Save the configuration there so Coolify stores it in its DB. Direct edits to `/data/coolify/proxy/docker-compose.yml` are not durable across proxy actions or upgrades.
+
+You need these changes:
 
 ### Add environment variable
 
@@ -40,6 +42,7 @@ With:
 --certificatesresolvers.letsencrypt.acme.dnschallenge=true
 --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare
 --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+--certificatesresolvers.letsencrypt.acme.dnschallenge.delaybeforecheck=60
 ```
 
 ### Add wildcard certificate labels
@@ -52,7 +55,7 @@ traefik.http.routers.wildcard-certs.tls.domains[0].main=yourdomain
 traefik.http.routers.wildcard-certs.tls.domains[0].sans=*.yourdomain
 ```
 
-Restart the proxy after saving.
+Restart the proxy after saving. The Buzz app labels should set `tls=true` without `tls.certresolver`; the proxy-level wildcard certificate router owns ACME issuance.
 
 ## 3. Cloudflare DNS
 
