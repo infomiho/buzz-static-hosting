@@ -192,12 +192,13 @@ function renderChart(series) {
         chart.innerHTML = '<div class="flex w-full items-center justify-center text-sm text-muted-foreground">No analytics yet</div>';
         return;
     }
+    const scale = Math.max(max, 5);
     chart.innerHTML = series.map(day => {
-        const viewsHeight = Math.max((day.views / max) * 100, day.views ? 4 : 0);
-        const visitorsHeight = Math.max((day.visitors / max) * 100, day.visitors ? 4 : 0);
+        const viewsHeight = Math.max((day.views / scale) * 100, day.views ? 8 : 0);
+        const visitorsHeight = Math.max((day.visitors / scale) * 100, day.visitors ? 8 : 0);
         return '<div class="flex h-full flex-1 items-end gap-0.5" title="' + esc(day.day) + ': ' + day.views + ' views, ' + day.visitors + ' visitors">' +
-            '<div class="w-full rounded-t bg-primary/75" style="height:' + viewsHeight + '%"></div>' +
-            '<div class="w-full rounded-t bg-muted-foreground/45" style="height:' + visitorsHeight + '%"></div>' +
+            '<div class="w-full rounded-t bg-primary/15" style="height:' + (viewsHeight || 2) + '%"><div class="rounded-t bg-primary/75" style="height:' + (viewsHeight ? '100' : '0') + '%"></div></div>' +
+            '<div class="w-full rounded-t bg-muted-foreground/15" style="height:' + (visitorsHeight || 2) + '%"><div class="rounded-t bg-muted-foreground/45" style="height:' + (visitorsHeight ? '100' : '0') + '%"></div></div>' +
             '</div>';
     }).join('');
 }
