@@ -51,7 +51,7 @@ cd server
 uv run pytest tests/ -v
 ```
 
-Environment variables: `BUZZ_PORT`, `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BUZZ_DATA_DIR`
+Environment variables: `BUZZ_PORT`, `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BUZZ_DATA_DIR`, `BUZZ_ANALYTICS_SECRET`
 
 ## CLI
 
@@ -100,3 +100,17 @@ Automated via Release Please. Push commits to `main` using conventional format:
 - `feat!: description` → major bump
 
 Bot creates a release PR. Merging it triggers npm publish via OIDC trusted publishing (no token needed).
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues for `infomiho/buzz-static-hosting` using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+No triage labels are used for this repo. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+No domain docs exist yet; skills should use `CLAUDE.md` as the current project context. See `docs/agents/domain.md`.

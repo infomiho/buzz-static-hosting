@@ -5,7 +5,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from sqlite3 import Connection, Row
+from sqlite3 import Connection, OperationalError, Row
 
 from .exceptions import BadRequest, Forbidden, NotFound
 
@@ -125,6 +125,7 @@ class SiteStore:
         if site_dir.exists():
             shutil.rmtree(site_dir)
         self._conn.execute("DELETE FROM sites WHERE name = ?", (name,))
+        self._delete_analytics(name)
 
     def _site_row(self, name: str) -> Row | None:
         return self._conn.execute(
@@ -152,3 +153,11 @@ class SiteStore:
     @staticmethod
     def _directory_size(path: Path) -> int:
         return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+    def _delete_analytics(self, name: str) -> None:
+        for table in ("analytics_daily", "analytics_dimensions", "analytics_visitors"):
+            try:
+                self._conn.execute(f"DELETE FROM {table} WHERE site_name = ?", (name,))
+            except OperationalError as exc:
+                if "no such table" not in str(exc).lower():
+                    raise

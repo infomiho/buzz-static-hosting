@@ -36,6 +36,52 @@
         </div>
     </div>
 
+    <!-- Analytics -->
+    <div class="card">
+        <header>
+            <div class="flex items-center gap-2.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                <h2>Analytics</h2>
+            </div>
+            <p>Privacy-preserving traffic stats from hosted site requests</p>
+        </header>
+        <section class="flex flex-col gap-5" id="analytics-container">
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div class="rounded-lg border border-border/60 px-4 py-3">
+                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Views</p>
+                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-views">-</p>
+                </div>
+                <div class="rounded-lg border border-border/60 px-4 py-3">
+                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Visitors</p>
+                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-visitors">-</p>
+                </div>
+                <div class="rounded-lg border border-border/60 px-4 py-3">
+                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bandwidth</p>
+                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-bytes">-</p>
+                </div>
+                <div class="rounded-lg border border-border/60 px-4 py-3">
+                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">404s</p>
+                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-not-found">-</p>
+                </div>
+            </div>
+
+            <div>
+                <div class="mb-2 flex items-center justify-between gap-3">
+                    <h3 class="text-sm font-semibold">Last 30 days</h3>
+                    <p class="text-xs text-muted-foreground">Views and visitors</p>
+                </div>
+                <div class="flex h-32 items-end gap-1 rounded-lg border border-border/60 p-3" id="analytics-chart"></div>
+            </div>
+
+            <div class="grid gap-4 lg:grid-cols-2">
+                <div id="analytics-pages"></div>
+                <div id="analytics-referrers"></div>
+                <div id="analytics-campaigns"></div>
+                <div id="analytics-countries"></div>
+            </div>
+        </section>
+    </div>
+
     <!-- File tree -->
     <div class="card">
         <header>
@@ -109,7 +155,71 @@
 
 {% block scripts %}
 <script>
+const SITE_NAME = {{ site.name | tojson }};
 window.onDeploySuccess = function() { setTimeout(() => location.reload(), 800); };
+
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function formatSize(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+function renderDimension(title, rows) {
+    if (!rows || rows.length === 0) return '';
+    let html = '<div class="rounded-lg border border-border/60"><div class="border-b border-border/60 px-4 py-3 text-sm font-semibold">' + title + '</div>';
+    html += '<div class="divide-y divide-border/60">';
+    for (const row of rows) {
+        html += '<div class="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">';
+        html += '<span class="truncate text-muted-foreground">' + esc(row.value) + '</span>';
+        html += '<span class="font-medium tabular-nums">' + row.views.toLocaleString() + '</span>';
+        html += '</div>';
+    }
+    html += '</div></div>';
+    return html;
+}
+
+function renderChart(series) {
+    const chart = document.getElementById('analytics-chart');
+    const max = Math.max(...series.map(d => Math.max(d.views, d.visitors)), 0);
+    if (max === 0) {
+        chart.innerHTML = '<div class="flex w-full items-center justify-center text-sm text-muted-foreground">No analytics yet</div>';
+        return;
+    }
+    chart.innerHTML = series.map(day => {
+        const viewsHeight = Math.max((day.views / max) * 100, day.views ? 4 : 0);
+        const visitorsHeight = Math.max((day.visitors / max) * 100, day.visitors ? 4 : 0);
+        return '<div class="flex h-full flex-1 items-end gap-0.5" title="' + esc(day.day) + ': ' + day.views + ' views, ' + day.visitors + ' visitors">' +
+            '<div class="w-full rounded-t bg-primary/75" style="height:' + viewsHeight + '%"></div>' +
+            '<div class="w-full rounded-t bg-muted-foreground/45" style="height:' + visitorsHeight + '%"></div>' +
+            '</div>';
+    }).join('');
+}
+
+async function loadAnalytics() {
+    try {
+        const res = await fetch('/dashboard/sites/' + encodeURIComponent(SITE_NAME) + '/analytics');
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        document.getElementById('analytics-views').textContent = data.totals.views.toLocaleString();
+        document.getElementById('analytics-visitors').textContent = data.totals.visitors.toLocaleString();
+        document.getElementById('analytics-bytes').textContent = formatSize(data.totals.bytes);
+        document.getElementById('analytics-not-found').textContent = data.totals.not_found.toLocaleString();
+        renderChart(data.series);
+        document.getElementById('analytics-pages').innerHTML = renderDimension('Top pages', data.top_pages);
+        document.getElementById('analytics-referrers').innerHTML = renderDimension('Referrers', data.referrers);
+        document.getElementById('analytics-campaigns').innerHTML = renderDimension('Campaigns', data.campaigns);
+        document.getElementById('analytics-countries').innerHTML = renderDimension('Countries', data.countries);
+    } catch {
+        document.getElementById('analytics-container').innerHTML = '<div class="rounded-lg border border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">Failed to load analytics.</div>';
+    }
+}
 
 document.getElementById('confirm-delete-site').addEventListener('click', async function() {
     this.disabled = true;
@@ -123,5 +233,7 @@ document.getElementById('confirm-delete-site').addEventListener('click', async f
         document.getElementById('delete-site-dialog').close();
     }
 });
+
+loadAnalytics();
 </script>
 {% endblock %}

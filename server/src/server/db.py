@@ -4,12 +4,14 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Generator
 
+from .analytics import init_analytics_schema
 from .config import DB_PATH
 
 
 def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
     try:
+        conn.execute("PRAGMA busy_timeout = 5000")
         conn.execute("""CREATE TABLE IF NOT EXISTS sites (
             name TEXT PRIMARY KEY,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -42,6 +44,7 @@ def init_db() -> None:
         except sqlite3.OperationalError as exc:
             if "duplicate column name" not in str(exc).lower():
                 raise
+        init_analytics_schema(conn)
         conn.commit()
     finally:
         conn.close()
@@ -50,6 +53,7 @@ def init_db() -> None:
 @contextmanager
 def db() -> Generator[sqlite3.Connection, None, None]:
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA busy_timeout = 5000")
     conn.row_factory = sqlite3.Row
     try:
         yield conn

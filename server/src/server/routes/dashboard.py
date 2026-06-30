@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from ..analytics import AnalyticsStore
 from ..auth_service import (
     AuthService,
     DeviceFlowDenied,
@@ -88,6 +89,16 @@ async def site_detail(
         "files": files,
         "domain": domain,
     })
+
+
+@router.get("/sites/{name}/analytics")
+async def site_analytics(
+    name: str,
+    identity: Annotated[Identity, Depends(require_user)],
+):
+    with db() as conn:
+        SiteStore(conn, SITES_DIR).get_by_name(name, identity.user.id)
+        return AnalyticsStore(conn).summary(name)
 
 
 @router.post("/logout")

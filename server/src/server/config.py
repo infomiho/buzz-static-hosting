@@ -13,6 +13,7 @@ DB_PATH = DATA_DIR / "data.db"
 DOMAIN = os.environ.get("BUZZ_DOMAIN")
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
+ANALYTICS_SECRET = os.environ.get("BUZZ_ANALYTICS_SECRET")
 
 # Runtime flags (set via command line args)
 DEV_MODE = False
@@ -37,4 +38,3 @@ CONTENT_TYPES = {
     ".txt": "text/plain",
     ".xml": "application/xml",
 }
-
