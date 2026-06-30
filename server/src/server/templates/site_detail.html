@@ -2,6 +2,10 @@
 
 {% block title %}Buzz - {{ site.name }}{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" defer></script>
+{% endblock %}
+
 {% block content %}
 <div class="flex flex-col gap-8">
     <!-- Back link -->
@@ -70,7 +74,10 @@
                     <h3 class="text-sm font-semibold">Last 30 days</h3>
                     <p class="text-xs text-muted-foreground">Views and visitors</p>
                 </div>
-                <div class="flex h-32 items-end gap-1 rounded-lg border border-border/60 p-3" id="analytics-chart"></div>
+                <div class="h-56 rounded-lg border border-border/60 p-3">
+                    <canvas id="analytics-chart"></canvas>
+                    <div class="hidden h-full items-center justify-center text-sm text-muted-foreground" id="analytics-chart-empty">No analytics yet</div>
+                </div>
             </div>
 
             <div class="grid gap-4 lg:grid-cols-2">
@@ -156,6 +163,7 @@
 {% block scripts %}
 <script>
 const SITE_NAME = {{ site.name | tojson }};
+let analyticsChart;
 window.onDeploySuccess = function() { setTimeout(() => location.reload(), 800); };
 
 function esc(str) {
@@ -186,21 +194,82 @@ function renderDimension(title, rows) {
 }
 
 function renderChart(series) {
-    const chart = document.getElementById('analytics-chart');
+    const canvas = document.getElementById('analytics-chart');
+    const empty = document.getElementById('analytics-chart-empty');
     const max = Math.max(...series.map(d => Math.max(d.views, d.visitors)), 0);
+    if (analyticsChart) {
+        analyticsChart.destroy();
+        analyticsChart = null;
+    }
     if (max === 0) {
-        chart.innerHTML = '<div class="flex w-full items-center justify-center text-sm text-muted-foreground">No analytics yet</div>';
+        canvas.classList.add('hidden');
+        empty.classList.remove('hidden');
+        empty.classList.add('flex');
         return;
     }
-    const scale = Math.max(max, 5);
-    chart.innerHTML = series.map(day => {
-        const viewsHeight = Math.max((day.views / scale) * 100, day.views ? 8 : 0);
-        const visitorsHeight = Math.max((day.visitors / scale) * 100, day.visitors ? 8 : 0);
-        return '<div class="flex h-full flex-1 items-end gap-0.5" title="' + esc(day.day) + ': ' + day.views + ' views, ' + day.visitors + ' visitors">' +
-            '<div class="w-full rounded-t bg-primary/15" style="height:' + (viewsHeight || 2) + '%"><div class="rounded-t bg-primary/75" style="height:' + (viewsHeight ? '100' : '0') + '%"></div></div>' +
-            '<div class="w-full rounded-t bg-muted-foreground/15" style="height:' + (visitorsHeight || 2) + '%"><div class="rounded-t bg-muted-foreground/45" style="height:' + (visitorsHeight ? '100' : '0') + '%"></div></div>' +
-            '</div>';
-    }).join('');
+    if (!window.Chart) {
+        throw new Error('Chart.js failed to load');
+    }
+    canvas.classList.remove('hidden');
+    empty.classList.add('hidden');
+    empty.classList.remove('flex');
+    const labels = series.map(day => new Date(day.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+    analyticsChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Views',
+                    data: series.map(day => day.views),
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                    tension: 0.25,
+                    fill: true,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                },
+                {
+                    label: 'Visitors',
+                    data: series.map(day => day.visitors),
+                    borderColor: '#737373',
+                    backgroundColor: 'rgba(115, 115, 115, 0.10)',
+                    tension: 0.25,
+                    fill: true,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8 }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: items => series[items[0].dataIndex].day,
+                        label: item => item.dataset.label + ': ' + item.parsed.y.toLocaleString()
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 6 }
+                },
+                y: {
+                    beginAtZero: true,
+                    suggestedMax: Math.max(max, 5),
+                    ticks: { precision: 0 }
+                }
+            }
+        }
+    });
 }
 
 async function loadAnalytics() {
@@ -235,6 +304,6 @@ document.getElementById('confirm-delete-site').addEventListener('click', async f
     }
 });
 
-loadAnalytics();
+document.addEventListener('DOMContentLoaded', loadAnalytics);
 </script>
 {% endblock %}
