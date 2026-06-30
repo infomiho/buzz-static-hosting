@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Header, Request, UploadFile, Response
 
+from ..analytics import AnalyticsStore
 from ..config import DOMAIN, SITES_DIR
 from ..db import db
 from ..dependencies import Identity, require_user, require_identity
@@ -51,7 +52,16 @@ async def list_sites(identity: Annotated[Identity, Depends(require_user)]):
     with db() as conn:
         store = SiteStore(conn, SITES_DIR)
         sites = store.list_for_owner(identity.user.id)
-    return [{"name": s.name, "created": s.created_at, "size_bytes": s.size_bytes} for s in sites]
+        views_by_site = AnalyticsStore(conn).total_views_by_site([site.name for site in sites])
+    return [
+        {
+            "name": site.name,
+            "created": site.created_at,
+            "size_bytes": site.size_bytes,
+            "total_views": views_by_site[site.name],
+        }
+        for site in sites
+    ]
 
 
 @router.delete("/sites/{name}")

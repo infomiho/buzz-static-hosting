@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from server.analytics import init_analytics_schema
 from server.app import create_app
 from server.auth_service import AuthService
 from server.cookies import COOKIE_NAME
@@ -56,6 +57,7 @@ def test_db():
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    init_analytics_schema(conn)
 
     @contextmanager
     def db():
@@ -70,8 +72,9 @@ def test_db():
 
 
 @pytest.fixture
-def app(test_db):
+def app(test_db, monkeypatch):
     db, conn = test_db
+    monkeypatch.setattr("server.routes.sites.db", db)
     app = create_app()
     github = FakeGitHubClient()
     app.state.auth_service = AuthService(db=db, github=github, github_client_id="test-id")

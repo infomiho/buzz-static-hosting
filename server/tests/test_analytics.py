@@ -153,6 +153,30 @@ class TestAnalyticsStore:
         assert len(summary["series"]) == 30
         assert all(day["views"] == 0 and day["visitors"] == 0 for day in summary["series"])
 
+    def test_total_views_by_site_zero_fills_missing_analytics(self):
+        conn = make_db()
+        store = AnalyticsStore(conn)
+        store.record(AnalyticsEvent(
+            site_name="my-site",
+            path="/",
+            day="2026-06-30",
+            bytes_sent=100,
+            is_pageview=True,
+            is_not_found=False,
+            visitor_hash="visitor",
+        ))
+        store.record(AnalyticsEvent(
+            site_name="my-site",
+            path="/about",
+            day="2026-06-30",
+            bytes_sent=100,
+            is_pageview=True,
+            is_not_found=False,
+            visitor_hash="visitor",
+        ))
+
+        assert store.total_views_by_site(["my-site", "quiet-site"]) == {"my-site": 2, "quiet-site": 0}
+
     def test_prunes_old_visitor_hashes(self):
         conn = make_db()
         store = AnalyticsStore(conn)
@@ -228,6 +252,37 @@ class TestAnalyticsIntegration:
 
         assert res.status_code == 200
         assert res.json()["totals"]["views"] == 1
+
+    def test_sites_route_includes_total_views(self, monkeypatch):
+        conn = make_db()
+        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 10, 1)")
+        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('quiet-site', 5, 1)")
+        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('other-site', 20, 2)")
+        AnalyticsStore(conn).record(AnalyticsEvent(
+            site_name="my-site",
+            path="/",
+            day="2026-06-30",
+            bytes_sent=100,
+            is_pageview=True,
+            is_not_found=False,
+            visitor_hash="visitor",
+        ))
+
+        @contextmanager
+        def test_db():
+            yield conn
+
+        monkeypatch.setattr("server.config.DEV_MODE", True)
+        monkeypatch.setattr("server.routes.sites.db", test_db)
+        app = create_app()
+
+        res = TestClient(app).get("/sites")
+
+        assert res.status_code == 200
+        sites = {site["name"]: site for site in res.json()}
+        assert sites["my-site"]["total_views"] == 1
+        assert sites["quiet-site"]["total_views"] == 0
+        assert "other-site" not in sites
 
     def test_deleting_site_removes_analytics(self, tmp_path):
         conn = make_db()

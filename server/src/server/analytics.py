@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import logging
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from sqlite3 import Connection
@@ -176,6 +176,23 @@ class AnalyticsStore:
             "campaigns": self._top_dimensions(site_name, "campaign", start),
             "countries": self._top_dimensions(site_name, "country", start),
         }
+
+    def total_views_by_site(self, site_names: Sequence[str]) -> dict[str, int]:
+        if not site_names:
+            return {}
+
+        placeholders = ", ".join("?" for _ in site_names)
+        rows = self._conn.execute(
+            f"""SELECT site_name, COALESCE(SUM(views), 0) AS views
+            FROM analytics_daily
+            WHERE site_name IN ({placeholders})
+            GROUP BY site_name""",
+            tuple(site_names),
+        ).fetchall()
+
+        views = {site_name: 0 for site_name in site_names}
+        views.update({row["site_name"]: row["views"] for row in rows})
+        return views
 
     def _increment_dimension(self, site_name: str, day: str, kind: str, value: str) -> None:
         self._conn.execute(
