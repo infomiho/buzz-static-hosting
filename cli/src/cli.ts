@@ -1,7 +1,7 @@
 import { createRequire } from "module";
 import { program } from "commander";
 import { registerCommands } from "./commands/index.js";
-import { CliError, handleError } from "./lib.js";
+import { handleError } from "./lib.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");

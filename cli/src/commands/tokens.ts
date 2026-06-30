@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { apiRequest, CliError, DeploymentToken } from "../lib.js";
+import { apiRequest, CliError, DeploymentToken, errorMessage } from "../lib.js";
 
 export async function listTokens() {
   const response = await apiRequest("/tokens");
@@ -38,8 +38,7 @@ export async function createToken(siteName: string, cmdOptions: { name?: string 
   }
 
   if (!response.ok) {
-    const data = await response.json();
-    throw new CliError(data.error || "Unknown error");
+    throw new CliError(await errorMessage(response, "Unknown error"));
   }
 
   const data = await response.json();
@@ -61,8 +60,7 @@ export async function deleteToken(tokenId: string) {
     throw new CliError("Token not found");
   }
 
-  const data = await response.json();
-  throw new CliError(data.error || "Unknown error");
+  throw new CliError(await errorMessage(response, "Unknown error"));
 }
 
 export function registerTokensCommand(program: Command) {

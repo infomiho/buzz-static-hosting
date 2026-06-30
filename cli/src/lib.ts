@@ -69,17 +69,6 @@ export function authHeaders(token?: string): Record<string, string> {
   return {};
 }
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code?: string
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
 export class CliError extends Error {
   constructor(message: string, public tip?: string) {
     super(message);
@@ -99,6 +88,24 @@ export function handleError(error: unknown): void {
     console.error(`Error: ${String(error ?? "Unknown error")}`);
   }
   process.exitCode = 1;
+}
+
+export async function errorMessage(response: Response, fallback: string): Promise<string> {
+  const text = await response.text();
+  if (!text) return fallback;
+
+  try {
+    const data: unknown = JSON.parse(text);
+    if (data && typeof data === "object") {
+      const { detail, error } = data as { detail?: unknown; error?: unknown };
+      if (typeof detail === "string") return detail;
+      if (typeof error === "string") return error;
+    }
+  } catch {
+    return text;
+  }
+
+  return fallback;
 }
 
 export async function apiRequest(
@@ -132,8 +139,7 @@ export async function apiRequest(
   }
 
   if (response.status === 403) {
-    const data = await response.json();
-    throw new ApiError(data.error || "Permission denied", 403);
+    throw new CliError(await errorMessage(response, "Permission denied"));
   }
 
   return response;

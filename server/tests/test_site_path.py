@@ -133,6 +133,14 @@ class TestResolveSiteFile:
         result = resolve_site_file(tmp_path, "my-site", "/..%2F..%2Fetc/passwd")
         assert result is None
 
+    def test_blocks_encoded_path_traversal_before_spa_fallback(self, tmp_path):
+        site = tmp_path / "my-site"
+        site.mkdir()
+        (site / "200.html").write_text("spa")
+
+        result = resolve_site_file(tmp_path, "my-site", "/..%2F..%2Fetc/passwd")
+        assert result is None
+
     def test_strips_query_string(self, tmp_path):
         site = tmp_path / "my-site"
         site.mkdir()

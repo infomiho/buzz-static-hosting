@@ -60,7 +60,6 @@ describe("packSite", () => {
 
     expect(buffer).toBeInstanceOf(Buffer);
     expect(buffer.length).toBeGreaterThan(0);
-    // ZIP magic bytes
     expect(buffer[0]).toBe(0x50);
     expect(buffer[1]).toBe(0x4b);
   });
@@ -99,6 +98,10 @@ function fakeFetch(status: number, body: object): typeof fetch {
       status,
       headers: { "Content-Type": "application/json" },
     });
+}
+
+function fakeTextFetch(status: number, body: string): typeof fetch {
+  return async () => new Response(body, { status });
 }
 
 describe("uploadSite", () => {
@@ -184,5 +187,17 @@ describe("uploadSite", () => {
         fakeFetch(500, { detail: "Internal server error" })
       )
     ).rejects.toThrow("Internal server error");
+  });
+
+  it("throws text response errors", async () => {
+    await expect(
+      uploadSite(
+        "http://localhost:8080",
+        "test-token",
+        zip,
+        undefined,
+        fakeTextFetch(500, "proxy failure")
+      )
+    ).rejects.toThrow("proxy failure");
   });
 });

@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from urllib.parse import unquote
 
 
 class InvalidSubdomain(ValueError):
@@ -25,7 +26,10 @@ def resolve_site_file(sites_dir: Path, subdomain: str, url_path: str) -> Path | 
     if not site_root.is_dir():
         return None
 
-    url_path = url_path.split("?")[0]
+    url_path = unquote(url_path.split("?", 1)[0])
+    if ".." in Path(url_path.lstrip("/")).parts:
+        return None
+
     if url_path.endswith("/"):
         url_path += "index.html"
 

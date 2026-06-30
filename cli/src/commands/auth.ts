@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { getOptions, loadConfig, saveConfig, authHeaders, apiRequest, CliError } from "../lib.js";
+import { getOptions, loadConfig, saveConfig, authHeaders, apiRequest, CliError, errorMessage } from "../lib.js";
 
 export async function login() {
   const options = getOptions();
@@ -16,8 +16,7 @@ export async function login() {
   }
 
   if (!deviceResponse.ok) {
-    const data = await deviceResponse.json();
-    throw new CliError(data.error || "Failed to start login");
+    throw new CliError(await errorMessage(deviceResponse, "Failed to start login"));
   }
 
   const deviceData = await deviceResponse.json();
@@ -26,7 +25,6 @@ export async function login() {
   console.log(`Enter code: ${deviceData.user_code}\n`);
   console.log("Waiting for authorization...");
 
-  // Poll for completion
   const interval = (deviceData.interval || 5) * 1000;
   const maxAttempts = Math.ceil((deviceData.expires_in || 900) / (deviceData.interval || 5));
 
@@ -46,6 +44,10 @@ export async function login() {
       );
     }
 
+    if (!pollResponse.ok) {
+      throw new CliError(await errorMessage(pollResponse, "Login failed"));
+    }
+
     const pollData = await pollResponse.json();
 
     if (pollData.status === "pending") {
@@ -57,7 +59,6 @@ export async function login() {
     }
 
     if (pollData.status === "complete") {
-      // Save token
       const config = loadConfig();
       config.token = pollData.token;
       saveConfig(config);

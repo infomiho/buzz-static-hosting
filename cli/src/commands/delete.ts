@@ -1,6 +1,6 @@
 import { createInterface } from "readline";
 import { Command } from "commander";
-import { apiRequest, CliError } from "../lib.js";
+import { apiRequest, CliError, errorMessage } from "../lib.js";
 
 function confirm(message: string): Promise<boolean> {
   const rl = createInterface({
@@ -39,8 +39,7 @@ export async function deleteSite(
     throw new CliError(`Site '${subdomain}' not found`);
   }
 
-  const data = await response.json();
-  throw new CliError(data.error || "Unknown error");
+  throw new CliError(await errorMessage(response, "Unknown error"));
 }
 
 export function registerDeleteCommand(program: Command) {

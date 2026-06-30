@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { CliError, authHeaders, createZipBuffer } from "./lib.js";
+import { CliError, authHeaders, createZipBuffer, errorMessage } from "./lib.js";
 
 export interface UploadResult {
   url: string;
@@ -50,21 +50,10 @@ export async function uploadSite(
   subdomain?: string,
   fetchFn: typeof fetch = globalThis.fetch
 ): Promise<UploadResult> {
-  const boundary =
-    "----BuzzFormBoundary" + Math.random().toString(36).slice(2);
-  const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="site.zip"\r\nContent-Type: application/zip\r\n\r\n`;
-  const footer = `\r\n--${boundary}--\r\n`;
+  const body = new FormData();
+  body.append("file", new Blob([zip], { type: "application/zip" }), "site.zip");
 
-  const body = Buffer.concat([
-    Buffer.from(header),
-    zip,
-    Buffer.from(footer),
-  ]);
-
-  const headers: Record<string, string> = {
-    "Content-Type": `multipart/form-data; boundary=${boundary}`,
-    ...authHeaders(token),
-  };
+  const headers = authHeaders(token);
   if (subdomain) {
     headers["x-subdomain"] = subdomain;
   }
@@ -82,9 +71,8 @@ export async function uploadSite(
     );
   }
 
-  const data = await response.json();
-
   if (response.ok) {
+    const data = await response.json();
     const deployedSubdomain = new URL(data.url).hostname.split(".")[0];
     return { url: data.url, subdomain: deployedSubdomain };
   }
@@ -93,12 +81,13 @@ export async function uploadSite(
     throw new CliError("Not authenticated", "Run 'buzz login' first");
   }
 
+  const message = await errorMessage(response, "Unknown error");
   if (response.status === 403) {
-    const tip = data.detail?.includes("owned by another user")
+    const tip = message.includes("owned by another user")
       ? "Choose a different subdomain with --subdomain <name>"
       : undefined;
-    throw new CliError(data.detail || "Permission denied", tip);
+    throw new CliError(message || "Permission denied", tip);
   }
 
-  throw new CliError(data.detail || "Unknown error");
+  throw new CliError(message);
 }

@@ -1,10 +1,11 @@
 import io
 import shutil
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from sqlite3 import Connection
+from sqlite3 import Connection, Row
 
 from .exceptions import BadRequest, Forbidden, NotFound
 
@@ -12,7 +13,7 @@ from .exceptions import BadRequest, Forbidden, NotFound
 @dataclass
 class SiteRecord:
     name: str
-    owner_id: int
+    owner_id: int | None
     size_bytes: int
     created_at: str
 
@@ -31,28 +32,32 @@ class SiteStore:
         self._sites_dir = sites_dir
 
     def deploy(self, subdomain: str, zip_content: bytes, owner_id: int) -> SiteRecord:
-        existing = self._conn.execute(
-            "SELECT owner_id FROM sites WHERE name = ?", (subdomain,)
-        ).fetchone()
+        existing = self._site_row(subdomain)
 
         if existing and existing["owner_id"] is not None and existing["owner_id"] != owner_id:
             raise Forbidden(f"Site '{subdomain}' is owned by another user")
 
         site_dir = self._sites_dir / subdomain
+        site_root = site_dir.resolve()
+        self._sites_dir.mkdir(parents=True, exist_ok=True)
         try:
             with zipfile.ZipFile(io.BytesIO(zip_content)) as zf:
                 for info in zf.infolist():
-                    target = (site_dir / info.filename).resolve()
-                    if not target.is_relative_to(site_dir.resolve()):
+                    target = (site_root / info.filename).resolve()
+                    if not target.is_relative_to(site_root):
                         raise BadRequest("ZIP contains path traversal entry")
-                if site_dir.exists():
-                    shutil.rmtree(site_dir)
-                site_dir.mkdir(parents=True)
-                zf.extractall(site_dir)
-        except zipfile.BadZipFile:
-            raise BadRequest("Invalid ZIP file")
 
-        size_bytes = sum(f.stat().st_size for f in site_dir.rglob("*") if f.is_file())
+                with tempfile.TemporaryDirectory(prefix=f".{subdomain}-", dir=self._sites_dir) as tmp_dir:
+                    staging_dir = Path(tmp_dir)
+                    zf.extractall(staging_dir)
+                    size_bytes = self._directory_size(staging_dir)
+
+                    if site_dir.exists():
+                        shutil.rmtree(site_dir)
+                    staging_dir.rename(site_dir)
+        except zipfile.BadZipFile as exc:
+            raise BadRequest("Invalid ZIP file") from exc
+
         now = datetime.now().isoformat()
 
         if existing:
@@ -68,33 +73,25 @@ class SiteStore:
                 (subdomain, size_bytes, now, owner_id),
             )
 
-        return SiteRecord(name=subdomain, owner_id=effective_owner, size_bytes=size_bytes, created_at=now)
+        return SiteRecord(
+            name=subdomain,
+            owner_id=effective_owner,
+            size_bytes=size_bytes,
+            created_at=now,
+        )
 
     def list_for_owner(self, owner_id: int) -> list[SiteRecord]:
         rows = self._conn.execute(
             "SELECT name, created_at, size_bytes, owner_id FROM sites WHERE owner_id = ? ORDER BY created_at DESC",
             (owner_id,),
         ).fetchall()
-        return [
-            SiteRecord(name=r["name"], owner_id=r["owner_id"], size_bytes=r["size_bytes"], created_at=r["created_at"])
-            for r in rows
-        ]
+        return [self._record_from_row(r) for r in rows]
 
     def get_by_name(self, name: str, owner_id: int) -> SiteRecord:
-        row = self._conn.execute(
-            "SELECT name, created_at, size_bytes, owner_id FROM sites WHERE name = ?", (name,)
-        ).fetchone()
-        if not row:
-            raise NotFound(f"Site '{name}' not found")
-        if row["owner_id"] is not None and row["owner_id"] != owner_id:
-            raise Forbidden(f"You don't own site '{name}'")
-        return SiteRecord(
-            name=row["name"], owner_id=row["owner_id"],
-            size_bytes=row["size_bytes"], created_at=row["created_at"],
-        )
+        return self._record_from_row(self._require_access(name, owner_id))
 
     def list_files(self, name: str, owner_id: int) -> list[FileEntry]:
-        self.get_by_name(name, owner_id)
+        self._require_access(name, owner_id)
         site_dir = self._sites_dir / name
         if not site_dir.exists():
             return []
@@ -109,10 +106,12 @@ class SiteStore:
                 depth=len(rel.parts) - 1,
             ))
 
+        directory_paths = {e.path for e in entries if e.is_dir}
+
         def sort_key(e: FileEntry) -> tuple:
             parts = Path(e.path).parts
             return tuple(
-                (0 if (site_dir / Path(*parts[:i+1])).is_dir() else 1, p.lower())
+                (0 if "/".join(parts[:i + 1]) in directory_paths else 1, p.lower())
                 for i, p in enumerate(parts)
             )
 
@@ -120,13 +119,36 @@ class SiteStore:
         return entries
 
     def delete(self, name: str, owner_id: int) -> None:
-        site = self._conn.execute("SELECT owner_id FROM sites WHERE name = ?", (name,)).fetchone()
-        if not site:
-            raise NotFound(f"Site '{name}' not found")
-        if site["owner_id"] is not None and site["owner_id"] != owner_id:
-            raise Forbidden(f"You don't own site '{name}'")
+        self._require_access(name, owner_id)
 
         site_dir = self._sites_dir / name
         if site_dir.exists():
             shutil.rmtree(site_dir)
         self._conn.execute("DELETE FROM sites WHERE name = ?", (name,))
+
+    def _site_row(self, name: str) -> Row | None:
+        return self._conn.execute(
+            "SELECT name, created_at, size_bytes, owner_id FROM sites WHERE name = ?",
+            (name,),
+        ).fetchone()
+
+    def _require_access(self, name: str, owner_id: int) -> Row:
+        row = self._site_row(name)
+        if not row:
+            raise NotFound(f"Site '{name}' not found")
+        if row["owner_id"] is not None and row["owner_id"] != owner_id:
+            raise Forbidden(f"You don't own site '{name}'")
+        return row
+
+    @staticmethod
+    def _record_from_row(row: Row) -> SiteRecord:
+        return SiteRecord(
+            name=row["name"],
+            owner_id=row["owner_id"],
+            size_bytes=row["size_bytes"],
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def _directory_size(path: Path) -> int:
+        return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
