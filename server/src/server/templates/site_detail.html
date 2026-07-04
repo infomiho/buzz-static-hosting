@@ -4,99 +4,72 @@
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" defer></script>
-<style>
-summary { list-style: none; cursor: pointer; }
-summary::-webkit-details-marker { display: none; }
-.details-chevron { transition: transform .15s ease; }
-details[open] > summary .details-chevron { transform: rotate(90deg); }
-</style>
 {% endblock %}
 
 {% block content %}
 {% set file_count = files | selectattr('is_dir', 'false') | list | length %}
 <div class="flex flex-col gap-8">
     <!-- Back link -->
-    <a href="/" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-        Back to dashboard
-    </a>
+    <a href="/" class="w-fit font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink">Back to dashboard</a>
 
     <!-- Site metadata header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-            <h1 class="text-2xl font-bold tracking-tight">
-                <a href="{{ site_url }}" target="_blank" class="text-primary hover:underline underline-offset-4 decoration-primary/40">{{ site.name }}</a><span>.{{ domain }}</span>
+            <h1 class="text-3xl font-bold tracking-tight">
+                <a href="{{ site_url }}" target="_blank" class="text-link underline decoration-2 underline-offset-4 hover:text-ink">{{ site.name }}</a><span>.{{ domain }}</span>
             </h1>
-            <div class="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
-                <span>{{ site.created_at[:10] }}</span>
-                <span class="size-1 rounded-full bg-border"></span>
-                <span>{{ file_count }} file{{ 's' if file_count != 1 }}</span>
-                <span class="size-1 rounded-full bg-border"></span>
-                <span>{{ site.size_bytes | filesizeformat }}</span>
-            </div>
+            <p class="mt-2 text-rule">{{ site.created_at[:10] }} &middot; {{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</p>
         </div>
-        <div class="flex items-center gap-2">
-            <button class="btn-sm-outline" onclick="openDeployDialog('{{ site.name }}')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                <span class="ml-1.5">Redeploy</span>
-            </button>
-            <button class="btn-sm-outline hover:text-destructive hover:border-destructive transition-colors" onclick="document.getElementById('delete-site-dialog').showModal()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                <span class="ml-1.5">Delete site</span>
-            </button>
+        <div class="flex flex-wrap items-center gap-3">
+            <button class="btn-sm-outline" onclick="openDeployDialog('{{ site.name }}')">Redeploy</button>
+            <button class="btn-sm-outline border-danger text-danger-dark" onclick="document.getElementById('delete-site-dialog').showModal()">Delete site</button>
         </div>
     </div>
 
     <!-- Analytics -->
     <div class="card">
         <header>
-            <div class="flex items-center gap-2.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                <h2>Analytics</h2>
-            </div>
+            <h2>Analytics</h2>
         </header>
-        <section class="flex flex-col gap-5" id="analytics-container">
+        <section class="flex flex-col gap-6" id="analytics-container">
             <div>
-                <h3 class="mb-2 text-sm font-semibold">All time</h3>
-                <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-                    <div class="rounded-lg border border-border/60 px-4 py-3">
-                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Views</p>
-                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-views">-</p>
+                <h3 class="mb-3 text-xl font-bold">All time</h3>
+                <dl class="grid grid-cols-2 gap-6 md:grid-cols-4">
+                    <div class="border-t-4 border-ink pt-2">
+                        <dt class="font-bold">Views</dt>
+                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-views">-</dd>
                     </div>
-                    <div class="rounded-lg border border-border/60 px-4 py-3">
-                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Visitors</p>
-                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-visitors">-</p>
+                    <div class="border-t-4 border-ink pt-2">
+                        <dt class="font-bold">Visitors</dt>
+                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-visitors">-</dd>
                     </div>
-                    <div class="rounded-lg border border-border/60 px-4 py-3">
-                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bandwidth</p>
-                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-bytes">-</p>
+                    <div class="border-t-4 border-ink pt-2">
+                        <dt class="font-bold">Bandwidth</dt>
+                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-bytes">-</dd>
                     </div>
-                    <div class="rounded-lg border border-border/60 px-4 py-3">
-                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">404s</p>
-                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-not-found">-</p>
+                    <div class="border-t-4 border-ink pt-2">
+                        <dt class="font-bold">404s</dt>
+                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-not-found">-</dd>
                     </div>
-                </div>
+                </dl>
             </div>
 
             <div>
-                <div class="mb-2 flex items-center justify-between gap-3">
-                    <h3 class="text-sm font-semibold">Last 30 days</h3>
-                    <p class="text-xs text-muted-foreground">Views and visitors</p>
+                <div class="mb-3 flex items-baseline justify-between gap-3">
+                    <h3 class="text-xl font-bold">Last 30 days</h3>
+                    <p class="text-rule">Views and visitors</p>
                 </div>
-                <div class="h-56 rounded-lg border border-border/60 p-3">
+                <div class="h-56 border-2 border-ink p-3">
                     <canvas id="analytics-chart"></canvas>
-                    <div class="hidden h-full items-center justify-center text-sm text-muted-foreground" id="analytics-chart-empty">No analytics yet</div>
+                    <div class="hidden h-full items-center justify-center text-rule" id="analytics-chart-empty">No analytics yet</div>
                 </div>
             </div>
 
             <details id="analytics-details">
-                <summary class="flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="details-chevron" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-                    Breakdown
-                </summary>
-                <div class="mt-4 flex flex-col gap-4">
-                    <div class="hidden rounded-lg border border-border/60 px-4 py-6 text-center text-sm text-muted-foreground" id="analytics-breakdown-empty">No data yet</div>
-                    <div class="grid gap-4 lg:grid-cols-2">
+                <summary class="w-fit cursor-pointer font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink">Breakdown</summary>
+                <div class="mt-5 flex flex-col gap-5">
+                    <div class="hidden border-2 border-ink px-4 py-6 text-center text-rule" id="analytics-breakdown-empty">No data yet</div>
+                    <div class="grid gap-5 lg:grid-cols-2">
                         <div id="analytics-pages"></div>
                         <div id="analytics-referrers"></div>
                         <div id="analytics-campaigns"></div>
@@ -111,15 +84,11 @@ details[open] > summary .details-chevron { transform: rotate(90deg); }
     <!-- File tree -->
     <div class="card">
         <details id="files-details">
-            <summary class="flex items-center justify-between gap-3 px-6">
-                <div class="flex items-center gap-2.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-                    <span class="font-semibold">Files</span>
-                    <span class="text-sm text-muted-foreground">{{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</span>
-                </div>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="details-chevron text-muted-foreground" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            <summary class="flex cursor-pointer flex-wrap items-baseline gap-3 px-5 py-4">
+                <span class="font-bold text-link underline decoration-2 underline-offset-4">Files</span>
+                <span class="text-rule">{{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</span>
             </summary>
-            <div class="pt-4">
+            <div class="border-t-2 border-ink">
             {% if files %}
             <div class="overflow-x-auto">
                 <table class="table">
@@ -131,19 +100,17 @@ details[open] > summary .details-chevron { transform: rotate(90deg); }
                     </thead>
                     <tbody>
                         {% for file in files %}
-                        <tr class="transition-colors hover:bg-muted/40">
+                        <tr>
                             <td>
-                                <div class="flex items-center gap-2" style="padding-left: {{ file.depth * 20 }}px">
+                                <div style="padding-left: {{ file.depth * 20 }}px">
                                     {% if file.is_dir %}
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-                                    <span class="font-medium">{{ file.path.split('/')[-1] }}</span>
+                                    <span class="font-bold">{{ file.path.split('/')[-1] }}/</span>
                                     {% else %}
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground shrink-0"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
                                     <span>{{ file.path.split('/')[-1] }}</span>
                                     {% endif %}
                                 </div>
                             </td>
-                            <td class="text-right text-muted-foreground tabular-nums">
+                            <td class="text-right tabular-nums text-rule">
                                 {% if not file.is_dir %}{{ file.size_bytes | filesizeformat }}{% endif %}
                             </td>
                         </tr>
@@ -152,11 +119,8 @@ details[open] > summary .details-chevron { transform: rotate(90deg); }
                 </table>
             </div>
             {% else %}
-            <div class="flex flex-col items-center justify-center gap-3 py-14 px-6 text-center">
-                <div class="rounded-full bg-muted p-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-                </div>
-                <h3 class="text-sm font-semibold">No files</h3>
+            <div class="px-5 py-8">
+                <h3 class="text-xl font-bold">No files</h3>
             </div>
             {% endif %}
             </div>
@@ -202,12 +166,12 @@ function formatSize(bytes) {
 
 function renderDimension(title, rows) {
     if (!rows || rows.length === 0) return '';
-    let html = '<div class="rounded-lg border border-border/60"><div class="border-b border-border/60 px-4 py-3 text-sm font-semibold">' + title + '</div>';
-    html += '<div class="divide-y divide-border/60">';
+    let html = '<div class="border-2 border-ink"><div class="border-b-2 border-ink px-4 py-2.5 font-bold">' + title + '</div>';
+    html += '<div class="divide-y-2 divide-ink">';
     for (const row of rows) {
-        html += '<div class="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">';
-        html += '<span class="truncate text-muted-foreground">' + esc(row.value) + '</span>';
-        html += '<span class="font-medium tabular-nums">' + row.views.toLocaleString() + '</span>';
+        html += '<div class="flex items-center justify-between gap-4 px-4 py-2.5">';
+        html += '<span class="truncate text-rule">' + esc(row.value) + '</span>';
+        html += '<span class="font-bold tabular-nums">' + row.views.toLocaleString() + '</span>';
         html += '</div>';
     }
     html += '</div></div>';
@@ -234,6 +198,8 @@ function renderChart(series) {
     canvas.classList.remove('hidden');
     empty.classList.add('hidden');
     empty.classList.remove('flex');
+    Chart.defaults.font.family = 'Arial, sans-serif';
+    Chart.defaults.color = '#0b0c0c';
     const labels = series.map(day => new Date(day.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
     analyticsChart = new Chart(canvas, {
         type: 'line',
@@ -243,20 +209,20 @@ function renderChart(series) {
                 {
                     label: 'Views',
                     data: series.map(day => day.views),
-                    borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                    tension: 0.25,
-                    fill: true,
+                    borderColor: '#1d70b8',
+                    backgroundColor: '#1d70b8',
+                    tension: 0,
+                    fill: false,
                     pointRadius: 2,
                     pointHoverRadius: 5,
                 },
                 {
                     label: 'Visitors',
                     data: series.map(day => day.visitors),
-                    borderColor: '#737373',
-                    backgroundColor: 'rgba(115, 115, 115, 0.10)',
-                    tension: 0.25,
-                    fill: true,
+                    borderColor: '#505a5f',
+                    backgroundColor: '#505a5f',
+                    tension: 0,
+                    fill: false,
                     pointRadius: 2,
                     pointHoverRadius: 5,
                 }
@@ -294,24 +260,24 @@ function renderChart(series) {
 }
 
 function renderSearchTerms(terms) {
-    let html = '<div class="rounded-lg border border-border/60">';
-    html += '<div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">';
-    html += '<span class="text-sm font-semibold">Google search terms</span>';
-    html += '<span class="text-xs text-muted-foreground">2-day lag</span>';
+    let html = '<div class="border-2 border-ink">';
+    html += '<div class="flex flex-wrap items-baseline justify-between gap-3 border-b-2 border-ink px-5 py-2.5">';
+    html += '<span class="font-bold">Google search terms</span>';
+    html += '<span class="text-rule">2-day lag</span>';
     html += '</div>';
     if (!terms || terms.length === 0) {
-        return html + '<div class="px-4 py-8 text-center text-sm text-muted-foreground">No search data yet</div></div>';
+        return html + '<div class="px-5 py-8 text-center text-rule">No search data yet</div></div>';
     }
     html += '<div class="overflow-x-auto"><table class="table"><thead><tr>';
     html += '<th>Term</th><th class="text-right">Clicks</th><th class="text-right">Impressions</th><th class="text-right">CTR</th><th class="text-right">Position</th>';
     html += '</tr></thead><tbody>';
     for (const row of terms) {
-        html += '<tr class="transition-colors hover:bg-muted/40">';
+        html += '<tr>';
         html += '<td class="truncate">' + esc(row.term) + '</td>';
-        html += '<td class="text-right font-medium tabular-nums">' + row.clicks.toLocaleString() + '</td>';
-        html += '<td class="text-right text-muted-foreground tabular-nums">' + row.impressions.toLocaleString() + '</td>';
-        html += '<td class="text-right text-muted-foreground tabular-nums">' + row.ctr + '%</td>';
-        html += '<td class="text-right text-muted-foreground tabular-nums">' + row.position + '</td>';
+        html += '<td class="text-right font-bold tabular-nums">' + row.clicks.toLocaleString() + '</td>';
+        html += '<td class="text-right tabular-nums text-rule">' + row.impressions.toLocaleString() + '</td>';
+        html += '<td class="text-right tabular-nums text-rule">' + row.ctr + '%</td>';
+        html += '<td class="text-right tabular-nums text-rule">' + row.position + '</td>';
         html += '</tr>';
     }
     return html + '</tbody></table></div></div>';
@@ -338,7 +304,7 @@ async function loadSearchTerms() {
         breakdownHasData = true;
         updateBreakdownEmpty();
     } catch {
-        container.innerHTML = '<div class="rounded-lg border border-border/60 px-4 py-4 text-center text-sm text-muted-foreground">Couldn\'t load search terms.</div>';
+        container.innerHTML = '<div class="border-2 border-ink px-4 py-4 text-center text-rule">Couldn\'t load search terms.</div>';
     }
 }
 
@@ -375,7 +341,7 @@ async function loadAnalytics() {
         }
         updateBreakdownEmpty();
     } catch {
-        document.getElementById('analytics-container').innerHTML = '<div class="rounded-lg border border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">Failed to load analytics.</div>';
+        document.getElementById('analytics-container').innerHTML = '<div class="px-4 py-8 text-center text-rule">Failed to load analytics.</div>';
     }
 }
 

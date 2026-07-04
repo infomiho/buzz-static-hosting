@@ -5,63 +5,48 @@
 {% block content %}
 <div class="flex flex-col gap-10">
     <div>
-        <h1 class="text-3xl font-bold tracking-tight">Welcome back, {{ user.github_name or user.github_login }}</h1>
-        <p class="mt-1 text-muted-foreground">Manage your deployed sites and tokens.</p>
+        <h1 class="text-4xl font-bold tracking-tight">Welcome back, {{ user.github_name or user.github_login }}</h1>
+        <p class="mt-2 text-xl text-rule">Manage your deployed sites and tokens.</p>
     </div>
 
     <!-- Stats row -->
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3" id="stats-row">
-        <div class="rounded-lg border border-border/60 px-5 py-4 transition-colors hover:border-primary/30">
-            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sites</p>
-            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-sites">
-                <span class="inline-block h-7 w-8 animate-pulse rounded bg-muted"></span>
-            </p>
+    <dl class="grid grid-cols-2 gap-6 sm:grid-cols-3" id="stats-row">
+        <div class="border-t-4 border-ink pt-2">
+            <dt class="font-bold">Sites</dt>
+            <dd class="mt-1 text-3xl font-bold tabular-nums" id="stat-sites">-</dd>
         </div>
-        <div class="rounded-lg border border-border/60 px-5 py-4 transition-colors hover:border-primary/30">
-            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total size</p>
-            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-size">
-                <span class="inline-block h-7 w-14 animate-pulse rounded bg-muted"></span>
-            </p>
+        <div class="border-t-4 border-ink pt-2">
+            <dt class="font-bold">Total size</dt>
+            <dd class="mt-1 text-3xl font-bold tabular-nums" id="stat-size">-</dd>
         </div>
-        <div class="rounded-lg border border-border/60 px-5 py-4 transition-colors hover:border-primary/30 hidden sm:block">
-            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tokens</p>
-            <p class="mt-1 text-2xl font-bold tabular-nums" id="stat-tokens">
-                <span class="inline-block h-7 w-8 animate-pulse rounded bg-muted"></span>
-            </p>
+        <div class="hidden border-t-4 border-ink pt-2 sm:block">
+            <dt class="font-bold">Tokens</dt>
+            <dd class="mt-1 text-3xl font-bold tabular-nums" id="stat-tokens">-</dd>
         </div>
-    </div>
+    </dl>
 
     <!-- Sites -->
     <div class="card">
-        <header class="flex items-start justify-between gap-4">
+        <header class="flex flex-wrap items-start justify-between gap-4">
             <div>
-                <div class="flex items-center gap-2.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-                    <h2>Sites</h2>
-                </div>
+                <h2>Sites</h2>
                 <p>Your deployed static sites</p>
             </div>
-            <button type="button" class="btn shrink-0" onclick="openDeployDialog()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-                <span class="ml-1.5">Deploy site</span>
-            </button>
+            <button type="button" class="btn shrink-0" onclick="openDeployDialog()">Deploy site</button>
         </header>
         <section class="p-0" id="sites-container">
-            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground animate-pulse">Loading sites...</div>
+            <div class="px-5 py-8 text-rule">Loading sites...</div>
         </section>
     </div>
 
     <!-- Tokens -->
     <div class="card">
         <header>
-            <div class="flex items-center gap-2.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>
-                <h2>Deploy Tokens</h2>
-            </div>
+            <h2>Deploy Tokens</h2>
             <p>Tokens for CI/CD deployments</p>
         </header>
         <section class="p-0" id="tokens-container">
-            <div class="flex items-center justify-center p-8 text-sm text-muted-foreground animate-pulse">Loading tokens...</div>
+            <div class="px-5 py-8 text-rule">Loading tokens...</div>
         </section>
     </div>
 </div>
@@ -118,22 +103,15 @@ function siteUrl(name) {
     return 'http://' + name + '.localhost:8080';
 }
 
-const trashIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
-const extIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+const LINK_CLASS = 'font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink';
 
-function emptyState(icon, title, description, ctaHtml) {
-    return `<div class="flex flex-col items-center justify-center gap-3 py-14 px-6 text-center">
-        <div class="rounded-full bg-muted p-3">${icon}</div>
-        <h3 class="text-sm font-semibold">${title}</h3>
-        <p class="text-sm text-muted-foreground max-w-xs">${description}</p>
+function emptyState(title, description, ctaHtml) {
+    return `<div class="flex flex-col items-start gap-2 px-5 py-8">
+        <h3 class="text-xl font-bold">${title}</h3>
+        <p class="max-w-md text-rule">${description}</p>
         ${ctaHtml || ''}
     </div>`;
 }
-
-const uploadIconSm = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>';
-
-const globeIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>';
-const keyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>';
 
 /* -- Sites -- */
 
@@ -149,8 +127,8 @@ async function loadSites() {
         document.getElementById('stat-size').textContent = formatSize(totalBytes);
 
         if (sites.length === 0) {
-            const cta = '<button type="button" class="btn mt-2" data-deploy-new>' + uploadIconSm + '<span class="ml-1.5">Deploy your first site</span></button>';
-            container.innerHTML = emptyState(globeIcon, 'No sites yet', 'Deploy a folder, an HTML file, or a ZIP from the browser. The CLI works too.', cta);
+            const cta = '<button type="button" class="btn mt-3" data-deploy-new>Deploy your first site</button>';
+            container.innerHTML = emptyState('No sites yet', 'Deploy a folder, an HTML file, or a ZIP from the browser. The CLI works too.', cta);
             container.querySelectorAll('[data-deploy-new]').forEach(b => b.addEventListener('click', () => openDeployDialog()));
             return;
         }
@@ -162,20 +140,18 @@ async function loadSites() {
         for (const site of sites) {
             const url = siteUrl(site.name);
             const name = esc(site.name);
-            html += '<tr class="group transition-colors hover:bg-muted/40">';
-            html += '<td class="font-medium"><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="text-primary hover:underline underline-offset-4 transition-colors">' + name + '</a></td>';
-            html += '<td class="text-muted-foreground">' + timeAgo(site.created) + '</td>';
-            html += '<td class="text-muted-foreground tabular-nums">' + (site.total_views || 0).toLocaleString() + '</td>';
-            html += '<td class="text-right"><div class="flex items-center justify-end gap-2">';
-            html += '<a href="' + esc(url) + '" target="_blank" class="btn-sm-outline">' + extIcon + '<span class="ml-1.5">View live</span></a>';
-            html += '</div></td>';
+            html += '<tr>';
+            html += '<td><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="' + LINK_CLASS + '">' + name + '</a></td>';
+            html += '<td class="text-rule">' + timeAgo(site.created) + '</td>';
+            html += '<td class="tabular-nums text-rule">' + (site.total_views || 0).toLocaleString() + '</td>';
+            html += '<td class="text-right"><a href="' + esc(url) + '" target="_blank" class="btn-sm-outline">View live</a></td>';
             html += '</tr>';
         }
 
         html += '</tbody></table></div>';
         container.innerHTML = html;
     } catch {
-        container.innerHTML = emptyState(globeIcon, 'Failed to load sites', 'Something went wrong. Please refresh the page.');
+        container.innerHTML = emptyState('Failed to load sites', 'Something went wrong. Please refresh the page.');
     }
 }
 
@@ -206,7 +182,7 @@ async function loadTokens() {
         document.getElementById('stat-tokens').textContent = tokens.length;
 
         if (tokens.length === 0) {
-            container.innerHTML = emptyState(keyIcon, 'No deploy tokens', 'Create tokens via the CLI for CI/CD deployments.');
+            container.innerHTML = emptyState('No deploy tokens', 'Create tokens via the CLI for CI/CD deployments.');
             return;
         }
 
@@ -215,12 +191,12 @@ async function loadTokens() {
         html += '</tr></thead><tbody>';
 
         for (const token of tokens) {
-            html += '<tr class="transition-colors hover:bg-muted/40">';
-            html += '<td class="font-medium">' + esc(token.name) + '</td>';
-            html += '<td><span class="badge-outline text-xs">' + esc(token.site_name) + '</span></td>';
-            html += '<td class="text-muted-foreground">' + timeAgo(token.created_at) + '</td>';
-            html += '<td class="text-muted-foreground">' + (token.last_used_at ? timeAgo(token.last_used_at) : '<span class="text-muted-foreground/50">Never</span>') + '</td>';
-            html += '<td class="text-right"><button class="btn-sm-outline hover:text-destructive hover:border-destructive transition-colors" data-token="' + esc(token.id) + '">' + trashIcon + '<span class="ml-1.5">Revoke</span></button></td>';
+            html += '<tr>';
+            html += '<td class="font-bold">' + esc(token.name) + '</td>';
+            html += '<td><span class="badge-outline">' + esc(token.site_name) + '</span></td>';
+            html += '<td class="text-rule">' + timeAgo(token.created_at) + '</td>';
+            html += '<td class="text-rule">' + (token.last_used_at ? timeAgo(token.last_used_at) : 'Never') + '</td>';
+            html += '<td class="text-right"><button class="btn-sm-outline border-danger text-danger-dark" data-token="' + esc(token.id) + '">Revoke</button></td>';
             html += '</tr>';
         }
 
@@ -230,7 +206,7 @@ async function loadTokens() {
             btn.addEventListener('click', () => confirmDeleteToken(btn.dataset.token));
         });
     } catch {
-        container.innerHTML = emptyState(keyIcon, 'Failed to load tokens', 'Something went wrong. Please refresh the page.');
+        container.innerHTML = emptyState('Failed to load tokens', 'Something went wrong. Please refresh the page.');
     }
 }
 

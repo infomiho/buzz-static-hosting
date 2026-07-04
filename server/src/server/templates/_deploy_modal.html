@@ -1,21 +1,18 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-<dialog id="deploy-dialog" class="dialog">
-    <div class="w-full max-w-xl">
+<dialog id="deploy-dialog" class="dialog max-w-xl">
+    <div>
         <header>
             <h2 id="deploy-dialog-title">Deploy a site</h2>
             <p id="deploy-dialog-subtitle">Drop a folder, an HTML file, or a ZIP to deploy.</p>
         </header>
         <section class="flex flex-col gap-4">
-            <div id="drop-zone" class="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border/60 px-6 py-10 text-center transition-colors hover:border-primary/50 cursor-pointer" tabindex="0" role="button" aria-label="Drop files or click to browse">
-                <div class="rounded-full bg-muted p-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                </div>
+            <div id="drop-zone" class="flex cursor-pointer flex-col items-center justify-center gap-3 border-2 border-dashed border-ink px-6 py-10 text-center" tabindex="0" role="button" aria-label="Drop files or click to browse">
                 <div>
-                    <p class="text-sm font-medium">Drag &amp; drop to deploy</p>
-                    <p class="text-xs text-muted-foreground mt-1">Folder, <code class="font-mono">index.html</code>, or <code class="font-mono">.zip</code></p>
+                    <p class="text-lg font-bold">Drag and drop to deploy</p>
+                    <p class="mt-1 text-rule">Folder, <code>index.html</code>, or <code>.zip</code></p>
                 </div>
-                <div class="flex gap-2 mt-2">
+                <div class="mt-2 flex gap-3">
                     <button type="button" class="btn-sm-outline" id="pick-files">Choose file</button>
                     <button type="button" class="btn-sm-outline" id="pick-folder">Choose folder</button>
                 </div>
@@ -24,20 +21,20 @@
             <input type="file" id="file-input" class="hidden" multiple />
             <input type="file" id="folder-input" class="hidden" webkitdirectory directory multiple />
 
-            <div id="staged-selection" class="hidden rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm">
+            <div id="staged-selection" class="hidden border-2 border-ink bg-mist px-4 py-3">
                 <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
-                        <p class="font-medium truncate" id="staged-name"></p>
-                        <p class="text-xs text-muted-foreground" id="staged-detail"></p>
+                        <p class="truncate font-bold" id="staged-name"></p>
+                        <p class="text-sm text-rule" id="staged-detail"></p>
                     </div>
                     <button type="button" class="btn-sm-ghost shrink-0" id="staged-clear">Choose different</button>
                 </div>
             </div>
 
             <div>
-                <label for="subdomain-input" class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Subdomain</label>
-                <input id="subdomain-input" class="input mt-1 w-full" placeholder="auto-generated if blank" autocomplete="off" spellcheck="false" />
-                <p id="subdomain-hint" class="mt-1 text-xs text-muted-foreground hidden">Replacing the existing site at this subdomain.</p>
+                <label for="subdomain-input" class="font-bold">Subdomain</label>
+                <input id="subdomain-input" class="input mt-1" placeholder="auto-generated if blank" autocomplete="off" spellcheck="false" />
+                <p id="subdomain-hint" class="mt-1 hidden text-rule">Replacing the existing site at this subdomain.</p>
             </div>
 
             <div id="upload-status" class="hidden"></div>
@@ -68,8 +65,6 @@
         return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
     }
 
-    const extIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
-
     function isIgnoredPath(path) {
         const base = path.split('/').pop() || '';
         if (base === '.DS_Store') return true;
@@ -81,11 +76,11 @@
         const box = document.getElementById('upload-status');
         box.classList.remove('hidden');
         if (variant === 'error') {
-            box.innerHTML = '<div class="alert-destructive"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg><h2>' + html + '</h2></div>';
+            box.innerHTML = '<div class="alert-destructive" role="alert"><h2>There is a problem</h2><p class="mt-2">' + html + '</p></div>';
         } else if (variant === 'success') {
-            box.innerHTML = '<div class="rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-sm">' + html + '</div>';
+            box.innerHTML = '<div class="bg-success p-5 text-paper" role="status">' + html + '</div>';
         } else {
-            box.innerHTML = '<div class="rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm">' + html + '</div>';
+            box.innerHTML = '<div class="border-2 border-ink bg-mist px-4 py-3">' + html + '</div>';
         }
     }
 
@@ -97,8 +92,8 @@
 
     function progressMarkup(label, percent) {
         const pct = Math.max(0, Math.min(100, Math.round(percent)));
-        return '<div class="flex items-center justify-between gap-3 text-sm"><span>' + esc(label) + '</span><span class="tabular-nums text-muted-foreground">' + pct + '%</span></div>' +
-            '<div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"><div class="h-full bg-primary transition-all" style="width:' + pct + '%"></div></div>';
+        return '<div class="flex items-center justify-between gap-3"><span>' + esc(label) + '</span><span class="tabular-nums text-rule">' + pct + '%</span></div>' +
+            '<div class="mt-2 h-2 w-full border border-ink bg-paper"><div class="h-full bg-ink" style="width:' + pct + '%"></div></div>';
     }
 
     function zipOptions(onPercent) {
@@ -239,11 +234,8 @@
             const url = (data && data.url) || '';
             const safeUrl = esc(url);
             setUploadStatus('success',
-                '<div class="flex items-start gap-3">' +
-                '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary mt-0.5 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>' +
-                '<div><p class="font-medium">Deploy complete</p>' +
-                '<a href="' + safeUrl + '" target="_blank" rel="noopener" class="mt-1 inline-flex items-center gap-1.5 text-primary hover:underline underline-offset-4">' + safeUrl + extIcon + '</a></div>' +
-                '</div>'
+                '<p class="text-xl font-bold">Deploy complete</p>' +
+                '<a href="' + safeUrl + '" target="_blank" rel="noopener" class="mt-2 inline-block font-bold text-paper underline decoration-2 underline-offset-4">' + safeUrl + ' (opens in new tab)</a>'
             );
             document.getElementById('file-input').value = '';
             document.getElementById('folder-input').value = '';
@@ -426,12 +418,12 @@
         ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, (e) => {
             e.preventDefault();
             e.stopPropagation();
-            zone.classList.add('border-primary', 'bg-primary/5');
+            zone.classList.add('border-solid', 'bg-focus/30');
         }));
         ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, (e) => {
             e.preventDefault();
             e.stopPropagation();
-            zone.classList.remove('border-primary', 'bg-primary/5');
+            zone.classList.remove('border-solid', 'bg-focus/30');
         }));
         zone.addEventListener('drop', (e) => {
             const items = e.dataTransfer.items ? [...e.dataTransfer.items] : [];

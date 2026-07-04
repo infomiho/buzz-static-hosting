@@ -1,19 +1,219 @@
 @import "tailwindcss";
-@import "basecoat-css";
 @source "../templates";
 
 @theme {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --color-primary: oklch(0.75 0.15 75);
-  --color-primary-foreground: oklch(0.25 0.05 75);
+  --color-ink: #0b0c0c;
+  --color-paper: #ffffff;
+  --color-mist: #f3f2f1;
+  --color-rule: #505a5f;
+  --color-link: #1a65a6;
+  --color-focus: #ffdd00;
+  --color-success: #0f7a52;
+  --color-danger: #ca3535;
+  --color-danger-dark: #982828;
+  --color-info: #1d70b8;
+  --font-sans: Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
 }
 
-.card .table th:first-child,
-.card .table td:first-child {
-  padding-left: calc(var(--spacing) * 6);
+@layer base {
+  :root {
+    color-scheme: light;
+    font-family: var(--font-sans);
+    font-size: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+    line-height: 1.5;
+    scrollbar-gutter: stable;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  a {
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.18em;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  summary:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 4px solid var(--color-ink);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 7px var(--color-focus);
+  }
+
+  code {
+    border: 1px solid currentColor;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    padding: 0.05em 0.25em;
+  }
+
+  pre code {
+    border: 0;
+    font-size: 1em;
+    padding: 0;
+  }
 }
-.card .table th:last-child,
-.card .table td:last-child {
-  padding-right: calc(var(--spacing) * 6);
+
+@utility focus-ring {
+  outline: 4px solid var(--color-ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px var(--color-focus);
+}
+
+@utility focus-ring-inverted {
+  outline: 4px solid var(--color-focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px var(--color-paper);
+}
+
+@layer components {
+  .btn,
+  .btn-outline,
+  .btn-destructive {
+    @apply inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border-2 px-5 py-2 text-center text-lg font-bold underline-offset-4 transition-transform duration-100 ease-out hover:underline active:translate-y-0.5;
+  }
+
+  .btn {
+    @apply border-ink bg-ink text-paper hover:bg-rule;
+  }
+
+  .btn-outline {
+    @apply border-ink bg-paper text-ink;
+  }
+
+  .btn-destructive {
+    @apply border-danger bg-danger text-paper hover:bg-danger-dark;
+  }
+
+  .btn-sm-outline {
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 border-2 border-ink bg-paper px-3 py-1 text-center font-bold text-ink underline-offset-4 transition-transform duration-100 ease-out hover:underline active:translate-y-0.5;
+  }
+
+  .btn-sm-ghost {
+    @apply inline-flex cursor-pointer items-center gap-1.5 font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink;
+  }
+
+  .btn:disabled,
+  .btn-outline:disabled,
+  .btn-destructive:disabled,
+  .btn-sm-outline:disabled {
+    @apply cursor-not-allowed opacity-50 active:translate-y-0;
+  }
+
+  .input {
+    @apply min-h-11 w-full border-2 border-ink bg-paper px-3 py-2 text-lg;
+  }
+
+  .table {
+    @apply w-full border-collapse text-left;
+  }
+
+  .table th,
+  .table td {
+    @apply border-b-2 border-ink px-3 py-2.5 align-top;
+  }
+
+  .table th {
+    @apply font-bold;
+  }
+
+  .badge-outline {
+    @apply inline-flex border-2 border-ink px-2 py-0.5 text-sm font-bold uppercase tracking-[0.08em];
+  }
+
+  .card {
+    @apply border-4 border-ink bg-paper;
+  }
+
+  .card > header {
+    @apply border-b-2 border-ink px-5 py-4;
+  }
+
+  .card > header h2 {
+    @apply text-2xl font-bold leading-tight;
+  }
+
+  .card > header p {
+    @apply mt-1 text-rule;
+  }
+
+  .card > section {
+    @apply p-5;
+  }
+
+  .card .table th:first-child,
+  .card .table td:first-child {
+    @apply pl-5;
+  }
+
+  .card .table th:last-child,
+  .card .table td:last-child {
+    @apply pr-5;
+  }
+
+  .card .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .dialog {
+    @apply m-auto w-full max-w-lg border-4 border-ink bg-paper p-0 text-ink;
+  }
+
+  .dialog::backdrop {
+    background: rgb(11 12 12 / 0.6);
+  }
+
+  .dialog > div > header {
+    @apply border-b-2 border-ink px-5 py-4;
+  }
+
+  .dialog > div > header h2 {
+    @apply text-2xl font-bold leading-tight;
+  }
+
+  .dialog > div > header p {
+    @apply mt-1 text-rule;
+  }
+
+  .dialog > div > section {
+    @apply px-5 py-4;
+  }
+
+  .dialog > div > footer {
+    @apply flex flex-wrap justify-end gap-3 px-5 pb-5 pt-2;
+  }
+
+  .alert-destructive {
+    @apply border-4 border-danger bg-paper p-4;
+  }
+
+  .alert-destructive h2 {
+    @apply text-xl font-bold leading-tight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

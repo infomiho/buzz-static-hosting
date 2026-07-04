@@ -6,7 +6,6 @@
   },
   "dependencies": {
     "@tailwindcss/cli": "^4.2.2",
-    "basecoat-css": "^0.3.11",
     "tailwindcss": "^4.2.2"
   }
 }
