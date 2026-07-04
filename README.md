@@ -98,13 +98,25 @@ docker compose up -d
 
 Traefik will automatically obtain the wildcard SSL certificate on first request.
 
+### 5. Google search terms (optional)
+
+Google strips search keywords from referrers; the Search Console API is the only way to get them. With this set up, Buzz shows top Google search terms per site on the analytics page.
+
+1. In [Google Search Console](https://search.google.com/search-console), add a **Domain** property for your Buzz domain (e.g. `static.yourdomain.com`). It covers all site subdomains, including future ones.
+2. In the verification dialog, switch **Instructions for** to **Any DNS provider**, copy the TXT value, add it as a TXT record for your Buzz subdomain (name `static` in this example), then press **Verify**. Don't use the provider-specific **Start verification** flow; it adds the record at the zone apex and fails for subdomain properties.
+3. In [Google Cloud Console](https://console.cloud.google.com), create a project, enable the **Google Search Console API**, create a **service account** (no roles), and download a JSON key for it.
+4. In Search Console, under the property's **Settings > Users and permissions**, add the service account email with **Full** permission.
+5. Set `BUZZ_GSC_CREDENTIALS` to the JSON key content on one line (or a path to the key file) and restart the server.
+
+Buzz queries the `sc-domain:<BUZZ_DOMAIN>` property; set `BUZZ_GSC_PROPERTY` to override. Data lags ~2 days and omits rare queries.
+
 ### Coolify
 
 Use `docker-compose.coolify.yml` for Coolify deployments.
 
 - Enable **Raw Docker Compose Deployment**.
 - Leave the app **FQDN/Domains** field empty. Routing is handled by Traefik labels.
-- Set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` on the app.
+- Set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` on the app. For Google search terms, also set `BUZZ_GSC_CREDENTIALS` to the JSON key content.
 - Configure Coolify's proxy through **Servers > Proxy**, not only by editing `/data/coolify/proxy/docker-compose.yml` over SSH.
 - The proxy must use Cloudflare DNS-01 and a single wildcard certificate for `BUZZ_DOMAIN` and `*.BUZZ_DOMAIN`.
 - Buzz app labels should use `tls=true` without `tls.certresolver`; the proxy-level wildcard cert router owns ACME issuance.

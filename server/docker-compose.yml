@@ -35,6 +35,8 @@ services:
       - BUZZ_DOMAIN=${BUZZ_DOMAIN}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - BUZZ_GSC_CREDENTIALS=${BUZZ_GSC_CREDENTIALS:-}
+      - BUZZ_GSC_PROPERTY=${BUZZ_GSC_PROPERTY:-}
     volumes:
       - buzz-data:/data
     expose:

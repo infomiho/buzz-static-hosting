@@ -15,6 +15,11 @@ GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
 ANALYTICS_SECRET = os.environ.get("BUZZ_ANALYTICS_SECRET")
 
+# Google Search Console (optional): service account key JSON or path to it,
+# and the property to query (defaults to sc-domain:<BUZZ_DOMAIN>)
+GSC_CREDENTIALS = os.environ.get("BUZZ_GSC_CREDENTIALS")
+GSC_PROPERTY = os.environ.get("BUZZ_GSC_PROPERTY")
+
 # Runtime flags (set via command line args)
 DEV_MODE = False
 JSON_LOGS = False

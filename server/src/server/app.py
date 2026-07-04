@@ -15,6 +15,7 @@ from .dependencies import get_identity
 from .exceptions import BadRequest, Forbidden, NotFound
 from .github import HttpGitHubClient
 from .routes import auth, dashboard, sites, tokens
+from .search_console import create_search_console_client
 from .utils import extract_subdomain
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     app.state.github_client = github_client
     app.state.auth_service = AuthService(db=db, github=github_client, github_client_id=GITHUB_CLIENT_ID)
     app.state.analytics = AnalyticsRecorder(db)
+    app.state.search_console = create_search_console_client()
 
     @app.exception_handler(BadRequest)
     async def bad_request_handler(request: Request, exc: BadRequest):
