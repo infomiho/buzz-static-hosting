@@ -4,9 +4,16 @@
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" defer></script>
+<style>
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+.details-chevron { transition: transform .15s ease; }
+details[open] > summary .details-chevron { transform: rotate(90deg); }
+</style>
 {% endblock %}
 
 {% block content %}
+{% set file_count = files | selectattr('is_dir', 'false') | list | length %}
 <div class="flex flex-col gap-8">
     <!-- Back link -->
     <a href="/" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
@@ -23,7 +30,7 @@
             <div class="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
                 <span>{{ site.created_at[:10] }}</span>
                 <span class="size-1 rounded-full bg-border"></span>
-                <span>{{ files | selectattr('is_dir', 'false') | list | length }} files</span>
+                <span>{{ file_count }} file{{ 's' if file_count != 1 }}</span>
                 <span class="size-1 rounded-full bg-border"></span>
                 <span>{{ site.size_bytes | filesizeformat }}</span>
             </div>
@@ -47,25 +54,27 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
                 <h2>Analytics</h2>
             </div>
-            <p>Privacy-preserving traffic stats from hosted site requests</p>
         </header>
         <section class="flex flex-col gap-5" id="analytics-container">
-            <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div class="rounded-lg border border-border/60 px-4 py-3">
-                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Views</p>
-                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-views">-</p>
-                </div>
-                <div class="rounded-lg border border-border/60 px-4 py-3">
-                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Visitors</p>
-                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-visitors">-</p>
-                </div>
-                <div class="rounded-lg border border-border/60 px-4 py-3">
-                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bandwidth</p>
-                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-bytes">-</p>
-                </div>
-                <div class="rounded-lg border border-border/60 px-4 py-3">
-                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">404s</p>
-                    <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-not-found">-</p>
+            <div>
+                <h3 class="mb-2 text-sm font-semibold">All time</h3>
+                <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+                    <div class="rounded-lg border border-border/60 px-4 py-3">
+                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Views</p>
+                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-views">-</p>
+                    </div>
+                    <div class="rounded-lg border border-border/60 px-4 py-3">
+                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Visitors</p>
+                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-visitors">-</p>
+                    </div>
+                    <div class="rounded-lg border border-border/60 px-4 py-3">
+                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bandwidth</p>
+                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-bytes">-</p>
+                    </div>
+                    <div class="rounded-lg border border-border/60 px-4 py-3">
+                        <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">404s</p>
+                        <p class="mt-1 text-2xl font-bold tabular-nums" id="analytics-not-found">-</p>
+                    </div>
                 </div>
             </div>
 
@@ -80,27 +89,37 @@
                 </div>
             </div>
 
-            <div class="grid gap-4 lg:grid-cols-2">
-                <div id="analytics-pages"></div>
-                <div id="analytics-referrers"></div>
-                <div id="analytics-campaigns"></div>
-                <div id="analytics-countries"></div>
-            </div>
-
-            <div id="analytics-search-terms"></div>
+            <details id="analytics-details">
+                <summary class="flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="details-chevron" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                    Breakdown
+                </summary>
+                <div class="mt-4 flex flex-col gap-4">
+                    <div class="hidden rounded-lg border border-border/60 px-4 py-6 text-center text-sm text-muted-foreground" id="analytics-breakdown-empty">No data yet</div>
+                    <div class="grid gap-4 lg:grid-cols-2">
+                        <div id="analytics-pages"></div>
+                        <div id="analytics-referrers"></div>
+                        <div id="analytics-campaigns"></div>
+                        <div id="analytics-countries"></div>
+                    </div>
+                    <div id="analytics-search-terms"></div>
+                </div>
+            </details>
         </section>
     </div>
 
     <!-- File tree -->
     <div class="card">
-        <header>
-            <div class="flex items-center gap-2.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-                <h2>Files</h2>
-            </div>
-            <p>Deployed file structure</p>
-        </header>
-        <section class="p-0">
+        <details id="files-details">
+            <summary class="flex items-center justify-between gap-3 px-6">
+                <div class="flex items-center gap-2.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+                    <span class="font-semibold">Files</span>
+                    <span class="text-sm text-muted-foreground">{{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</span>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="details-chevron text-muted-foreground" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </summary>
+            <div class="pt-4">
             {% if files %}
             <div class="overflow-x-auto">
                 <table class="table">
@@ -138,10 +157,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
                 </div>
                 <h3 class="text-sm font-semibold">No files</h3>
-                <p class="text-sm text-muted-foreground max-w-xs">This site has no deployed files.</p>
             </div>
             {% endif %}
-        </section>
+            </div>
+        </details>
     </div>
 </div>
 
@@ -278,7 +297,7 @@ function renderSearchTerms(terms) {
     let html = '<div class="rounded-lg border border-border/60">';
     html += '<div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">';
     html += '<span class="text-sm font-semibold">Google search terms</span>';
-    html += '<span class="text-xs text-muted-foreground">From Search Console, data lags ~2 days</span>';
+    html += '<span class="text-xs text-muted-foreground">2-day lag</span>';
     html += '</div>';
     if (!terms || terms.length === 0) {
         return html + '<div class="px-4 py-8 text-center text-sm text-muted-foreground">No search data yet</div></div>';
@@ -298,7 +317,17 @@ function renderSearchTerms(terms) {
     return html + '</tbody></table></div></div>';
 }
 
+let searchTermsRequested = false;
+let breakdownHasData = false;
+
+function updateBreakdownEmpty() {
+    const empty = document.getElementById('analytics-breakdown-empty');
+    if (empty) empty.classList.toggle('hidden', breakdownHasData);
+}
+
 async function loadSearchTerms() {
+    if (searchTermsRequested) return;
+    searchTermsRequested = true;
     const container = document.getElementById('analytics-search-terms');
     try {
         const res = await fetch('/dashboard/sites/' + encodeURIComponent(SITE_NAME) + '/search-terms');
@@ -306,9 +335,25 @@ async function loadSearchTerms() {
         const data = await res.json();
         if (!data.configured) return;
         container.innerHTML = renderSearchTerms(data.terms);
+        breakdownHasData = true;
+        updateBreakdownEmpty();
     } catch {
-        container.innerHTML = '<div class="rounded-lg border border-border/60 px-4 py-4 text-center text-sm text-muted-foreground">Could not load Google search terms.</div>';
+        container.innerHTML = '<div class="rounded-lg border border-border/60 px-4 py-4 text-center text-sm text-muted-foreground">Couldn\'t load search terms.</div>';
     }
+}
+
+function initDisclosure(id, storageKey, onOpen) {
+    const el = document.getElementById(id);
+    try {
+        if (localStorage.getItem(storageKey) === '1') el.open = true;
+    } catch {}
+    el.addEventListener('toggle', () => {
+        try {
+            localStorage.setItem(storageKey, el.open ? '1' : '0');
+        } catch {}
+        if (el.open && onOpen) onOpen();
+    });
+    if (el.open && onOpen) onOpen();
 }
 
 async function loadAnalytics() {
@@ -325,6 +370,10 @@ async function loadAnalytics() {
         document.getElementById('analytics-referrers').innerHTML = renderDimension('Referrers', data.referrers);
         document.getElementById('analytics-campaigns').innerHTML = renderDimension('Campaigns', data.campaigns);
         document.getElementById('analytics-countries').innerHTML = renderDimension('Countries', data.countries);
+        if ([data.top_pages, data.referrers, data.campaigns, data.countries].some(rows => rows && rows.length)) {
+            breakdownHasData = true;
+        }
+        updateBreakdownEmpty();
     } catch {
         document.getElementById('analytics-container').innerHTML = '<div class="rounded-lg border border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">Failed to load analytics.</div>';
     }
@@ -345,7 +394,8 @@ document.getElementById('confirm-delete-site').addEventListener('click', async f
 
 document.addEventListener('DOMContentLoaded', () => {
     loadAnalytics();
-    loadSearchTerms();
+    initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown', loadSearchTerms);
+    initDisclosure('files-details', 'buzz:' + SITE_NAME + ':files');
 });
 </script>
 {% endblock %}
