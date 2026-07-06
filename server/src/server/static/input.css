@@ -6,7 +6,7 @@
   --color-paper: #ffffff;
   --color-mist: #f3f2f1;
   --color-rule: #505a5f;
-  --color-link: #1a65a6;
+  --color-link: #1d70b8;
   --color-focus: #ffdd00;
   --color-success: #0f7a52;
   --color-danger: #ca3535;
@@ -49,6 +49,9 @@
   a:focus-visible,
   button:focus-visible,
   summary:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
   [tabindex]:focus-visible {
     outline: 4px solid var(--color-ink);
     outline-offset: 3px;
@@ -81,31 +84,55 @@
   box-shadow: 0 0 0 7px var(--color-paper);
 }
 
+@utility heading-xl {
+  @apply text-balance text-4xl font-bold leading-none tracking-[-0.04em] sm:text-5xl;
+}
+
+@utility heading-l {
+  @apply text-balance text-3xl font-bold leading-none tracking-[-0.035em] sm:text-4xl;
+}
+
+@utility heading-m {
+  @apply text-2xl font-bold leading-tight;
+}
+
+@utility lead {
+  @apply text-pretty text-xl leading-8;
+}
+
+@utility panel {
+  @apply border-4 border-ink bg-paper p-5;
+}
+
 @layer components {
   .btn,
   .btn-outline,
   .btn-destructive {
-    @apply inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border-2 px-5 py-2 text-center text-lg font-bold underline-offset-4 transition-transform duration-100 ease-out hover:underline active:translate-y-0.5;
+    @apply inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border-2 px-5 py-2 text-center text-lg font-bold transition duration-100 ease-out active:translate-y-0.5;
   }
 
   .btn {
-    @apply border-ink bg-ink text-paper hover:bg-rule;
+    @apply border-ink bg-ink text-paper hover:bg-paper hover:text-ink;
   }
 
   .btn-outline {
-    @apply border-ink bg-paper text-ink;
+    @apply border-ink bg-paper text-ink hover:bg-ink hover:text-paper;
   }
 
   .btn-destructive {
-    @apply border-danger bg-danger text-paper hover:bg-danger-dark;
+    @apply border-danger bg-danger text-paper hover:border-danger-dark hover:bg-danger-dark;
   }
 
   .btn-sm-outline {
-    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 border-2 border-ink bg-paper px-3 py-1 text-center font-bold text-ink underline-offset-4 transition-transform duration-100 ease-out hover:underline active:translate-y-0.5;
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 border-2 border-ink bg-paper px-3 py-1 text-center font-bold text-ink transition duration-100 ease-out hover:bg-mist active:translate-y-0.5;
   }
 
   .btn-sm-ghost {
-    @apply inline-flex cursor-pointer items-center gap-1.5 font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink;
+    @apply inline-flex cursor-pointer items-center gap-1.5 font-bold underline decoration-2 underline-offset-4 hover:decoration-4;
+  }
+
+  .link {
+    @apply font-bold text-link underline decoration-2 underline-offset-4 hover:decoration-4;
   }
 
   .btn:disabled,
@@ -113,6 +140,22 @@
   .btn-destructive:disabled,
   .btn-sm-outline:disabled {
     @apply cursor-not-allowed opacity-50 active:translate-y-0;
+  }
+
+  .btn:disabled {
+    @apply hover:bg-ink hover:text-paper;
+  }
+
+  .btn-outline:disabled {
+    @apply hover:bg-paper hover:text-ink;
+  }
+
+  .btn-destructive:disabled {
+    @apply hover:border-danger hover:bg-danger;
+  }
+
+  .btn-sm-outline:disabled {
+    @apply hover:bg-paper;
   }
 
   .input {
@@ -145,7 +188,7 @@
   }
 
   .card > header h2 {
-    @apply text-2xl font-bold leading-tight;
+    @apply heading-m;
   }
 
   .card > header p {
@@ -183,7 +226,7 @@
   }
 
   .dialog > div > header h2 {
-    @apply text-2xl font-bold leading-tight;
+    @apply heading-m;
   }
 
   .dialog > div > header p {
@@ -199,11 +242,11 @@
   }
 
   .alert-destructive {
-    @apply border-4 border-danger bg-paper p-4;
+    @apply border-4 border-danger bg-paper p-5;
   }
 
   .alert-destructive h2 {
-    @apply text-xl font-bold leading-tight;
+    @apply heading-m;
   }
 }
 

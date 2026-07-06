@@ -10,13 +10,13 @@
 {% set file_count = files | selectattr('is_dir', 'false') | list | length %}
 <div class="flex flex-col gap-8">
     <!-- Back link -->
-    <a href="/" class="w-fit font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink">Back to dashboard</a>
+    <a href="/" class="link w-fit">Back to dashboard</a>
 
     <!-- Site metadata header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-            <h1 class="text-3xl font-bold tracking-tight">
-                <a href="{{ site_url }}" target="_blank" class="text-link underline decoration-2 underline-offset-4 hover:text-ink">{{ site.name }}</a><span>.{{ domain }}</span>
+            <h1 class="heading-l">
+                <a href="{{ site_url }}" target="_blank" class="text-link underline decoration-2 underline-offset-4 hover:decoration-4">{{ site.name }}</a><span>.{{ domain }}</span>
             </h1>
             <p class="mt-2 text-rule">{{ site.created_at[:10] }} &middot; {{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</p>
         </div>
@@ -35,21 +35,21 @@
             <div>
                 <h3 class="mb-3 text-xl font-bold">All time</h3>
                 <dl class="grid grid-cols-2 gap-6 md:grid-cols-4">
-                    <div class="border-t-4 border-ink pt-2">
-                        <dt class="font-bold">Views</dt>
-                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-views">-</dd>
+                    <div class="flex flex-col-reverse border-t-4 border-ink pt-3">
+                        <dt class="mt-1 font-bold">Views</dt>
+                        <dd class="text-3xl font-bold tabular-nums" id="analytics-views">-</dd>
                     </div>
-                    <div class="border-t-4 border-ink pt-2">
-                        <dt class="font-bold">Visitors</dt>
-                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-visitors">-</dd>
+                    <div class="flex flex-col-reverse border-t-4 border-ink pt-3">
+                        <dt class="mt-1 font-bold">Visitors</dt>
+                        <dd class="text-3xl font-bold tabular-nums" id="analytics-visitors">-</dd>
                     </div>
-                    <div class="border-t-4 border-ink pt-2">
-                        <dt class="font-bold">Bandwidth</dt>
-                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-bytes">-</dd>
+                    <div class="flex flex-col-reverse border-t-4 border-ink pt-3">
+                        <dt class="mt-1 font-bold">Bandwidth</dt>
+                        <dd class="text-3xl font-bold tabular-nums" id="analytics-bytes">-</dd>
                     </div>
-                    <div class="border-t-4 border-ink pt-2">
-                        <dt class="font-bold">404s</dt>
-                        <dd class="mt-1 text-2xl font-bold tabular-nums" id="analytics-not-found">-</dd>
+                    <div class="flex flex-col-reverse border-t-4 border-ink pt-3">
+                        <dt class="mt-1 font-bold">404s</dt>
+                        <dd class="text-3xl font-bold tabular-nums" id="analytics-not-found">-</dd>
                     </div>
                 </dl>
             </div>
@@ -66,16 +66,16 @@
             </div>
 
             <details id="analytics-details">
-                <summary class="w-fit cursor-pointer font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink">Breakdown</summary>
+                <summary class="w-fit cursor-pointer font-bold underline decoration-2 underline-offset-4 hover:decoration-4">Breakdown</summary>
                 <div class="mt-5 flex flex-col gap-5">
                     <div class="hidden border-2 border-ink px-4 py-6 text-center text-rule" id="analytics-breakdown-empty">No data yet</div>
-                    <div class="grid gap-5 lg:grid-cols-2">
+                    <div class="hidden gap-5 lg:grid-cols-2" id="analytics-dimensions">
                         <div id="analytics-pages"></div>
                         <div id="analytics-referrers"></div>
                         <div id="analytics-campaigns"></div>
                         <div id="analytics-countries"></div>
                     </div>
-                    <div id="analytics-search-terms"></div>
+                    <div class="hidden" id="analytics-search-terms"></div>
                 </div>
             </details>
         </section>
@@ -85,7 +85,7 @@
     <div class="card">
         <details id="files-details">
             <summary class="flex cursor-pointer flex-wrap items-baseline gap-3 px-5 py-4">
-                <span class="font-bold text-link underline decoration-2 underline-offset-4">Files</span>
+                <span class="font-bold underline decoration-2 underline-offset-4">Files</span>
                 <span class="text-rule">{{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</span>
             </summary>
             <div class="border-t-2 border-ink">
@@ -301,10 +301,12 @@ async function loadSearchTerms() {
         const data = await res.json();
         if (!data.configured) return;
         container.innerHTML = renderSearchTerms(data.terms);
+        container.classList.remove('hidden');
         breakdownHasData = true;
         updateBreakdownEmpty();
     } catch {
         container.innerHTML = '<div class="border-2 border-ink px-4 py-4 text-center text-rule">Couldn\'t load search terms.</div>';
+        container.classList.remove('hidden');
     }
 }
 
@@ -336,7 +338,11 @@ async function loadAnalytics() {
         document.getElementById('analytics-referrers').innerHTML = renderDimension('Referrers', data.referrers);
         document.getElementById('analytics-campaigns').innerHTML = renderDimension('Campaigns', data.campaigns);
         document.getElementById('analytics-countries').innerHTML = renderDimension('Countries', data.countries);
-        if ([data.top_pages, data.referrers, data.campaigns, data.countries].some(rows => rows && rows.length)) {
+        const dimensions = document.getElementById('analytics-dimensions');
+        const hasDimensions = [data.top_pages, data.referrers, data.campaigns, data.countries].some(rows => rows && rows.length);
+        dimensions.classList.toggle('hidden', !hasDimensions);
+        dimensions.classList.toggle('grid', hasDimensions);
+        if (hasDimensions) {
             breakdownHasData = true;
         }
         updateBreakdownEmpty();

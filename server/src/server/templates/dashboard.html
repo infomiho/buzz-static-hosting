@@ -5,23 +5,23 @@
 {% block content %}
 <div class="flex flex-col gap-10">
     <div>
-        <h1 class="text-4xl font-bold tracking-tight">Welcome back, {{ user.github_name or user.github_login }}</h1>
-        <p class="mt-2 text-xl text-rule">Manage your deployed sites and tokens.</p>
+        <h1 class="heading-xl">Welcome back, {{ user.github_name or user.github_login }}</h1>
+        <p class="lead mt-3 text-rule">Manage your deployed sites and tokens.</p>
     </div>
 
     <!-- Stats row -->
     <dl class="grid grid-cols-2 gap-6 sm:grid-cols-3" id="stats-row">
-        <div class="border-t-4 border-ink pt-2">
-            <dt class="font-bold">Sites</dt>
-            <dd class="mt-1 text-3xl font-bold tabular-nums" id="stat-sites">-</dd>
+        <div class="panel flex flex-col-reverse">
+            <dt class="mt-2 text-lg font-bold">Sites</dt>
+            <dd class="text-4xl font-bold tabular-nums sm:text-5xl" id="stat-sites">-</dd>
         </div>
-        <div class="border-t-4 border-ink pt-2">
-            <dt class="font-bold">Total size</dt>
-            <dd class="mt-1 text-3xl font-bold tabular-nums" id="stat-size">-</dd>
+        <div class="panel flex flex-col-reverse">
+            <dt class="mt-2 text-lg font-bold">Total size</dt>
+            <dd class="text-4xl font-bold tabular-nums sm:text-5xl" id="stat-size">-</dd>
         </div>
-        <div class="hidden border-t-4 border-ink pt-2 sm:block">
-            <dt class="font-bold">Tokens</dt>
-            <dd class="mt-1 text-3xl font-bold tabular-nums" id="stat-tokens">-</dd>
+        <div class="panel hidden flex-col-reverse sm:flex">
+            <dt class="mt-2 text-lg font-bold">Tokens</dt>
+            <dd class="text-4xl font-bold tabular-nums sm:text-5xl" id="stat-tokens">-</dd>
         </div>
     </dl>
 
@@ -103,8 +103,6 @@ function siteUrl(name) {
     return 'http://' + name + '.localhost:8080';
 }
 
-const LINK_CLASS = 'font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink';
-
 function emptyState(title, description, ctaHtml) {
     return `<div class="flex flex-col items-start gap-2 px-5 py-8">
         <h3 class="text-xl font-bold">${title}</h3>
@@ -141,7 +139,7 @@ async function loadSites() {
             const url = siteUrl(site.name);
             const name = esc(site.name);
             html += '<tr>';
-            html += '<td><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="' + LINK_CLASS + '">' + name + '</a></td>';
+            html += '<td><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="link">' + name + '</a></td>';
             html += '<td class="text-rule">' + timeAgo(site.created) + '</td>';
             html += '<td class="tabular-nums text-rule">' + (site.total_views || 0).toLocaleString() + '</td>';
             html += '<td class="text-right"><a href="' + esc(url) + '" target="_blank" class="btn-sm-outline">View live</a></td>';

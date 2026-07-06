@@ -8,7 +8,7 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="flex min-h-screen flex-col bg-paper text-ink">
-    <a href="#main" class="absolute left-4 top-4 z-10 -translate-y-24 border-2 border-ink bg-paper px-4 py-2 font-bold underline focus:translate-y-0 focus:focus-ring">Skip to main content</a>
+    <a href="#main" class="absolute left-4 top-4 z-10 -translate-y-24 border-2 border-ink bg-paper px-4 py-3 font-bold underline focus:translate-y-0 focus:focus-ring">Skip to main content</a>
     <header class="border-b-4 border-ink bg-ink text-paper">
         <div class="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
             <a href="/" class="text-2xl font-bold tracking-tight underline-offset-4 hover:underline focus-visible:focus-ring-inverted">Buzz</a>
@@ -22,13 +22,13 @@
             {% endif %}
         </div>
     </header>
-    <main id="main" class="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto w-full max-w-5xl flex-1 px-4 py-8 outline-none sm:px-6 md:py-12">
         {% block content %}{% endblock %}
     </main>
     <footer class="mt-12 border-t-4 border-ink bg-mist">
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-2 px-4 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <p class="font-bold">Self-hosted static site hosting.</p>
-            <a href="https://github.com/infomiho/buzz-static-hosting" target="_blank" class="w-fit font-bold text-link underline decoration-2 underline-offset-4 hover:text-ink">Source on GitHub (opens in new tab)</a>
+            <a href="https://github.com/infomiho/buzz-static-hosting" target="_blank" class="link w-fit">Source on GitHub (opens in new tab)</a>
         </div>
     </footer>
     {% block scripts %}{% endblock %}
