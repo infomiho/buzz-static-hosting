@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.6.0...buzz-cli-v0.6.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* harden deploy paths and CLI errors ([21d9e67](https://github.com/infomiho/buzz-static-hosting/commit/21d9e675b8397e57e6f78b47d51dd680e4d206f9))
+
 ## [0.6.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.5.0...buzz-cli-v0.6.0) (2026-03-25)
 
 
