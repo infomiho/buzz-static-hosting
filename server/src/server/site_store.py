@@ -28,6 +28,8 @@ _EOCD_SIGNATURE = b"PK\x05\x06"
 _ZIP64_EOCD_SIGNATURE = b"PK\x06\x06"
 _ZIP64_LOCATOR_SIGNATURE = b"PK\x06\x07"
 _OPERATIONS_DIR = ".operations"
+# Per-process locks: deploy/delete mutual exclusion (and the journal design
+# built on it) assumes a single server process.
 _SITE_LOCKS = tuple(threading.Lock() for _ in range(64))
 logger = logging.getLogger(__name__)
 
@@ -144,7 +146,7 @@ class SiteStore:
                     self._sync_directory(self._sites_dir)
 
                 self._conn.execute("DELETE FROM sites WHERE name = ?", (name,))
-                self._delete_analytics(name)
+                self._delete_related_rows(name)
                 self._conn.commit()
             except Exception:
                 try:
@@ -310,8 +312,8 @@ class SiteStore:
                 f"Site archive contains more than {self._limits.max_entries} {entry_word}"
             )
 
-    @staticmethod
-    def _declared_entry_count(archive: BinaryIO, archive_size: int) -> int:
+    @classmethod
+    def _declared_entry_count(cls, archive: BinaryIO, archive_size: int) -> int:
         tail_size = min(archive_size, 22 + 65_535)
         archive.seek(archive_size - tail_size)
         tail = archive.read(tail_size)
@@ -335,21 +337,31 @@ class SiteStore:
             raise zipfile.BadZipFile("Missing end of central directory")
 
         _, disk_number, central_disk, disk_entries, total_entries, _, _, _ = eocd
-        if total_entries != 0xFFFF:
-            if disk_number != 0 or central_disk != 0 or disk_entries != total_entries:
-                raise zipfile.BadZipFile("Multi-disk ZIP files are not supported")
-            archive.seek(0)
-            return total_entries
+        if total_entries == 0xFFFF:
+            # 0xFFFF is either the ZIP64 sentinel or a real count of exactly
+            # 65535 entries; only a preceding ZIP64 locator disambiguates.
+            zip64_entries = cls._zip64_entry_count(archive, eocd_offset)
+            if zip64_entries is not None:
+                archive.seek(0)
+                return zip64_entries
+        if disk_number != 0 or central_disk != 0 or disk_entries != total_entries:
+            raise zipfile.BadZipFile("Multi-disk ZIP files are not supported")
+        archive.seek(0)
+        return total_entries
 
+    @staticmethod
+    def _zip64_entry_count(archive: BinaryIO, eocd_offset: int) -> int | None:
         locator_offset = eocd_offset - 20
         if locator_offset < 0:
-            raise zipfile.BadZipFile("Missing ZIP64 locator")
+            return None
         archive.seek(locator_offset)
         locator = archive.read(20)
         if len(locator) != 20:
-            raise zipfile.BadZipFile("Incomplete ZIP64 locator")
+            return None
         signature, zip64_disk, zip64_offset, disk_count = struct.unpack("<4sLQL", locator)
-        if signature != _ZIP64_LOCATOR_SIGNATURE or zip64_disk != 0 or disk_count != 1:
+        if signature != _ZIP64_LOCATOR_SIGNATURE:
+            return None
+        if zip64_disk != 0 or disk_count != 1:
             raise zipfile.BadZipFile("Invalid ZIP64 locator")
 
         archive.seek(zip64_offset)
@@ -364,7 +376,6 @@ class SiteStore:
             or fields[6] != fields[7]
         ):
             raise zipfile.BadZipFile("Invalid ZIP64 end of central directory")
-        archive.seek(0)
         return fields[7]
 
     @classmethod
@@ -607,8 +618,14 @@ class SiteStore:
     def _site_lock(name: str) -> threading.Lock:
         return _SITE_LOCKS[hash(name) % len(_SITE_LOCKS)]
 
-    def _delete_analytics(self, name: str) -> None:
-        for table in ("analytics_daily", "analytics_dimensions", "analytics_visitors"):
+    def _delete_related_rows(self, name: str) -> None:
+        tables = (
+            "deployment_tokens",
+            "analytics_daily",
+            "analytics_dimensions",
+            "analytics_visitors",
+        )
+        for table in tables:
             try:
                 self._conn.execute(f"DELETE FROM {table} WHERE site_name = ?", (name,))
             except OperationalError as exc:

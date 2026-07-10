@@ -1,5 +1,6 @@
 import io
 import sqlite3
+import struct
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from server.exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
-from server.site_store import DeploymentLimits, SiteStore, SiteRecord, FileEntry
+from server.site_store import DeploymentLimits, SiteStore
 
 
 def make_db() -> sqlite3.Connection:
@@ -313,6 +314,28 @@ class TestListForOwner:
         assert store.list_for_owner(owner_id=99) == []
 
 
+class TestDeclaredEntryCount:
+    def test_accepts_plain_archive_with_exactly_65535_entries(self):
+        eocd = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, 0xFFFF, 0xFFFF, 0, 0, 0)
+        data = b"\x00" * 40 + eocd
+
+        count = SiteStore._declared_entry_count(io.BytesIO(data), len(data))
+
+        assert count == 0xFFFF
+
+    def test_reads_entry_count_from_zip64_record(self):
+        zip64_eocd = struct.pack(
+            "<4sQ2H2L4Q", b"PK\x06\x06", 44, 45, 45, 0, 0, 70_000, 70_000, 0, 0
+        )
+        locator = struct.pack("<4sLQL", b"PK\x06\x07", 0, 0, 1)
+        eocd = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, 0xFFFF, 0xFFFF, 0, 0, 0)
+        data = zip64_eocd + locator + eocd
+
+        count = SiteStore._declared_entry_count(io.BytesIO(data), len(data))
+
+        assert count == 70_000
+
+
 class TestDelete:
     def test_removes_directory_and_db_row(self, tmp_path):
         conn = make_db()
@@ -338,6 +361,33 @@ class TestDelete:
 
         with pytest.raises(Forbidden, match="don't own"):
             store.delete("owned", owner_id=2)
+
+    def test_purges_deployment_tokens_for_site(self, tmp_path):
+        conn = make_db()
+        conn.execute(
+            "CREATE TABLE deployment_tokens ("
+            "  id TEXT PRIMARY KEY,"
+            "  name TEXT,"
+            "  site_name TEXT,"
+            "  user_id INTEGER"
+            ")"
+        )
+        store = SiteStore(conn, tmp_path)
+        store.deploy("doomed", archive({"index.html": "bye"}), owner_id=1)
+        conn.execute(
+            "INSERT INTO deployment_tokens (id, name, site_name, user_id) "
+            "VALUES ('doomed-token', 'ci', 'doomed', 1)"
+        )
+        conn.execute(
+            "INSERT INTO deployment_tokens (id, name, site_name, user_id) "
+            "VALUES ('other-token', 'ci', 'other-site', 1)"
+        )
+        conn.commit()
+
+        store.delete("doomed", owner_id=1)
+
+        remaining = conn.execute("SELECT id FROM deployment_tokens").fetchall()
+        assert [row["id"] for row in remaining] == ["other-token"]
 
     def test_commit_failure_restores_deleted_site(self, tmp_path):
         conn = make_db()
