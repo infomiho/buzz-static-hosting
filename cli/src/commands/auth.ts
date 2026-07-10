@@ -1,5 +1,12 @@
 import { Command } from "commander";
-import { getOptions, loadConfig, saveConfig, authHeaders, apiRequest, CliError, errorMessage } from "../lib.js";
+import { getOptions, authHeaders, apiRequest, CliError, errorMessage } from "../lib.js";
+import {
+  clearCredential,
+  getCredential,
+  loadConfig,
+  saveConfig,
+  setCredential,
+} from "../credentials.js";
 
 export async function login() {
   const options = getOptions();
@@ -60,7 +67,7 @@ export async function login() {
 
     if (pollData.status === "complete") {
       const config = loadConfig();
-      config.token = pollData.token;
+      setCredential(config, options.server, pollData.token);
       saveConfig(config);
       console.log(`\nLogged in as ${pollData.user.login}`);
       return;
@@ -72,26 +79,41 @@ export async function login() {
 
 export async function logout() {
   const options = getOptions();
+  const config = loadConfig();
+  const token = getCredential(config, options.server);
 
-  if (!options.token) {
-    console.log("Not logged in");
+  if (!token) {
+    console.log(`Not logged in to ${options.server}`);
+    if (options.token) {
+      console.log(
+        "Note: logout only clears credentials stored by 'buzz login'; --token and BUZZ_TOKEN are unaffected"
+      );
+    }
     return;
   }
 
+  let revoked = false;
   try {
-    await fetch(`${options.server}/auth/logout`, {
+    const response = await fetch(`${options.server}/auth/logout`, {
       method: "POST",
-      headers: authHeaders(options.token),
+      headers: authHeaders(token),
     });
+    // 400 means the session is already invalid on the server.
+    revoked = response.ok || response.status === 400;
   } catch {
-    // Ignore errors - we're logging out anyway
+    revoked = false;
   }
 
-  // Clear token from config
-  const config = loadConfig();
-  delete config.token;
+  clearCredential(config, options.server);
   saveConfig(config);
-  console.log("Logged out");
+
+  if (revoked) {
+    console.log("Logged out");
+  } else {
+    console.log(
+      `Logged out locally, but the session on ${options.server} could not be revoked`
+    );
+  }
 }
 
 export async function whoami() {

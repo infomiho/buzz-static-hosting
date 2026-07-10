@@ -1,16 +1,14 @@
 import { program } from "commander";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import cliProgress from "cli-progress";
+import { CliError } from "./errors.js";
+import {
+  DEFAULT_SERVER,
+  getCredential,
+  loadConfig,
+  normalizeServerUrl,
+} from "./credentials.js";
 
-export const CONFIG_PATH = join(homedir(), ".buzz.config.json");
-export const DEFAULT_SERVER = "http://localhost:8080";
-
-export interface Config {
-  server?: string;
-  token?: string;
-}
+export { CliError } from "./errors.js";
 
 export interface Site {
   name: string;
@@ -32,27 +30,15 @@ export interface DeploymentToken {
   last_used_at: string | null;
 }
 
-export function loadConfig(): Config {
-  if (existsSync(CONFIG_PATH)) {
-    try {
-      return JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-export function saveConfig(config: Config): void {
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
-}
-
 export function getOptions(): Options {
   const config = loadConfig();
   const opts = program.opts();
+  const server = normalizeServerUrl(
+    opts.server || process.env.BUZZ_SERVER || config.server || DEFAULT_SERVER
+  );
   return {
-    server: opts.server || process.env.BUZZ_SERVER || config.server || DEFAULT_SERVER,
-    token: opts.token || process.env.BUZZ_TOKEN || config.token,
+    server,
+    token: opts.token || process.env.BUZZ_TOKEN || getCredential(config, server),
   };
 }
 
@@ -67,13 +53,6 @@ export function authHeaders(token?: string): Record<string, string> {
     return { Authorization: `Bearer ${token}` };
   }
   return {};
-}
-
-export class CliError extends Error {
-  constructor(message: string, public tip?: string) {
-    super(message);
-    this.name = "CliError";
-  }
 }
 
 export function handleError(error: unknown): void {

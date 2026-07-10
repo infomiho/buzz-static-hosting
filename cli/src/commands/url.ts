@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig, DEFAULT_SERVER, CliError } from "../lib.js";
+import { CliError } from "../lib.js";
+import { DEFAULT_SERVER, loadConfig } from "../credentials.js";
 
 export function url() {
   const cnamePath = join(process.cwd(), "CNAME");

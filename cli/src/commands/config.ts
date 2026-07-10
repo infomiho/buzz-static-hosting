@@ -1,12 +1,15 @@
 import { Command } from "commander";
-import { loadConfig, saveConfig, CONFIG_PATH, CliError } from "../lib.js";
+import { CliError } from "../lib.js";
+import { CONFIG_PATH, loadConfig, normalizeServerUrl, saveConfig } from "../credentials.js";
 
 export function configCommand(key?: string, value?: string) {
   const config = loadConfig();
 
   if (!key) {
     // Show current config
-    if (Object.keys(config).length === 0) {
+    const credentials = config.credentials ?? {};
+    const servers = Object.keys(credentials);
+    if (!config.server && servers.length === 0) {
       console.log("No configuration set");
       console.log(`\nConfig file: ${CONFIG_PATH}`);
       console.log("\nUsage:");
@@ -14,16 +17,27 @@ export function configCommand(key?: string, value?: string) {
       return;
     }
     console.log("Current configuration:");
-    if (config.server) console.log(`  server: ${config.server}`);
-    if (config.token) console.log(`  token: ${config.token.slice(0, 16)}...`);
+    if (config.server) {
+      let server = config.server;
+      try {
+        server = normalizeServerUrl(server);
+      } catch {
+        // show the raw value so the user can spot and fix it
+      }
+      console.log(`  server: ${server}`);
+    }
+    for (const server of servers) {
+      console.log(`  token (${server}): ${credentials[server].slice(0, 16)}...`);
+    }
     console.log(`\nConfig file: ${CONFIG_PATH}`);
     return;
   }
 
   if (key === "server" && value) {
-    config.server = value;
+    const server = normalizeServerUrl(value);
+    config.server = server;
     saveConfig(config);
-    console.log(`Server set to ${value}`);
+    console.log(`Server set to ${server}`);
   } else {
     throw new CliError(
       "Invalid config command",
