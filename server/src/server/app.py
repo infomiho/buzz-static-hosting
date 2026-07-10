@@ -62,6 +62,8 @@ class DeploymentBodyLimitMiddleware:
         try:
             await self._app(scope, receive_with_limit, send)
         except PayloadTooLarge:
+            # The deploy handler reads the full body before responding, so no
+            # response bytes have gone out when the limit trips here.
             await self._reject(scope, receive, send)
 
     @staticmethod

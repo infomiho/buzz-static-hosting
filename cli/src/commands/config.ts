@@ -6,7 +6,6 @@ export function configCommand(key?: string, value?: string) {
   const config = loadConfig();
 
   if (!key) {
-    // Show current config
     const credentials = config.credentials ?? {};
     const servers = Object.keys(credentials);
     if (!config.server && servers.length === 0) {

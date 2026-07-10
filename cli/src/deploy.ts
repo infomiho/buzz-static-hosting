@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CliError, authHeaders, createZipBuffer, errorMessage } from "./lib.js";
 
-export interface UploadResult {
+interface UploadResult {
   url: string;
   subdomain: string;
 }

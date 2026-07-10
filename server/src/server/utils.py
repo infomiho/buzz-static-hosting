@@ -21,6 +21,8 @@ def _hostname(host: str | None) -> str:
         parsed = urlsplit(f"//{host.strip()}")
         if parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
             return ""
+        # urlsplit validates the port lazily; accessing it raises ValueError
+        # on a malformed port, rejecting the host below.
         parsed.port
     except ValueError:
         return ""

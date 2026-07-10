@@ -16,7 +16,7 @@ export interface Site {
   size_bytes: number;
 }
 
-export interface Options {
+interface Options {
   server: string;
   token?: string;
 }
@@ -124,7 +124,7 @@ export async function apiRequest(
   return response;
 }
 
-export interface ProgressCallbacks {
+interface ProgressCallbacks {
   onProgress?: (processed: number, total: number) => void;
 }
 
@@ -157,7 +157,7 @@ export async function createZipBuffer(
   });
 }
 
-export function isCI(): boolean {
+function isCI(): boolean {
   return !process.stdout.isTTY || !!process.env.CI;
 }
 

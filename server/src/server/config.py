@@ -28,7 +28,6 @@ GSC_PROPERTY = os.environ.get("BUZZ_GSC_PROPERTY")
 
 # Runtime flags (set via command line args)
 DEV_MODE = False
-JSON_LOGS = False
 
 # Random subdomain generation
 ADJECTIVES = ["cool", "fast", "blue", "red", "green", "happy", "swift", "bright", "calm", "bold"]
