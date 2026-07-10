@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.6.1...buzz-cli-v0.7.0) (2026-07-10)
+
+
+### Features
+
+* scope CLI credentials to server identity ([375785b](https://github.com/infomiho/buzz-static-hosting/commit/375785bc633506e7e325bd3414c2ac3423fecc17))
+
 ## [0.6.1](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.6.0...buzz-cli-v0.6.1) (2026-07-06)
 
 
