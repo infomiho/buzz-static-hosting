@@ -1,24 +1,87 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .analytics import AnalyticsRecorder, build_analytics_event
 from .auth_service import AuthService, Identity
-from .config import DOMAIN, GITHUB_CLIENT_ID, SITES_DIR, CONTENT_TYPES
+from .config import CONTENT_TYPES, DOMAIN, GITHUB_CLIENT_ID, MAX_ARCHIVE_BYTES, SITES_DIR
+from .cookies import COOKIE_NAME
 from .site_path import InvalidSubdomain, resolve_site_file
 from .db import db
 from .dependencies import get_identity
-from .exceptions import BadRequest, Forbidden, NotFound
+from .exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
 from .github import HttpGitHubClient
 from .routes import auth, dashboard, sites, tokens
 from .search_console import create_search_console_client
-from .utils import extract_subdomain
+from .utils import extract_subdomain, is_control_host
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+MAX_DEPLOY_BODY_BYTES = MAX_ARCHIVE_BYTES + 1024 * 1024
+
+
+class DeploymentBodyLimitMiddleware:
+    def __init__(self, app: ASGIApp, max_body_bytes: int):
+        self._app = app
+        self._max_body_bytes = max_body_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["path"] != "/deploy":
+            await self._app(scope, receive, send)
+            return
+
+        headers = dict(scope["headers"])
+        content_length = headers.get(b"content-length")
+        try:
+            body_too_large = bool(
+                content_length and int(content_length) > self._max_body_bytes
+            )
+        except ValueError:
+            body_too_large = True
+        if body_too_large:
+            await self._reject(scope, receive, send)
+            return
+
+        received_bytes = 0
+
+        async def receive_with_limit() -> Message:
+            nonlocal received_bytes
+            message = await receive()
+            received_bytes += len(message.get("body", b""))
+            if received_bytes > self._max_body_bytes:
+                raise PayloadTooLarge(
+                    "Request body exceeds the configured deployment limit"
+                )
+            return message
+
+        try:
+            await self._app(scope, receive_with_limit, send)
+        except PayloadTooLarge:
+            await self._reject(scope, receive, send)
+
+    @staticmethod
+    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+        response = JSONResponse(
+            status_code=413,
+            content={"detail": "Request body exceeds the configured deployment limit"},
+        )
+        await response(scope, receive, send)
+
+
+def origin_matches_host(origin: str, host: str, scheme: str) -> bool:
+    try:
+        parsed_origin = urlsplit(origin)
+    except ValueError:
+        return False
+    return (
+        parsed_origin.scheme == scheme
+        and parsed_origin.netloc.lower() == host.lower()
+    )
 
 
 def create_app() -> FastAPI:
@@ -54,6 +117,54 @@ def create_app() -> FastAPI:
     async def not_found_handler(request: Request, exc: NotFound):
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
+    @app.exception_handler(PayloadTooLarge)
+    async def payload_too_large_handler(request: Request, exc: PayloadTooLarge):
+        return JSONResponse(status_code=413, content={"detail": str(exc)})
+
+    app.add_middleware(
+        DeploymentBodyLimitMiddleware,
+        max_body_bytes=MAX_DEPLOY_BODY_BYTES,
+    )
+
+    @app.middleware("http")
+    async def dispatch_by_host(request: Request, call_next):
+        host = request.headers.get("host")
+        subdomain = extract_subdomain(host)
+        if subdomain:
+            if request.method not in {"GET", "HEAD"}:
+                return Response(
+                    content="Method Not Allowed",
+                    status_code=405,
+                    headers={"Allow": "GET, HEAD"},
+                    media_type="text/plain",
+                )
+            return await serve_static(request, subdomain, request.url.path)
+
+        if not is_control_host(host):
+            return Response(
+                content="Misdirected Request",
+                status_code=421,
+                media_type="text/plain",
+            )
+
+        request_origin = request.headers.get("origin") or request.headers.get("referer")
+        control_scheme = "https" if DOMAIN else request.url.scheme
+        if (
+            request.method not in {"GET", "HEAD", "OPTIONS"}
+            and request.cookies.get(COOKIE_NAME)
+            and not (
+                request_origin
+                and origin_matches_host(request_origin, host or "", control_scheme)
+            )
+        ):
+            return Response(
+                content="Cross-origin request blocked",
+                status_code=403,
+                media_type="text/plain",
+            )
+
+        return await call_next(request)
+
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -67,10 +178,6 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def landing(request: Request, identity: Identity | None = Depends(get_identity)):
-        subdomain = extract_subdomain(request.headers.get("host", ""))
-        if subdomain:
-            return await serve_static(request, subdomain, "/")
-
         domain = DOMAIN or "localhost:8080"
 
         if identity:
@@ -85,9 +192,6 @@ def create_app() -> FastAPI:
 
     @app.get("/{path:path}")
     async def catch_all(request: Request, path: str):
-        subdomain = extract_subdomain(request.headers.get("host", ""))
-        if subdomain:
-            return await serve_static(request, subdomain, f"/{path}")
         return Response(content="404 Not Found", status_code=404, media_type="text/plain")
 
     return app
@@ -107,9 +211,8 @@ async def serve_static(request: Request, subdomain: str, path: str) -> Response:
     site_dir = (SITES_DIR / subdomain).resolve()
     custom_404 = site_dir / "404.html"
     if site_dir.is_dir() and custom_404.is_file():
-        content = custom_404.read_bytes()
-        record_analytics(request, subdomain, path, 404, len(content), "text/html")
-        return Response(content=content, status_code=404, media_type="text/html")
+        record_analytics(request, subdomain, path, 404, custom_404.stat().st_size, "text/html")
+        return FileResponse(custom_404, status_code=404, media_type="text/html")
 
     content = b"404 Not Found"
     record_analytics(request, subdomain, path, 404, len(content), "text/plain")

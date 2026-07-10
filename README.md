@@ -90,6 +90,13 @@ ACME_EMAIL=your-email@example.com
 - `CF_API_TOKEN` - Cloudflare API token from step 2
 - `ACME_EMAIL` - email for Let's Encrypt certificate notifications
 
+Optional deployment limits:
+
+- `BUZZ_MAX_ARCHIVE_BYTES` - maximum compressed ZIP size (default 500 MB)
+- `BUZZ_MAX_SITE_BYTES` - maximum extracted site size (default 500 MB)
+- `BUZZ_MAX_SITE_FILES` - maximum files and directories per site (default 10,000)
+- `BUZZ_MAX_ARCHIVE_PATH_BYTES` - maximum ZIP entry path length (default 1,024 bytes)
+
 Start the server:
 
 ```bash

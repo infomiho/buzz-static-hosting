@@ -7,7 +7,8 @@ import uvicorn
 
 from . import config
 from .config import SITES_DIR, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
-from .db import init_db
+from .db import db, init_db
+from .site_store import SiteStore
 
 
 def main() -> None:
@@ -26,6 +27,8 @@ def main() -> None:
 
     SITES_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
+    with db() as conn:
+        SiteStore(conn, SITES_DIR).reconcile()
 
     print(f"Server running on http://localhost:{args.port}")
     if config.DOMAIN:

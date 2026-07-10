@@ -192,7 +192,11 @@ class TestLogout:
     def test_logout_clears_cookie_and_redirects(self, client, user_and_token):
         _, token = user_and_token
         client.cookies.set(COOKIE_NAME, token)
-        res = client.post("/dashboard/logout", follow_redirects=False)
+        res = client.post(
+            "/dashboard/logout",
+            headers={"origin": "http://testserver"},
+            follow_redirects=False,
+        )
         assert res.status_code == 303
         assert res.headers["location"] == "/"
         assert COOKIE_NAME in res.headers.get("set-cookie", "")

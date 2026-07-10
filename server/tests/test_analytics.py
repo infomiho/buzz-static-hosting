@@ -296,6 +296,7 @@ class TestAnalyticsIntegration:
             is_not_found=False,
             visitor_hash="visitor",
         ))
+        conn.commit()
 
         SiteStore(conn, tmp_path).delete("my-site", 1)
 

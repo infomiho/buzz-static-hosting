@@ -1,14 +1,16 @@
-from typing import Annotated
+from typing import Annotated, BinaryIO
 
-from fastapi import APIRouter, Depends, File, Header, Request, UploadFile, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
 
 from ..analytics import AnalyticsStore
-from ..config import DOMAIN, SITES_DIR
+from ..config import DOMAIN, MAX_ARCHIVE_BYTES, SITES_DIR
 from ..db import db
 from ..dependencies import Identity, require_user, require_identity
-from ..exceptions import BadRequest, Forbidden
+from ..exceptions import BadRequest, Forbidden, PayloadTooLarge
 from ..site_path import InvalidSubdomain, validated_subdomain
-from ..site_store import SiteStore
+from ..site_store import SiteRecord, SiteStore
 from ..utils import generate_subdomain
 
 router = APIRouter()
@@ -27,10 +29,19 @@ def build_site_url(subdomain: str, domain: str | None, fallback_port: int) -> st
     return f"http://{subdomain}.localhost:{fallback_port}"
 
 
+def _deploy_site(subdomain: str, archive: BinaryIO, owner_id: int) -> SiteRecord:
+    with db() as conn:
+        return SiteStore(conn, SITES_DIR).deploy(subdomain, archive, owner_id)
+
+
+def _delete_site(name: str, owner_id: int) -> None:
+    with db() as conn:
+        SiteStore(conn, SITES_DIR).delete(name, owner_id)
+
+
 @router.post("/deploy")
 async def deploy(
     request: Request,
-    file: UploadFile = File(...),
     identity: Identity = Depends(require_identity),
     x_subdomain: str | None = Header(default=None),
 ):
@@ -40,9 +51,17 @@ async def deploy(
             f"Deploy token is scoped to site '{identity.site_name}', cannot deploy to '{subdomain}'"
         )
 
-    with db() as conn:
-        store = SiteStore(conn, SITES_DIR)
-        record = store.deploy(subdomain, await file.read(), identity.user.id)
+    async with request.form(max_files=1, max_fields=1) as form:
+        file = form.get("file")
+        if not isinstance(file, UploadFile):
+            raise BadRequest("Missing ZIP file")
+        if file.size is not None and file.size > MAX_ARCHIVE_BYTES:
+            raise PayloadTooLarge(
+                f"ZIP exceeds the {MAX_ARCHIVE_BYTES}-byte compressed upload limit"
+            )
+
+        await file.seek(0)
+        record = await run_in_threadpool(_deploy_site, subdomain, file.file, identity.user.id)
 
     return {"url": build_site_url(record.name, DOMAIN, request.url.port or 8080)}
 
@@ -66,6 +85,5 @@ async def list_sites(identity: Annotated[Identity, Depends(require_user)]):
 
 @router.delete("/sites/{name}")
 async def delete_site(name: str, identity: Annotated[Identity, Depends(require_user)]):
-    with db() as conn:
-        SiteStore(conn, SITES_DIR).delete(name, identity.user.id)
+    await run_in_threadpool(_delete_site, name, identity.user.id)
     return Response(status_code=204)

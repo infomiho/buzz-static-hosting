@@ -15,6 +15,12 @@ GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
 ANALYTICS_SECRET = os.environ.get("BUZZ_ANALYTICS_SECRET")
 
+# Deployment limits
+MAX_ARCHIVE_BYTES = int(os.environ.get("BUZZ_MAX_ARCHIVE_BYTES", 500 * 1024 * 1024))
+MAX_SITE_BYTES = int(os.environ.get("BUZZ_MAX_SITE_BYTES", 500 * 1024 * 1024))
+MAX_SITE_FILES = int(os.environ.get("BUZZ_MAX_SITE_FILES", 10_000))
+MAX_ARCHIVE_PATH_BYTES = int(os.environ.get("BUZZ_MAX_ARCHIVE_PATH_BYTES", 1024))
+
 # Google Search Console (optional): service account key JSON or path to it,
 # and the property to query (defaults to sc-domain:<BUZZ_DOMAIN>)
 GSC_CREDENTIALS = os.environ.get("BUZZ_GSC_CREDENTIALS")
