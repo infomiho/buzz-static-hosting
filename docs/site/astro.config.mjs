@@ -13,10 +13,6 @@ export default defineConfig({
 			title: 'Buzz',
 			description: 'Deploy and operate self-hosted static sites with Buzz.',
 			favicon: '/favicon.svg',
-			expressiveCode: {
-				themes: ['github-light'],
-				useStarlightDarkModeSwitch: false,
-			},
 			social: [
 				{
 					icon: 'github',
