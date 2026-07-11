@@ -1,0 +1,159 @@
+:root,
+:root[data-theme='light'] {
+	color-scheme: light;
+	--sl-font: Arial, ui-sans-serif, system-ui, sans-serif;
+	--sl-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+	--sl-color-white: #0b0c0c;
+	--sl-color-gray-1: #0b0c0c;
+	--sl-color-gray-2: #323637;
+	--sl-color-gray-3: #505a5f;
+	--sl-color-gray-4: #6f777b;
+	--sl-color-gray-5: #b1b4b6;
+	--sl-color-gray-6: #f3f2f1;
+	--sl-color-gray-7: #ffffff;
+	--sl-color-black: #ffffff;
+	--sl-color-accent-low: #d2e2f1;
+	--sl-color-accent: #1d70b8;
+	--sl-color-accent-high: #003078;
+	--sl-color-text: #0b0c0c;
+	--sl-color-text-accent: #1d70b8;
+	--sl-color-text-invert: #ffffff;
+	--sl-color-bg: #ffffff;
+	--sl-color-bg-nav: #0b0c0c;
+	--sl-color-bg-sidebar: #f3f2f1;
+	--sl-color-bg-inline-code: #f3f2f1;
+	--sl-color-bg-accent: #0b0c0c;
+	--sl-color-hairline-light: #b1b4b6;
+	--sl-color-hairline: #505a5f;
+	--sl-color-hairline-shade: #0b0c0c;
+}
+
+html {
+	font-size: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+	scrollbar-gutter: stable;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+	border-radius: 0 !important;
+}
+
+a {
+	text-decoration-thickness: 2px;
+	text-underline-offset: 0.18em;
+}
+
+:where(a, button, input, select, textarea, summary):focus-visible {
+	outline: 4px solid #0b0c0c;
+	outline-offset: 3px;
+	box-shadow: 0 0 0 7px #ffdd00;
+}
+
+header.header {
+	background: #0b0c0c;
+	border-block-end: 4px solid #0b0c0c;
+	color: #ffffff;
+}
+
+header.header :is(.site-title, a, button) {
+	color: #ffffff;
+}
+
+header.header site-search > button {
+	border: 2px solid #ffffff;
+	background: #0b0c0c;
+}
+
+header.header site-search kbd {
+	border-color: #ffffff;
+	background: #0b0c0c;
+	color: #ffffff;
+}
+
+.sidebar-pane {
+	border-inline-end: 2px solid #0b0c0c;
+}
+
+.sidebar-content a[aria-current='page'] {
+	background: #0b0c0c;
+	color: #ffffff;
+}
+
+.site-title {
+	font-size: 1.5rem;
+	font-weight: 700;
+	letter-spacing: -0.025em;
+}
+
+.sl-markdown-content :is(h1, h2, h3, h4) {
+	font-weight: 700;
+	letter-spacing: -0.035em;
+}
+
+.sl-markdown-content code:not(:where(.expressive-code *)) {
+	border: 1px solid currentColor;
+	padding: 0.05em 0.25em;
+}
+
+.sl-markdown-content table {
+	border-block: 2px solid #0b0c0c;
+}
+
+.sl-markdown-content th {
+	color: #0b0c0c;
+	font-weight: 700;
+}
+
+.sl-markdown-content tr + tr {
+	border-block-start: 1px solid #b1b4b6;
+}
+
+.hero {
+	border-block-end: 4px solid #0b0c0c;
+}
+
+.hero h1 {
+	max-width: 16ch;
+	font-weight: 700;
+	letter-spacing: -0.04em;
+}
+
+.hero .tagline {
+	max-width: 42ch;
+}
+
+.hero a.primary {
+	border: 2px solid #0b0c0c;
+	background: #0b0c0c;
+	color: #ffffff;
+	font-weight: 700;
+}
+
+.hero a.primary:hover {
+	background: #ffffff;
+	color: #0b0c0c;
+}
+
+.hero a.minimal {
+	font-weight: 700;
+	text-decoration: underline;
+}
+
+.pagination-links a {
+	border: 2px solid #0b0c0c;
+	box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+}

@@ -11,14 +11,14 @@ buzz/
 │   │   ├── main.py          # Entry point
 │   │   ├── app.py           # FastAPI app
 │   │   ├── routes/          # API + dashboard routes
-│   │   ├── templates/       # Jinja2 templates (Basecoat UI)
+│   │   ├── templates/       # Jinja2 templates using the Achroma visual system
 │   │   ├── static/          # Built CSS + JS assets
 │   │   ├── config.py
 │   │   ├── db.py
 │   │   ├── cookies.py       # Session cookie helpers
 │   │   └── dependencies.py  # Auth dependencies
 │   ├── pyproject.toml
-│   ├── package.json         # Tailwind CSS + Basecoat build
+│   ├── package.json         # Tailwind CSS build
 │   ├── Dockerfile
 │   └── docker-compose.yml
 └── cli/                     # TypeScript CLI

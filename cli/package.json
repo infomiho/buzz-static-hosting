@@ -28,6 +28,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
     "@types/archiver": "^7.0.0",
     "@types/cli-progress": "^3.11.6",

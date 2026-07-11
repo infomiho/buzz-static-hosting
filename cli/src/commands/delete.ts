@@ -1,6 +1,6 @@
 import { createInterface } from "readline";
 import { Command } from "commander";
-import { apiRequest, CliError, errorMessage } from "../lib.js";
+import { apiRequest, CliError, errorMessage, type CliOptions } from "../lib.js";
 
 function confirm(message: string): Promise<boolean> {
   const rl = createInterface({
@@ -18,7 +18,8 @@ function confirm(message: string): Promise<boolean> {
 
 export async function deleteSite(
   subdomain: string,
-  options: { yes?: boolean }
+  options: { yes?: boolean },
+  cliOptions: CliOptions = {}
 ) {
   if (!options.yes) {
     const confirmed = await confirm(`Delete site '${subdomain}'?`);
@@ -28,7 +29,11 @@ export async function deleteSite(
     }
   }
 
-  const response = await apiRequest(`/sites/${subdomain}`, { method: "DELETE" });
+  const response = await apiRequest(
+    `/sites/${subdomain}`,
+    { method: "DELETE" },
+    { cliOptions }
+  );
 
   if (response.status === 204) {
     console.log(`Deleted ${subdomain}`);
@@ -47,5 +52,7 @@ export function registerDeleteCommand(program: Command) {
     .command("delete <subdomain>")
     .description("Delete a deployed site")
     .option("-y, --yes", "Skip confirmation prompt")
-    .action(deleteSite);
+    .action((subdomain: string, options: { yes?: boolean }) =>
+      deleteSite(subdomain, options, program.opts())
+    );
 }

@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import os
-
 import uvicorn
 
 from . import config
 from .config import SITES_DIR, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
 from .db import db, init_db
+from .environment import environment_value
 from .site_store import SiteStore
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Static site hosting server")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("BUZZ_PORT", 8080)))
+    parser.add_argument("--port", type=int, default=environment_value("BUZZ_PORT"))
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--domain", help="Domain for hosted sites (env: BUZZ_DOMAIN)")
     parser.add_argument("--dev", action="store_true", help="Bypass authentication")

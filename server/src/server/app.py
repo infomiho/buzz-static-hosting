@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .analytics import AnalyticsRecorder, build_analytics_event
+from .api_models import HealthResponse
 from .auth_service import AuthService, Identity
 from .config import CONTENT_TYPES, DOMAIN, GITHUB_CLIENT_ID, MAX_ARCHIVE_BYTES, SITES_DIR
 from .cookies import COOKIE_NAME
@@ -97,8 +98,23 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Buzz",
-        description="Self-hosted static site hosting",
+        description=(
+            "HTTP API for deploying and managing sites on a self-hosted Buzz server. "
+            "API operations are available only on the configured Buzz domain."
+        ),
         version="0.1.0",
+        openapi_tags=[
+            {
+                "name": "Authentication",
+                "description": "GitHub device authorization and sessions.",
+            },
+            {"name": "Sites", "description": "Site deployment and ownership."},
+            {
+                "name": "Deployment Tokens",
+                "description": "Site-scoped credentials for automated deployment.",
+            },
+            {"name": "System", "description": "Server health."},
+        ],
         lifespan=lifespan,
     )
     github_client = HttpGitHubClient()
@@ -169,16 +185,22 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
-    app.include_router(auth.router, prefix="/auth", tags=["auth"])
-    app.include_router(dashboard.router, tags=["dashboard"])
-    app.include_router(sites.router, tags=["sites"])
-    app.include_router(tokens.router, prefix="/tokens", tags=["tokens"])
+    app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+    app.include_router(dashboard.router)
+    app.include_router(sites.router, tags=["Sites"])
+    app.include_router(tokens.router, prefix="/tokens", tags=["Deployment Tokens"])
 
-    @app.get("/health")
+    @app.get(
+        "/health",
+        response_model=HealthResponse,
+        operation_id="getHealth",
+        summary="Check server health",
+        tags=["System"],
+    )
     async def health():
         return {"status": "ok"}
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing(request: Request, identity: Identity | None = Depends(get_identity)):
         domain = DOMAIN or "localhost:8080"
 
@@ -192,7 +214,7 @@ def create_app() -> FastAPI:
             "domain": domain,
         })
 
-    @app.get("/{path:path}")
+    @app.get("/{path:path}", include_in_schema=False)
     async def catch_all(request: Request, path: str):
         return Response(content="404 Not Found", status_code=404, media_type="text/plain")
 

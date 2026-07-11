@@ -7,11 +7,16 @@ import {
   createSpinner,
   formatSize,
   CliError,
+  type CliOptions,
 } from "../lib.js";
 import { resolveSubdomain, packSite, uploadSite } from "../deploy.js";
 
-export async function deploy(directory: string, subdomain: string | undefined) {
-  const options = getOptions();
+export async function deploy(
+  directory: string,
+  subdomain: string | undefined,
+  cliOptions: CliOptions = {}
+) {
+  const options = getOptions(cliOptions);
 
   if (!options.token) {
     throw new CliError("Not authenticated", "Run 'buzz login' first");
@@ -59,8 +64,8 @@ export function registerDeployCommand(program: Command) {
   program
     .command("deploy <directory>")
     .description("Deploy a directory to the server")
-    .option("--subdomain <name>", "Subdomain for the site")
+    .option("--subdomain <name>", "Site name to use as the subdomain")
     .action((directory: string, cmdOptions: { subdomain?: string }) =>
-      deploy(directory, cmdOptions.subdomain)
+      deploy(directory, cmdOptions.subdomain, program.opts())
     );
 }

@@ -1,30 +1,31 @@
 """Configuration and constants."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
+from .environment import environment_value
+
 # Directory configuration
-DATA_DIR = Path(os.environ.get("BUZZ_DATA_DIR", Path(__file__).parent.resolve()))
+DATA_DIR = Path(environment_value("BUZZ_DATA_DIR"))
 SITES_DIR = DATA_DIR / "sites"
 DB_PATH = DATA_DIR / "data.db"
 
 # Server configuration
-DOMAIN = os.environ.get("BUZZ_DOMAIN")
-GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
-GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
-ANALYTICS_SECRET = os.environ.get("BUZZ_ANALYTICS_SECRET")
+DOMAIN = environment_value("BUZZ_DOMAIN")
+GITHUB_CLIENT_ID = environment_value("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = environment_value("GITHUB_CLIENT_SECRET")
+ANALYTICS_SECRET = environment_value("BUZZ_ANALYTICS_SECRET")
 
 # Deployment limits
-MAX_ARCHIVE_BYTES = int(os.environ.get("BUZZ_MAX_ARCHIVE_BYTES", 500 * 1024 * 1024))
-MAX_SITE_BYTES = int(os.environ.get("BUZZ_MAX_SITE_BYTES", 500 * 1024 * 1024))
-MAX_SITE_FILES = int(os.environ.get("BUZZ_MAX_SITE_FILES", 10_000))
-MAX_ARCHIVE_PATH_BYTES = int(os.environ.get("BUZZ_MAX_ARCHIVE_PATH_BYTES", 1024))
+MAX_ARCHIVE_BYTES = environment_value("BUZZ_MAX_ARCHIVE_BYTES")
+MAX_SITE_BYTES = environment_value("BUZZ_MAX_SITE_BYTES")
+MAX_SITE_FILES = environment_value("BUZZ_MAX_SITE_FILES")
+MAX_ARCHIVE_PATH_BYTES = environment_value("BUZZ_MAX_ARCHIVE_PATH_BYTES")
 
 # Google Search Console (optional): service account key JSON or path to it,
 # and the property to query (defaults to sc-domain:<BUZZ_DOMAIN>)
-GSC_CREDENTIALS = os.environ.get("BUZZ_GSC_CREDENTIALS")
-GSC_PROPERTY = os.environ.get("BUZZ_GSC_PROPERTY")
+GSC_CREDENTIALS = environment_value("BUZZ_GSC_CREDENTIALS")
+GSC_PROPERTY = environment_value("BUZZ_GSC_PROPERTY")
 
 # Runtime flags (set via command line args)
 DEV_MODE = False

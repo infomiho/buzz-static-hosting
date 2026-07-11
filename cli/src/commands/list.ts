@@ -1,8 +1,8 @@
 import { Command } from "commander";
-import { apiRequest, formatSize, Site } from "../lib.js";
+import { apiRequest, formatSize, Site, type CliOptions } from "../lib.js";
 
-export async function list() {
-  const response = await apiRequest("/sites");
+export async function list(cliOptions: CliOptions = {}) {
+  const response = await apiRequest("/sites", {}, { cliOptions });
   const sites: Site[] = await response.json();
 
   if (sites.length === 0) {
@@ -24,6 +24,6 @@ export async function list() {
 export function registerListCommand(program: Command) {
   program
     .command("list")
-    .description("List all deployed sites")
-    .action(list);
+    .description("List sites owned by the signed-in user")
+    .action(() => list(program.opts()));
 }

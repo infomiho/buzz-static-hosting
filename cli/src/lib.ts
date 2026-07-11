@@ -1,4 +1,3 @@
-import { program } from "commander";
 import cliProgress from "cli-progress";
 import { CliError } from "./errors.js";
 import {
@@ -21,6 +20,11 @@ interface Options {
   token?: string;
 }
 
+export interface CliOptions {
+  server?: string;
+  token?: string;
+}
+
 export interface DeploymentToken {
   id: string;
   name: string;
@@ -30,15 +34,15 @@ export interface DeploymentToken {
   last_used_at: string | null;
 }
 
-export function getOptions(): Options {
+export function getOptions(cliOptions: CliOptions = {}): Options {
   const config = loadConfig();
-  const opts = program.opts();
   const server = normalizeServerUrl(
-    opts.server || process.env.BUZZ_SERVER || config.server || DEFAULT_SERVER
+    cliOptions.server || process.env.BUZZ_SERVER || config.server || DEFAULT_SERVER
   );
   return {
     server,
-    token: opts.token || process.env.BUZZ_TOKEN || getCredential(config, server),
+    token:
+      cliOptions.token || process.env.BUZZ_TOKEN || getCredential(config, server),
   };
 }
 
@@ -90,9 +94,12 @@ export async function errorMessage(response: Response, fallback: string): Promis
 export async function apiRequest(
   path: string,
   options: RequestInit = {},
-  { requireAuth = true }: { requireAuth?: boolean } = {}
+  {
+    requireAuth = true,
+    cliOptions = {},
+  }: { requireAuth?: boolean; cliOptions?: CliOptions } = {}
 ): Promise<Response> {
-  const opts = getOptions();
+  const opts = getOptions(cliOptions);
 
   if (requireAuth && !opts.token) {
     throw new CliError("Not authenticated", "Run 'buzz login' first");

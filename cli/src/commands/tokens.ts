@@ -1,8 +1,14 @@
 import { Command } from "commander";
-import { apiRequest, CliError, DeploymentToken, errorMessage } from "../lib.js";
+import {
+  apiRequest,
+  CliError,
+  DeploymentToken,
+  errorMessage,
+  type CliOptions,
+} from "../lib.js";
 
-export async function listTokens() {
-  const response = await apiRequest("/tokens");
+export async function listTokens(cliOptions: CliOptions = {}) {
+  const response = await apiRequest("/tokens", {}, { cliOptions });
   const tokens: DeploymentToken[] = await response.json();
 
   if (tokens.length === 0) {
@@ -23,15 +29,23 @@ export async function listTokens() {
   }
 }
 
-export async function createToken(siteName: string, cmdOptions: { name?: string }) {
-  const response = await apiRequest("/tokens", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      site_name: siteName,
-      name: cmdOptions.name || "Deployment token",
-    }),
-  });
+export async function createToken(
+  siteName: string,
+  cmdOptions: { name?: string },
+  cliOptions: CliOptions = {}
+) {
+  const response = await apiRequest(
+    "/tokens",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        site_name: siteName,
+        name: cmdOptions.name || "Deployment token",
+      }),
+    },
+    { cliOptions }
+  );
 
   if (response.status === 404) {
     throw new CliError(`Site '${siteName}' not found`);
@@ -48,8 +62,15 @@ export async function createToken(siteName: string, cmdOptions: { name?: string 
   console.log("\nUse in CI by setting BUZZ_TOKEN environment variable.");
 }
 
-export async function deleteToken(tokenId: string) {
-  const response = await apiRequest(`/tokens/${tokenId}`, { method: "DELETE" });
+export async function deleteToken(
+  tokenId: string,
+  cliOptions: CliOptions = {}
+) {
+  const response = await apiRequest(
+    `/tokens/${tokenId}`,
+    { method: "DELETE" },
+    { cliOptions }
+  );
 
   if (response.status === 204) {
     console.log("Token deleted");
@@ -71,16 +92,18 @@ export function registerTokensCommand(program: Command) {
   tokensCmd
     .command("list")
     .description("List your deployment tokens")
-    .action(listTokens);
+    .action(() => listTokens(program.opts()));
 
   tokensCmd
     .command("create <site>")
     .description("Create a deployment token for a site")
     .option("-n, --name <name>", "Token name (for identification)")
-    .action(createToken);
+    .action((site: string, options: { name?: string }) =>
+      createToken(site, options, program.opts())
+    );
 
   tokensCmd
     .command("delete <token-id>")
     .description("Delete a deployment token")
-    .action(deleteToken);
+    .action((tokenId: string) => deleteToken(tokenId, program.opts()));
 }

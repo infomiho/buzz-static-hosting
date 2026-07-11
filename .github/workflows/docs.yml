@@ -1,0 +1,96 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/docs.yml"
+      - "cli/**"
+      - "docs/**"
+      - "server/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/docs.yml"
+      - "cli/**"
+      - "docs/**"
+      - "server/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            cli/package-lock.json
+            docs/site/package-lock.json
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+
+      - name: Verify CLI
+        working-directory: cli
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Verify server
+        working-directory: server
+        run: |
+          uv sync --frozen
+          uv run pytest tests/ -q
+
+      - name: Build documentation
+        working-directory: docs/site
+        run: |
+          npm ci
+          npm audit --omit=dev
+          npm run check
+          npm run build
+
+      - name: Check generated reference
+        run: |
+          git diff --exit-code -- \
+            docs/site/public/openapi.json \
+            docs/site/src/content/docs/reference/cli \
+            docs/site/src/content/docs/reference/configuration.md \
+            server/.env.example
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

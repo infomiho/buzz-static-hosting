@@ -9,7 +9,7 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.cloudflare.acme.email=${ACME_EMAIL:-admin@example.com}
+      - --certificatesresolvers.cloudflare.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare
       - --certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
@@ -35,6 +35,7 @@ services:
       - BUZZ_DOMAIN=${BUZZ_DOMAIN}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - BUZZ_ANALYTICS_SECRET=${BUZZ_ANALYTICS_SECRET:-}
       - BUZZ_MAX_ARCHIVE_BYTES=${BUZZ_MAX_ARCHIVE_BYTES:-524288000}
       - BUZZ_MAX_SITE_BYTES=${BUZZ_MAX_SITE_BYTES:-524288000}
       - BUZZ_MAX_SITE_FILES=${BUZZ_MAX_SITE_FILES:-10000}

@@ -205,7 +205,7 @@ class TestSearchTermsRoute:
         call = fake.calls[0]
         assert call["site_host"] == "mysite.localhost:8080"
         assert call["end"] == date.today() - timedelta(days=2)
-        assert call["start"] == date.today() - timedelta(days=29)
+        assert call["start"] == date.today() - timedelta(days=31)
 
     def test_search_console_failure_returns_502(self, app, client, user_and_token):
         _, token = user_and_token

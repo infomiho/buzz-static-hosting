@@ -1,20 +1,29 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
 
+from ..api_models import (
+    CreateTokenRequest,
+    CreatedDeploymentTokenResponse,
+    DeploymentTokenResponse,
+    ErrorResponse,
+)
 from ..auth_service import AuthService, NotSiteOwner, SiteNotFound, TokenNotFound
 from ..dependencies import Identity, get_auth_service, require_user
 
 router = APIRouter()
 
 
-class CreateTokenRequest(BaseModel):
-    site_name: str
-    name: str = "Deployment token"
-
-
-@router.get("")
+@router.get(
+    "",
+    response_model=list[DeploymentTokenResponse],
+    operation_id="listDeploymentTokens",
+    summary="List deployment tokens",
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required."},
+        403: {"model": ErrorResponse, "description": "A session token is required."},
+    },
+)
 async def list_tokens(
     identity: Annotated[Identity, Depends(require_user)],
     auth: Annotated[AuthService, Depends(get_auth_service)],
@@ -32,7 +41,21 @@ async def list_tokens(
     ]
 
 
-@router.post("")
+@router.post(
+    "",
+    response_model=CreatedDeploymentTokenResponse,
+    operation_id="createDeploymentToken",
+    summary="Create a deployment token",
+    description="The token value is returned once and cannot be retrieved later.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required."},
+        403: {
+            "model": ErrorResponse,
+            "description": "A session token and site ownership are required.",
+        },
+        404: {"model": ErrorResponse, "description": "The site does not exist."},
+    },
+)
 async def create_token(
     data: CreateTokenRequest,
     identity: Annotated[Identity, Depends(require_user)],
@@ -48,7 +71,20 @@ async def create_token(
     return {"id": result.id_prefix, "token": result.raw_token, "name": result.name, "site_name": result.site_name}
 
 
-@router.delete("/{token_id}")
+@router.delete(
+    "/{token_id}",
+    status_code=204,
+    operation_id="deleteDeploymentToken",
+    summary="Revoke a deployment token",
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required."},
+        403: {"model": ErrorResponse, "description": "A session token is required."},
+        404: {
+            "model": ErrorResponse,
+            "description": "The deployment token does not exist.",
+        },
+    },
+)
 async def delete_token(
     token_id: str,
     identity: Annotated[Identity, Depends(require_user)],

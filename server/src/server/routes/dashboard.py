@@ -33,7 +33,7 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates"
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/dashboard")
+router = APIRouter(prefix="/dashboard", include_in_schema=False)
 
 
 class PollRequest(BaseModel):
@@ -121,7 +121,7 @@ async def site_search_terms(
         return {"configured": False, "terms": []}
 
     end = date.today() - timedelta(days=SEARCH_TERMS_LAG_DAYS)
-    start = date.today() - timedelta(days=SEARCH_TERMS_WINDOW_DAYS - 1)
+    start = end - timedelta(days=SEARCH_TERMS_WINDOW_DAYS - 1)
     domain = DOMAIN or "localhost:8080"
     try:
         terms = await asyncio.to_thread(client.query_search_terms, f"{name}.{domain}", start, end)

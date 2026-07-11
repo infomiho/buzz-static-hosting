@@ -1,5 +1,12 @@
 import { Command } from "commander";
-import { getOptions, authHeaders, apiRequest, CliError, errorMessage } from "../lib.js";
+import {
+  getOptions,
+  authHeaders,
+  apiRequest,
+  CliError,
+  errorMessage,
+  type CliOptions,
+} from "../lib.js";
 import {
   clearCredential,
   getCredential,
@@ -8,8 +15,8 @@ import {
   setCredential,
 } from "../credentials.js";
 
-export async function login() {
-  const options = getOptions();
+export async function login(cliOptions: CliOptions = {}) {
+  const options = getOptions(cliOptions);
 
   let deviceResponse: Response;
   try {
@@ -77,8 +84,8 @@ export async function login() {
   throw new CliError("Login timed out");
 }
 
-export async function logout() {
-  const options = getOptions();
+export async function logout(cliOptions: CliOptions = {}) {
+  const options = getOptions(cliOptions);
   const config = loadConfig();
   const token = getCredential(config, options.server);
 
@@ -116,8 +123,8 @@ export async function logout() {
   }
 }
 
-export async function whoami() {
-  const response = await apiRequest("/auth/me");
+export async function whoami(cliOptions: CliOptions = {}) {
+  const response = await apiRequest("/auth/me", {}, { cliOptions });
   const user = await response.json();
   console.log(`Logged in as ${user.login}${user.name ? ` (${user.name})` : ""}`);
 }
@@ -125,16 +132,16 @@ export async function whoami() {
 export function registerAuthCommands(program: Command) {
   program
     .command("login")
-    .description("Login with GitHub OAuth")
-    .action(login);
+    .description("Sign in with GitHub")
+    .action(() => login(program.opts()));
 
   program
     .command("logout")
-    .description("Logout and clear session")
-    .action(logout);
+    .description("Sign out and clear the stored session")
+    .action(() => logout(program.opts()));
 
   program
     .command("whoami")
-    .description("Show current logged-in user")
-    .action(whoami);
+    .description("Show the current signed-in user")
+    .action(() => whoami(program.opts()));
 }

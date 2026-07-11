@@ -1,0 +1,33 @@
+{
+  "name": "docs-site",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "generate:cli": "tsx scripts/generate-cli-reference.ts",
+    "generate:server": "uv run --project ../../server python scripts/generate-server-reference.py",
+    "generate": "npm run generate:cli && npm run generate:server",
+    "build": "npm run generate && astro build && npm run verify:build",
+    "check": "npm run generate && astro check",
+    "verify:build": "node scripts/check-build.mjs",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.3",
+    "astro": "^7.0.2",
+    "sharp": "^0.34.5",
+    "starlight-llms-txt": "^0.11.0",
+    "starlight-openapi": "^0.26.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3"
+  },
+  "overrides": {
+    "form-data": "4.0.6"
+  },
+  "private": "true"
+}

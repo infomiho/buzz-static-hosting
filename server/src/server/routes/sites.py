@@ -5,6 +5,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from ..analytics import AnalyticsStore
+from ..api_models import DeploymentResponse, ErrorResponse, SiteResponse
 from ..config import DOMAIN, MAX_ARCHIVE_BYTES, SITES_DIR
 from ..db import db
 from ..dependencies import Identity, require_user, require_identity
@@ -39,11 +40,58 @@ def _delete_site(name: str, owner_id: int) -> None:
         SiteStore(conn, SITES_DIR).delete(name, owner_id)
 
 
-@router.post("/deploy")
+@router.post(
+    "/deploy",
+    response_model=DeploymentResponse,
+    operation_id="deploySite",
+    summary="Deploy a site",
+    description=(
+        "Upload a ZIP archive to create or replace a site. A deployment token may "
+        "deploy only to its assigned site and must send that name in X-Subdomain."
+    ),
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "The site name or archive is invalid.",
+        },
+        401: {"model": ErrorResponse, "description": "Authentication is required."},
+        403: {
+            "model": ErrorResponse,
+            "description": "The credential cannot deploy this site.",
+        },
+        413: {
+            "model": ErrorResponse,
+            "description": "A deployment limit was exceeded.",
+        },
+    },
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["file"],
+                        "properties": {
+                            "file": {
+                                "type": "string",
+                                "format": "binary",
+                                "description": "A ZIP archive containing the site's files.",
+                            }
+                        },
+                    }
+                }
+            },
+        }
+    },
+)
 async def deploy(
     request: Request,
     identity: Identity = Depends(require_identity),
-    x_subdomain: str | None = Header(default=None),
+    x_subdomain: str | None = Header(
+        default=None,
+        description="Site name to create or replace. Buzz generates a name when omitted.",
+    ),
 ):
     subdomain = validate_subdomain(x_subdomain) if x_subdomain else generate_subdomain()
     if not identity.can_deploy_to(subdomain):
@@ -66,7 +114,16 @@ async def deploy(
     return {"url": build_site_url(record.name, DOMAIN, request.url.port or 8080)}
 
 
-@router.get("/sites")
+@router.get(
+    "/sites",
+    response_model=list[SiteResponse],
+    operation_id="listSites",
+    summary="List owned sites",
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required."},
+        403: {"model": ErrorResponse, "description": "A session token is required."},
+    },
+)
 async def list_sites(identity: Annotated[Identity, Depends(require_user)]):
     with db() as conn:
         store = SiteStore(conn, SITES_DIR)
@@ -83,7 +140,20 @@ async def list_sites(identity: Annotated[Identity, Depends(require_user)]):
     ]
 
 
-@router.delete("/sites/{name}")
+@router.delete(
+    "/sites/{name}",
+    status_code=204,
+    operation_id="deleteSite",
+    summary="Delete a site",
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required."},
+        403: {
+            "model": ErrorResponse,
+            "description": "A session token and site ownership are required.",
+        },
+        404: {"model": ErrorResponse, "description": "The site does not exist."},
+    },
+)
 async def delete_site(name: str, identity: Annotated[Identity, Depends(require_user)]):
     await run_in_threadpool(_delete_site, name, identity.user.id)
     return Response(status_code=204)

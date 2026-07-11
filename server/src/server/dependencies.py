@@ -1,10 +1,28 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import config
 from .auth_service import AuthService, Identity, User
 from .cookies import COOKIE_NAME
+
+bearer_scheme = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description=(
+        "A Buzz session or deployment token. Most operations require a session. "
+        "Deployment tokens are accepted only for deployment to their assigned site."
+    ),
+)
+
+
+def document_bearer_token(
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_scheme)
+    ],
+) -> None:
+    pass
 
 
 def get_auth_service(request: Request) -> AuthService:
@@ -14,7 +32,10 @@ def get_auth_service(request: Request) -> AuthService:
 def get_identity(
     request: Request,
     auth: Annotated[AuthService, Depends(get_auth_service)],
-    authorization: str | None = Header(default=None),
+    _credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_scheme)
+    ],
+    authorization: str | None = Header(default=None, include_in_schema=False),
 ) -> Identity | None:
     if config.DEV_MODE:
         return Identity(user=User(id=1, github_login="dev", github_name="Dev User"), token_type="session")

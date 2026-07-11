@@ -1,65 +1,9 @@
 # Coolify Deployment
 
-## Continuous deployment
+Follow the public [Coolify deployment guide](https://infomiho.github.io/buzz-static-hosting/self-hosting/coolify/) to configure the app, DNS, TLS, and persistent data.
 
-Coolify is wired to this repo and auto-deploys on every push to `main`. No manual redeploy step is needed — merge a PR (or push directly) and Coolify rebuilds the `./server` image and restarts the container. The CI workflow in this repo (`.github/workflows/release-please.yml`) only handles the CLI npm publish; the server rollout is Coolify's responsibility.
+## Repository Deployment
 
-## 1. Create App
+The production Coolify app connected to this repository deploys every push to `main`. It builds the `server` service from `docker-compose.coolify.yml` and restarts the container. Merging a pull request does not require a separate manual deployment.
 
-In Coolify, create a Docker Compose app pointing at `docker-compose.coolify.yml`.
-
-Enable **Raw Docker Compose Deployment** in the app settings. This is required because Coolify's YAML parser wraps labels in single quotes, which prevents `${BUZZ_DOMAIN}` substitution in Traefik labels ([coolify#5351](https://github.com/coollabsio/coolify/issues/5351)).
-
-Leave the **FQDN/Domains** field empty — routing is handled by labels in the compose file.
-
-Set environment variables: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`.
-
-## 2. Configure Wildcard SSL on Coolify's Traefik
-
-Go to **Servers > Proxy** and edit the Traefik compose config. Save the configuration there so Coolify stores it in its DB. Direct edits to `/data/coolify/proxy/docker-compose.yml` are not durable across proxy actions or upgrades.
-
-You need these changes:
-
-### Add environment variable
-
-```yaml
-environment:
-  - CF_DNS_API_TOKEN=<your-cloudflare-api-token>
-```
-
-### Switch from HTTP challenge to DNS challenge
-
-Replace:
-
-```
---certificatesresolvers.letsencrypt.acme.httpchallenge=true
---certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=http
-```
-
-With:
-
-```
---certificatesresolvers.letsencrypt.acme.dnschallenge=true
---certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare
---certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
---certificatesresolvers.letsencrypt.acme.dnschallenge.delaybeforecheck=60
-```
-
-### Add wildcard certificate labels
-
-Add these to the Traefik service labels:
-
-```
-traefik.http.routers.wildcard-certs.tls.certresolver=letsencrypt
-traefik.http.routers.wildcard-certs.tls.domains[0].main=yourdomain
-traefik.http.routers.wildcard-certs.tls.domains[0].sans=*.yourdomain
-```
-
-Restart the proxy after saving. The Buzz app labels should set `tls=true` without `tls.certresolver`; the proxy-level wildcard certificate router owns ACME issuance.
-
-## 3. Cloudflare DNS
-
-Create two DNS records (DNS-only, no orange cloud proxy):
-
-- `A` record: `yourdomain` → server IP
-- `A` record: `*.yourdomain` → server IP
+The `.github/workflows/release-please.yml` workflow releases the CLI package only. Coolify handles the server rollout independently.
