@@ -41,14 +41,11 @@ export default defineConfig({
 						'Use Getting Started and Guides for CLI workflows. Use Self-Hosting for server operations. CLI, configuration, and HTTP reference pages are generated from the implementation.',
 					promote: [
 						'index',
-						'getting-started/overview',
-						'getting-started/install-the-cli',
 						'getting-started/deploy-your-first-site',
 						'getting-started/**',
 						'guides/deploy-sites',
 						'guides/choose-a-site-name',
-						'guides/use-deployment-tokens',
-						'guides/deploy-from-ci',
+						'guides/automate-deployments',
 						'guides/**',
 						'self-hosting/overview',
 					],
@@ -58,7 +55,7 @@ export default defineConfig({
 						{
 							label: 'CLI Workflows',
 							description: 'Install the Buzz CLI, deploy sites, and automate deployments.',
-							paths: ['getting-started/**', 'guides/**', 'reference/cli/**'],
+							paths: ['getting-started/**', 'guides/**', 'reference/cli'],
 						},
 						{
 							label: 'Server Operations',
@@ -76,28 +73,29 @@ export default defineConfig({
 			sidebar: [
 				{
 					label: 'Getting Started',
+					collapsed: true,
 					items: [{ autogenerate: { directory: 'getting-started' } }],
 				},
 				{
 					label: 'Guides',
+					collapsed: true,
 					items: [{ autogenerate: { directory: 'guides' } }],
 				},
 				{
 					label: 'Self-Hosting',
+					collapsed: true,
 					items: [{ autogenerate: { directory: 'self-hosting' } }],
 				},
 				{
 					label: 'Troubleshooting',
+					collapsed: true,
 					items: [{ autogenerate: { directory: 'troubleshooting' } }],
 				},
 				{
 					label: 'Reference',
+					collapsed: true,
 					items: [
-						{
-							label: 'CLI',
-							items: [{ autogenerate: { directory: 'reference/cli' } }],
-							collapsed: true,
-						},
+						{ label: 'CLI', slug: 'reference/cli' },
 						{ label: 'Configuration', slug: 'reference/configuration' },
 						{ label: 'Hosting Behavior', slug: 'reference/hosting-behavior' },
 						...openAPISidebarGroups,
@@ -105,6 +103,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Contributing',
+					collapsed: true,
 					items: [{ autogenerate: { directory: 'contributing' } }],
 				},
 			],

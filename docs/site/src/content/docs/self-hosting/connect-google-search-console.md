@@ -1,11 +1,11 @@
 ---
 title: Connect Google Search Console
-description: Show Google search terms for Buzz sites in the dashboard.
+description: Optionally show Google search terms for Buzz sites in the dashboard.
 sidebar:
-  order: 8
+  order: 9
 ---
 
-Connect a Google service account to a Search Console domain property so site owners can view recent Google search terms in the dashboard. Buzz uses read-only API access and filters the shared property by each site URL.
+Optionally connect a Google service account to a Search Console domain property so site owners can view recent Google search terms in the dashboard. This advanced integration isn't required to deploy or operate Buzz. Buzz uses read-only API access and filters the shared property by each site URL.
 
 ## Before You Start
 
@@ -75,3 +75,7 @@ Restart or redeploy Buzz after changing the settings. Invalid or unreadable cred
 3. Expand its analytics details and find **Google search terms**.
 
 Buzz requests up to ten query terms from a 30-day window ending two days before the current date. Search Console can return no rows for a new or low-traffic site, so an empty list doesn't prove that configuration failed. Check the server logs for credential or API errors and confirm the service account appears in **Settings > Users and permissions**.
+
+## Disconnect Search Console
+
+Unset `BUZZ_GSC_CREDENTIALS` and `BUZZ_GSC_PROPERTY`, then restart or redeploy Buzz. Remove the service account from **Settings > Users and permissions** and delete its key when no other system uses it.

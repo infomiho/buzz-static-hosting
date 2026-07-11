@@ -8,6 +8,23 @@ editUrl: false
 
 Use this reference to check command syntax and options. Start with [Deploy Your First Site](../../getting-started/deploy-your-first-site/) for a complete workflow.
 
+## Command Index
+
+- [`buzz deploy`](#buzz-deploy): Deploy a directory to the server
+- [`buzz list`](#buzz-list): List sites owned by the signed-in user
+- [`buzz delete`](#buzz-delete): Delete a deployed site
+- [`buzz config`](#buzz-config): View or set configuration (server)
+- [`buzz url`](#buzz-url): Show the URL for the current directory
+- [`buzz login`](#buzz-login): Sign in with GitHub
+- [`buzz logout`](#buzz-logout): Sign out and clear the stored session
+- [`buzz whoami`](#buzz-whoami): Show the current signed-in user
+- [`buzz tokens`](#buzz-tokens): Manage deployment tokens
+- [`buzz tokens list`](#buzz-tokens-list): List your deployment tokens
+- [`buzz tokens create`](#buzz-tokens-create): Create a deployment token for a site
+- [`buzz tokens delete`](#buzz-tokens-delete): Delete a deployment token
+
+## buzz
+
 ```text
 Usage: buzz [options] [command]
 
@@ -32,14 +49,143 @@ Commands:
   help [command]                display help for command
 ```
 
-## Commands
+## buzz deploy
 
-- [`buzz deploy`](./deploy/): Deploy a directory to the server
-- [`buzz list`](./list/): List sites owned by the signed-in user
-- [`buzz delete`](./delete/): Delete a deployed site
-- [`buzz config`](./config/): View or set configuration (server)
-- [`buzz url`](./url/): Show the URL for the current directory
-- [`buzz login`](./login/): Sign in with GitHub
-- [`buzz logout`](./logout/): Sign out and clear the stored session
-- [`buzz whoami`](./whoami/): Show the current signed-in user
-- [`buzz tokens`](./tokens/): Manage deployment tokens
+```text
+Usage: buzz deploy [options] <directory>
+
+Deploy a directory to the server
+
+Options:
+  --subdomain <name>  Site name to use as the subdomain
+  -h, --help          display help for command
+```
+
+## buzz list
+
+```text
+Usage: buzz list [options]
+
+List sites owned by the signed-in user
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz delete
+
+```text
+Usage: buzz delete [options] <subdomain>
+
+Delete a deployed site
+
+Options:
+  -y, --yes   Skip confirmation prompt
+  -h, --help  display help for command
+```
+
+## buzz config
+
+```text
+Usage: buzz config [options] [key] [value]
+
+View or set configuration (server)
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz url
+
+```text
+Usage: buzz url [options]
+
+Show the URL for the current directory
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz login
+
+```text
+Usage: buzz login [options]
+
+Sign in with GitHub
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz logout
+
+```text
+Usage: buzz logout [options]
+
+Sign out and clear the stored session
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz whoami
+
+```text
+Usage: buzz whoami [options]
+
+Show the current signed-in user
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz tokens
+
+```text
+Usage: buzz tokens [options] [command]
+
+Manage deployment tokens
+
+Options:
+  -h, --help               display help for command
+
+Commands:
+  list                     List your deployment tokens
+  create [options] <site>  Create a deployment token for a site
+  delete <token-id>        Delete a deployment token
+  help [command]           display help for command
+```
+
+## buzz tokens list
+
+```text
+Usage: buzz tokens list [options]
+
+List your deployment tokens
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz tokens create
+
+```text
+Usage: buzz tokens create [options] <site>
+
+Create a deployment token for a site
+
+Options:
+  -n, --name <name>  Token name (for identification)
+  -h, --help         display help for command
+```
+
+## buzz tokens delete
+
+```text
+Usage: buzz tokens delete [options] <token-id>
+
+Delete a deployment token
+
+Options:
+  -h, --help  display help for command
+```

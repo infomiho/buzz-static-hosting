@@ -32,7 +32,7 @@ You need Node.js 22 or later, npm, a GitHub account, access to a running Buzz se
    buzz login
    ```
 
-4. Deploy your site:
+4. Replace `my-site` with a unique site name and deploy your site:
 
    ```bash
    buzz deploy ./dist --subdomain my-site

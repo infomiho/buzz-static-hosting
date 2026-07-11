@@ -2,7 +2,7 @@
 title: Security
 description: Understand Buzz's security boundaries before exposing a server.
 sidebar:
-  order: 9
+  order: 2
 ---
 
 Review Buzz's current controls and unsupported protections before making a server public. Buzz is a small self-hosted service, not a security boundary for mutually untrusted tenants.
@@ -12,6 +12,8 @@ Review Buzz's current controls and unsupported protections before making a serve
 Buzz authenticates users through a GitHub OAuth app, but it doesn't provide a GitHub organization or user allowlist. Any GitHub user who can reach the server can attempt to sign in, create sites, and consume storage.
 
 Restrict network access at an upstream proxy, virtual private network, or firewall when the server is intended for a closed group. Buzz doesn't include rate limiting, so add and verify rate limits upstream if your threat model requires them.
+
+Configure these controls before creating public DNS records or starting the deployment. GitHub authentication identifies a user; it doesn't decide whether that user is eligible to use your Buzz server.
 
 ## Protect Credentials
 
@@ -39,6 +41,14 @@ Sites use separate subdomains, while the dashboard session cookie is host-only, 
 - Monitor free disk space. Buzz has per-deployment limits, but no total storage quota, per-user quota, or maximum site count.
 - Back up `/data` and test restoration using [Manage Data And Backups](../manage-data-and-backups/).
 - Apply operating system, Docker, Coolify, Traefik, and Buzz updates after reviewing their release notes.
+
+## Keep Persistent Volumes Out Of Cleanup
+
+Deleting an unused Docker volume permanently removes the Buzz data or certificate state stored in it. Do not run `docker compose down --volumes`, `docker system prune --volumes`, or `docker volume prune` as routine maintenance.
+
+For Coolify, open **Servers**, select the server, and open **Configuration > Advanced**. Leave unused-volume cleanup disabled. Coolify's [Automated Docker Cleanup](https://coolify.io/docs/knowledge-base/server/automated-cleanup) documentation states that this optional cleanup can cause data loss. A stopped application can leave `buzz_buzz-data` unattached and therefore eligible for volume cleanup.
+
+Before any manual cleanup, inspect the target list and confirm that `buzz_buzz-data`, `buzz_traefik-certs`, and any restored or rollback volumes are excluded. Keep an off-host, checksum-verified backup even when volumes are excluded from cleanup.
 
 ## Understand Analytics Data
 

@@ -68,6 +68,7 @@ Inspect Traefik logs for ACME and Cloudflare errors. Then check:
 - The token is available to Traefik as `CF_DNS_API_TOKEN`. The standalone Compose file maps `CF_API_TOKEN` to that name.
 - The authoritative DNS zone is hosted by Cloudflare.
 - Coolify has one proxy-level wildcard certificate router, while Buzz's routers use `tls=true` without `tls.certresolver`.
+- The documented Coolify resolver change is used only on a proxy dedicated to Cloudflare-managed domains. Restore the saved proxy configuration if another application's TLS fails.
 - The `buzz.example.com` and `*.buzz.example.com` records are **DNS only** for the documented setup.
 
 Let's Encrypt issuance can also fail because of external availability or certificate rate limits. Do not repeatedly restart Traefik while the same ACME error persists.
@@ -90,7 +91,7 @@ Confirm `/data` is mounted from the named volume `buzz_buzz-data`. A container f
 docker volume inspect buzz_buzz-data
 ```
 
-Do not run `docker compose down --volumes` during routine maintenance. If the volume was removed, restore the latest verified backup using [Manage Data And Backups](../../self-hosting/manage-data-and-backups/). Buzz can't reconstruct `data.db` ownership, sessions, tokens, and analytics from site files alone.
+Do not run `docker compose down --volumes`, `docker system prune --volumes`, or `docker volume prune` during routine maintenance. In Coolify, also check whether optional unused-volume cleanup ran while Buzz was stopped. If the volume was removed, restore the latest checksum-verified backup using [Manage Data And Backups](../../self-hosting/manage-data-and-backups/). Buzz can't reconstruct `data.db` ownership, sessions, tokens, and analytics from site files alone.
 
 ## Google Search Terms Don't Appear
 

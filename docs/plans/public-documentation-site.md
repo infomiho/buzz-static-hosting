@@ -19,7 +19,7 @@ The docs site should become the source of truth for using and operating Buzz. Th
 
 Each page should primarily serve one audience. Pages that mix user, operator, and contributor concerns should be split.
 
-## Proposed Structure
+## Implemented Structure
 
 Keep public site sources under `docs/site/`. This prevents internal files under `docs/agents/` from being published accidentally.
 
@@ -41,16 +41,13 @@ docs/
     `-- src/content/docs/
         |-- index.md
         |-- getting-started/
-        |   |-- overview.md
-        |   |-- install-the-cli.md
         |   `-- deploy-your-first-site.md
         |-- guides/
         |   |-- deploy-sites.md
         |   |-- choose-a-site-name.md
         |   |-- serve-clean-urls.md
         |   |-- deploy-a-single-page-app.md
-        |   |-- use-deployment-tokens.md
-        |   |-- deploy-from-ci.md
+        |   |-- automate-deployments.md
         |   `-- understand-analytics.md
         |-- self-hosting/
         |   |-- overview.md
@@ -63,7 +60,7 @@ docs/
         |   `-- connect-google-search-console.md
         |   `-- security.md
         |-- reference/
-        |   |-- cli/                # Generated from Commander
+        |   |-- cli/index.md        # Generated from Commander
         |   |-- configuration.md    # Generated from configuration metadata
         |   |-- hosting-behavior.md
         |   `-- http-api/           # Generated from OpenAPI
@@ -76,7 +73,7 @@ docs/
             `-- documentation.md
 ```
 
-This is the target structure, not a requirement to launch every page at once. The first release should cover the quick start, core deployment behavior, Docker Compose, Coolify, configuration, and CLI reference.
+The public site keeps the first deployment and automation paths linear. Generated reference remains complete without creating a separate navigation entry for every CLI command.
 
 ## Content Order
 
@@ -141,7 +138,7 @@ Generated files should include a header that identifies their source and tells c
 
 The CLI currently configures the global Commander program and parses arguments as soon as `cli/src/cli.ts` is imported. Extract a `createProgram()` function and keep argument parsing in the executable entry point. The docs generator can then inspect the same command tree used by the CLI without running commands.
 
-Generate one overview page and one page per command. Start with Commander's rendered help text. Add structured argument and option tables only when they improve scanning enough to justify maintaining the generator.
+Generate one overview page with an index and anchored section for every command. Start with Commander's rendered help text. Add structured argument and option tables only when they improve scanning enough to justify maintaining the generator.
 
 ### Make OpenAPI Publication-Ready
 

@@ -7,6 +7,12 @@ sidebar:
 
 Run Buzz on infrastructure you control with Docker Compose or Coolify. This section covers the public DNS, TLS, authentication, persistent data, and operational settings needed for a production installation.
 
+## Decide Who May Reach Buzz
+
+Make this decision before creating public DNS records or deploying Buzz. Buzz has no GitHub user or organization allowlist, no built-in rate limiting, and no total or per-user storage quota. Any GitHub user who can reach the server can attempt to sign in, create sites, and consume storage.
+
+If Buzz is for a closed group, configure and verify access controls and rate limits at an upstream proxy, virtual private network, or firewall before deployment. [Review Buzz's security boundaries](../security/) for the controls the upstream layer must provide.
+
 ## Prepare The Host
 
 You need:
@@ -37,11 +43,14 @@ The base hostname and wildcard hostname must both resolve to the server. TLS mus
 
 ## Complete The Production Setup
 
-1. Choose the Buzz domain and [create the GitHub OAuth app](../configure-github-authentication/) for that intended URL.
-2. [Configure DNS and TLS](../configure-dns-and-tls/) for the base and wildcard hostnames.
-3. Deploy Buzz with [Docker Compose](../docker-compose/) or [Coolify](../coolify/) using the domain and GitHub credentials.
-4. Verify HTTPS and GitHub sign-in.
-5. [Create and verify a backup](../manage-data-and-backups/).
-6. Review the [security boundaries](../security/) before allowing other users to sign in.
+1. Decide whether the server may be public. Configure upstream controls first if access must be restricted.
+2. Choose the Buzz domain and [configure DNS and TLS](../configure-dns-and-tls/) for the base and wildcard hostnames.
+3. [Create the GitHub OAuth app](../configure-github-authentication/) for the intended dashboard URL.
+4. Deploy Buzz with [Docker Compose](../docker-compose/) or [Coolify](../coolify/) using the domain and GitHub credentials.
+5. Follow the selected deployment guide's success checks.
+6. [Configure deployment limits](../configure-deployment-limits/) for the host.
+7. [Create and verify a backup](../manage-data-and-backups/).
+
+[Google Search Console](../connect-google-search-console/) is an optional advanced integration. It isn't required to deploy or operate Buzz.
 
 Use the [configuration reference](../../reference/configuration/) for the complete environment variable list.

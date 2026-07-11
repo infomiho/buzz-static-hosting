@@ -2,7 +2,7 @@
 title: Configure GitHub Authentication
 description: Create the GitHub OAuth app used by the dashboard and CLI.
 sidebar:
-  order: 5
+  order: 4
 ---
 
 Configure a GitHub OAuth app so users can sign in to the Buzz dashboard and CLI through GitHub Device Flow. Buzz requests the `read:user` scope and stores its own 30-day session after GitHub confirms the user.
@@ -14,6 +14,8 @@ You need:
 - The public dashboard URL you intend to use, such as `https://buzz.example.com`.
 - Permission to create an OAuth app in a GitHub account or organization.
 - Access to the Buzz deployment's secret environment variables.
+
+Complete [Configure DNS And TLS](../configure-dns-and-tls/) first so the OAuth app uses the intended public dashboard URL.
 
 ## Create The OAuth App
 
@@ -61,3 +63,7 @@ Restart or redeploy Buzz after changing either variable. Buzz reads environment 
    `buzz whoami` should show the GitHub account used during authorization.
 
 Buzz doesn't provide a GitHub organization or user allowlist. Any GitHub user who can reach the server can attempt to sign in and deploy sites. Review [Security](../security/) before exposing Buzz to users you don't administer.
+
+## Roll Back Authentication Changes
+
+If sign-in fails after replacing an OAuth app or credential, restore the previous `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, then restart or redeploy Buzz. Delete or revoke the unused OAuth app or client secret only after the previous configuration works again.

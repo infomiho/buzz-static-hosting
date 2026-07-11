@@ -58,7 +58,7 @@ header.header {
 	color: #ffffff;
 }
 
-header.header :is(.site-title, a, button) {
+header.header :is(.site-title, a, button):not(dialog *) {
 	color: #ffffff;
 }
 
@@ -96,6 +96,21 @@ header.header site-search kbd {
 .sl-markdown-content code:not(:where(.expressive-code *)) {
 	border: 1px solid currentColor;
 	padding: 0.05em 0.25em;
+}
+
+:root[data-theme='light'] .expressive-code {
+	--ec-codeFg: #d6deeb;
+}
+
+:root[data-theme='light'] .expressive-code .frame pre {
+	--code-background: #23262f;
+}
+
+:root[data-theme='light']
+	.expressive-code
+	.ec-line
+	:where(span[style^='--']:not([class])) {
+	color: var(--0, inherit);
 }
 
 .sl-markdown-content table {

@@ -2,7 +2,7 @@
 title: Configure DNS And TLS
 description: Route the Buzz domain and every site hostname with a wildcard certificate.
 sidebar:
-  order: 4
+  order: 3
 ---
 
 Route the Buzz dashboard and all site hostnames to one server, then issue a certificate that covers both hostname forms. The bundled deployments use Cloudflare DNS and Let's Encrypt DNS-01 validation.
@@ -15,6 +15,8 @@ You need:
 - A Cloudflare-managed DNS zone for `example.com`.
 - Permission to edit the zone's DNS records and API tokens.
 - TCP port `443` open to the server. Port `80` is used only for the bundled HTTP-to-HTTPS redirect.
+
+Before pointing public records at the server, complete the access decision in the [Self-Hosting Overview](../overview/). Closed-group deployments need upstream access controls before exposure.
 
 ## Point Both Hostname Forms At The Server
 
@@ -69,3 +71,7 @@ openssl s_client -connect my-site.buzz.example.com:443 -servername my-site.buzz.
 The subject alternative names should include `*.buzz.example.com`. A site that hasn't been deployed can return `404`; that still verifies DNS, routing, and TLS if the certificate is valid.
 
 Certificate issuance depends on Cloudflare and Let's Encrypt. Buzz doesn't control their availability or issuance limits. See [Troubleshoot Self-Hosting](../../troubleshooting/self-hosting/) if Traefik can't obtain the certificate.
+
+## Roll Back DNS Changes
+
+If the new route or certificate fails, restore the previous DNS record values and proxy status in Cloudflare. Remove the Buzz records if they didn't exist before. Revoke the DNS challenge token if it may have been exposed, and restore the deployment path's previous Traefik configuration before retrying.

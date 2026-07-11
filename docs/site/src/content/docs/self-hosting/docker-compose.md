@@ -2,7 +2,7 @@
 title: Deploy With Docker Compose
 description: Run Buzz and its Traefik proxy on a Docker host.
 sidebar:
-  order: 2
+  order: 5
 ---
 
 Deploy Buzz with the repository's standalone Docker Compose file. This path runs Buzz and Traefik on the same host and obtains a wildcard certificate through Cloudflare DNS.
@@ -15,6 +15,7 @@ Complete these prerequisites:
 - Point `buzz.example.com` and `*.buzz.example.com` at the host.
 - Allow inbound TCP traffic on port `443`. Allow port `80` if you want the bundled HTTP-to-HTTPS redirect.
 - Create a Cloudflare API token and a GitHub OAuth app.
+- Complete the access decision in the [Self-Hosting Overview](../overview/). Configure upstream controls before deployment if Buzz is for a closed group.
 
 Follow [Configure DNS And TLS](../configure-dns-and-tls/) and [Configure GitHub Authentication](../configure-github-authentication/) for the required credentials.
 

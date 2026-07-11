@@ -13,12 +13,14 @@ You need access to the Buzz server's environment variables and a deployment you 
 
 ## Choose The Limits
 
-The defaults are:
+Choose values based on available upload bandwidth, extraction space, filesystem capacity, and the sites you intend to host:
 
-- `BUZZ_MAX_ARCHIVE_BYTES=524288000`: Maximum compressed ZIP size, 500 MiB.
-- `BUZZ_MAX_SITE_BYTES=524288000`: Maximum total extracted file size, 500 MiB.
-- `BUZZ_MAX_SITE_FILES=10000`: Maximum archive entries after accounting for files and directories, including implicit directories.
-- `BUZZ_MAX_ARCHIVE_PATH_BYTES=1024`: Maximum UTF-8 byte length of an archive entry path.
+- `BUZZ_MAX_ARCHIVE_BYTES` limits compressed upload size and bandwidth per deployment.
+- `BUZZ_MAX_SITE_BYTES` limits extracted bytes written for one site.
+- `BUZZ_MAX_SITE_FILES` limits archive entries and filesystem work, including implicit directories.
+- `BUZZ_MAX_ARCHIVE_PATH_BYTES` limits the UTF-8 byte length of each archive path.
+
+Use the generated [Configuration reference](../../reference/configuration/) for the exact defaults and authoritative environment variable list.
 
 Each individual path component is also limited to 255 UTF-8 bytes. That limit isn't configurable.
 
@@ -45,4 +47,4 @@ Reducing a limit doesn't remove or resize existing sites. The new values apply w
 
 If the server fails during startup after a limit change, inspect its logs for an invalid integer, restore the previous value, and restart it. Buzz doesn't validate that configured integers are positive, so use positive values unless you intentionally want all non-empty deployments rejected.
 
-See the [configuration reference](../../reference/configuration/) for the authoritative environment variable list and [Troubleshoot Deployment](../../troubleshooting/deployment/) for rejection messages.
+See [Troubleshoot Deployment](../../troubleshooting/deployment/) for rejection messages.
