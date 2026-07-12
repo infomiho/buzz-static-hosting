@@ -1,10 +1,13 @@
 ---
 title: Buzz
-description: Deploy static sites to a self-hosted Buzz server.
+description: A self-hosted alternative to Surge.sh for publishing static sites and generated artifacts.
 template: splash
 hero:
-  title: Self-Hosted Static Site Hosting
-  tagline: Deploy a directory from the Buzz CLI and serve it from its own site URL.
+  title: Publish Static Sites on Your Server
+  tagline: A self-hosted alternative to Surge.sh. Deploy a directory from the CLI to its own subdomain.
+  image:
+    alt: A dist directory deployed with the Buzz CLI to a stable site subdomain
+    file: ../../assets/deploy-flow.svg
   actions:
     - text: Deploy Your First Site
       link: ./getting-started/deploy-your-first-site/
@@ -14,4 +17,30 @@ hero:
       variant: minimal
 ---
 
-Deploy to an existing Buzz server if you have its server URL. Follow the self-hosting guide if you operate the server and its domain.
+## Publish A Directory
+
+Deploy the contents of a static build directory and get a site URL under your Buzz domain:
+
+```bash
+buzz deploy ./dist --subdomain my-site
+```
+
+Redeploy the same site name to replace its files without changing its URL. If you already have access to a Buzz server, you need Node.js 22 or later, npm, a GitHub account, and a build directory containing `index.html`.
+
+<div class="landing-uses">
+  <section class="landing-use landing-use-featured" aria-labelledby="agent-artifacts">
+    <h2 id="agent-artifacts">Share Agent Artifacts</h2>
+    <p>Publish generated HTML reports, prototypes, documentation previews, demos, and static playgrounds. Recipients open one browser URL instead of downloading files or waiting for a local development server.</p>
+    <a href="./guides/automate-deployments/">Automate deployments</a>
+  </section>
+  <section class="landing-use" aria-labelledby="static-output">
+    <h2 id="static-output">Host Static Output</h2>
+    <p>Serve HTML, CSS, JavaScript, clean URLs, custom error pages, and single-page application fallbacks.</p>
+    <a href="./reference/hosting-behavior/">Review hosting behavior</a>
+  </section>
+  <section class="landing-use" aria-labelledby="own-server">
+    <h2 id="own-server">Run Your Own Server</h2>
+    <p>Keep the Buzz domain, deployed files, metadata, and deployment policy on infrastructure you operate.</p>
+    <a href="./self-hosting/overview/">Review self-hosting requirements</a>
+  </section>
+</div>

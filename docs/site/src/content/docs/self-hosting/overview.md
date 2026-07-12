@@ -13,6 +13,8 @@ Make this decision before creating public DNS records or deploying Buzz. Buzz ha
 
 If Buzz is for a closed group, configure and verify access controls and rate limits at an upstream proxy, virtual private network, or firewall before deployment. [Review Buzz's security boundaries](../security/) for the controls the upstream layer must provide.
 
+![Upstream access controls compared with authentication and limits provided by Buzz](../../../assets/diagrams/security-reachability-boundary.svg)
+
 ## Prepare The Host
 
 You need:

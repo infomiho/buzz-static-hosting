@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" role="img" aria-labelledby="title desc" font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Diagram: shows a local build directory becoming a stable Buzz site URL. -->
+  <title id="title">Buzz deployment flow</title>
+  <desc id="desc">A dist directory is deployed with the Buzz CLI to a stable site subdomain.</desc>
+
+  <!-- Build directory -->
+  <g transform="translate(24 72)">
+    <rect width="184" height="240" />
+    <path d="M0 48h184" />
+    <path d="M24 0v-16h72l16 16" fill="#fff" />
+    <text x="24" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">dist/</text>
+    <g transform="translate(24 80)">
+      <rect width="136" height="32" fill="#e6e6e6" />
+      <text x="16" y="21" font-size="14" stroke="none" fill="#000">index.html</text>
+    </g>
+    <g transform="translate(24 128)">
+      <rect width="136" height="32" fill="#e6e6e6" />
+      <text x="16" y="21" font-size="14" stroke="none" fill="#000">app.css</text>
+    </g>
+    <g transform="translate(24 176)">
+      <rect width="136" height="32" fill="#e6e6e6" />
+      <text x="16" y="21" font-size="14" stroke="none" fill="#000">app.js</text>
+    </g>
+  </g>
+
+  <!-- CLI deployment -->
+  <g transform="translate(232 152)">
+    <rect width="176" height="80" fill="#000" />
+    <text x="16" y="32" font-size="12" stroke="none" fill="#fff">$ buzz deploy</text>
+    <text x="16" y="56" font-size="14" font-weight="600" stroke="none" fill="#fff">./dist</text>
+  </g>
+  <path d="M208 192h24" fill="none" />
+  <path d="M408 192h24" fill="none" />
+  <path d="m424 184 8 8-8 8" fill="none" />
+
+  <!-- Published site -->
+  <g transform="translate(432 72)">
+    <rect width="184" height="240" />
+    <rect width="184" height="48" fill="#e6e6e6" />
+    <circle cx="24" cy="24" r="4" fill="#000" />
+    <circle cx="40" cy="24" r="4" fill="#000" />
+    <circle cx="56" cy="24" r="4" fill="#000" />
+    <g transform="translate(16 72)">
+      <rect width="152" height="32" />
+      <text x="8" y="21" font-size="12" stroke="none" fill="#000">my-site.buzz.example</text>
+    </g>
+    <g transform="translate(16 128)">
+      <rect width="104" height="16" fill="#000" />
+      <rect y="32" width="152" height="8" fill="#e6e6e6" stroke="none" />
+      <rect y="48" width="128" height="8" fill="#e6e6e6" stroke="none" />
+      <rect y="64" width="144" height="8" fill="#e6e6e6" stroke="none" />
+    </g>
+  </g>
+
+  <text x="432" y="344" font-size="14" font-weight="600" stroke="none" fill="#000">Same URL after every deploy</text>
+</svg>

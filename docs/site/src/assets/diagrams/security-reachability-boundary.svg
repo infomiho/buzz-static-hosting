@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" role="img" aria-labelledby="title desc" font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Diagram: distinguishes upstream access policy from controls Buzz provides. -->
+  <title id="title">Buzz security boundary and network reachability</title>
+  <desc id="desc">A firewall, VPN, or reverse proxy controls who may reach Buzz and may apply rate limits. Buzz identifies reachable users with GitHub OAuth, validates deployments, and isolates site content, but does not provide an allowlist, rate limiting, aggregate quotas, or a site-count limit.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#000" stroke="none"/></marker>
+  </defs>
+
+  <!-- Traffic enters through operator-owned controls -->
+  <g transform="translate(16 184)"><rect width="104" height="64"/><text x="52" y="28" font-size="14" text-anchor="middle" stroke="none" fill="#000">GitHub user</text><text x="52" y="48" font-size="12" text-anchor="middle" stroke="none" fill="#666">on network</text></g>
+  <path d="M120 216h32" marker-end="url(#arrow)"/>
+  <g transform="translate(152 48)">
+    <rect width="248" height="336"/>
+    <text x="24" y="40" font-size="20" font-weight="600" stroke="none" fill="#000">Upstream boundary</text>
+    <g transform="translate(24 56)"><rect width="200" height="64"/><text x="100" y="28" font-size="14" text-anchor="middle" stroke="none" fill="#000">Firewall / VPN /</text><text x="100" y="48" font-size="14" text-anchor="middle" stroke="none" fill="#000">reverse proxy</text></g>
+    <g transform="translate(24 144)"><rect width="200" height="64"/><text x="100" y="28" font-size="14" text-anchor="middle" stroke="none" fill="#000">Allows or blocks</text><text x="100" y="48" font-size="14" text-anchor="middle" stroke="none" fill="#000">reachability</text></g>
+    <g transform="translate(24 232)"><rect width="200" height="64" fill="#e6e6e6"/><text x="100" y="28" font-size="14" text-anchor="middle" stroke="none" fill="#000">May enforce</text><text x="100" y="48" font-size="14" text-anchor="middle" stroke="none" fill="#000">rate limits</text></g>
+    <path d="M124 120v24" fill="none" marker-end="url(#arrow)"/>
+    <path d="M124 208v24" fill="none" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Buzz starts after reachability is granted -->
+  <path d="M400 216h32" marker-end="url(#arrow)"/>
+  <g transform="translate(432 24)">
+    <rect width="344" height="432"/>
+    <text x="24" y="40" font-size="20" font-weight="600" stroke="none" fill="#000">Buzz</text>
+    <g transform="translate(24 48)"><rect width="296" height="136"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Control host</text><text x="16" y="52" font-size="12" stroke="none" fill="#000">GitHub OAuth identifies users</text><text x="16" y="72" font-size="12" stroke="none" fill="#000">Any reachable GitHub user can attempt</text><text x="16" y="92" font-size="12" stroke="none" fill="#000">sign-in and site creation</text><text x="16" y="116" font-size="12" stroke="none" fill="#666">Dashboard cookie is host-only</text></g>
+    <g transform="translate(24 200)"><rect width="296" height="72"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Deployment validation</text><text x="16" y="50" font-size="12" stroke="none" fill="#666">Per-deployment size, file, and path limits</text></g>
+    <g transform="translate(24 288)"><rect width="296" height="72"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Site subdomains</text><text x="16" y="50" font-size="12" stroke="none" fill="#666">Untrusted content stays off the control host</text></g>
+    <g transform="translate(24 376)"><rect width="296" height="40" fill="#e6e6e6"/><text x="12" y="17" font-size="12" stroke="none" fill="#000">Not provided: allowlist, rate limiting,</text><text x="12" y="33" font-size="12" stroke="none" fill="#000">quotas, or a maximum site count</text></g>
+    <path d="M172 184v16" marker-end="url(#arrow)"/>
+    <path d="M320 116h16v208h-16" fill="none" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+  </g>
+</svg>

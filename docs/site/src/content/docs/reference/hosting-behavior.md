@@ -25,6 +25,8 @@ Buzz decodes the URL path, rejects paths that escape the site directory, and che
 6. The site's root `404.html` page.
 7. Buzz's plain-text `404 Not Found` response.
 
+![Buzz file lookup order from request path through file, SPA, and 404 outcomes](../../../assets/diagrams/file-lookup-fallback.svg)
+
 The first matching file is returned. Buzz does not redirect a clean URL to the underlying HTML file.
 
 Common paths resolve as follows:

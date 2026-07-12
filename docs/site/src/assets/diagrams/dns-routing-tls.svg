@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400" role="img" aria-labelledby="title desc" font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Diagram: separates DNS resolution, hostname routing, and TLS issuance. -->
+  <title id="title">DNS records, hostname routes, and TLS coverage for Buzz</title>
+  <desc id="desc">Separate base and wildcard DNS records point to one public IP. Traefik uses separate hostname routes that both forward to Buzz. DNS-01 issues a certificate covering both hostname forms.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#000" stroke="none"/></marker>
+  </defs>
+
+  <!-- DNS records -->
+  <g transform="translate(24 40)">
+    <rect width="240" height="216"/>
+    <text x="16" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">Cloudflare DNS</text>
+    <text x="224" y="32" font-size="12" text-anchor="end" stroke="none" fill="#666">DNS only</text>
+    <g transform="translate(16 48)"><rect width="208" height="48"/><text x="12" y="20" font-size="14" stroke="none" fill="#000">A  buzz.example.com</text><text x="12" y="38" font-size="12" stroke="none" fill="#666">public server IP</text></g>
+    <g transform="translate(16 112)"><rect width="208" height="48"/><text x="12" y="20" font-size="14" stroke="none" fill="#000">A  *.buzz.example.com</text><text x="12" y="38" font-size="12" stroke="none" fill="#666">public server IP</text></g>
+    <g transform="translate(16 176)"><rect width="208" height="24" fill="#e6e6e6"/><text x="104" y="16" font-size="12" text-anchor="middle" stroke="none" fill="#000">Wildcard does not match base</text></g>
+  </g>
+
+  <!-- Resolution and request routing -->
+  <g transform="translate(304 112)"><rect width="120" height="64"/><text x="60" y="28" font-size="14" text-anchor="middle" stroke="none" fill="#000">Public</text><text x="60" y="48" font-size="14" text-anchor="middle" stroke="none" fill="#000">server IP</text></g>
+  <path d="M264 112h20v16h20" fill="none" marker-end="url(#arrow)"/>
+  <path d="M264 176h20v-16h20" fill="none" marker-end="url(#arrow)"/>
+  <g transform="translate(464 40)">
+    <rect width="208" height="216"/>
+    <text x="16" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">Traefik routes</text>
+    <g transform="translate(16 48)"><rect width="176" height="48"/><text x="12" y="20" font-size="14" stroke="none" fill="#000">buzz.example.com</text><text x="12" y="38" font-size="12" stroke="none" fill="#666">Base-host route</text></g>
+    <g transform="translate(16 112)"><rect width="176" height="48"/><text x="12" y="20" font-size="14" stroke="none" fill="#000">*.buzz.example.com</text><text x="12" y="38" font-size="12" stroke="none" fill="#666">Site-host route</text></g>
+  </g>
+  <path d="M424 144h24" fill="none"/>
+  <path d="M448 144v-32h16" fill="none" marker-end="url(#arrow)"/>
+  <path d="M448 144v32h16" fill="none" marker-end="url(#arrow)"/>
+  <g transform="translate(704 112)"><rect width="72" height="64"/><text x="36" y="28" font-size="14" text-anchor="middle" stroke="none" fill="#000">Buzz</text><text x="36" y="48" font-size="12" text-anchor="middle" stroke="none" fill="#666">:8080</text></g>
+  <path d="M672 112h16v32M672 176h16v-32" fill="none"/>
+  <path d="M688 144h16" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Certificate control path -->
+  <g transform="translate(24 296)"><rect width="240" height="72" fill="#e6e6e6"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">DNS-01 challenge</text><text x="16" y="52" font-size="12" stroke="none" fill="#000">_acme-challenge.buzz.example.com</text></g>
+  <g transform="translate(304 296)"><rect width="368" height="72"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">TLS certificate covers both names</text><text x="16" y="52" font-size="12" stroke="none" fill="#666">buzz.example.com + *.buzz.example.com</text></g>
+  <path d="M264 332h40" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+  <path d="M568 296V256" fill="none" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+</svg>

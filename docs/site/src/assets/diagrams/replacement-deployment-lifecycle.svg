@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400" role="img" aria-labelledby="title desc" font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Diagram: shows staging before publication and preservation of the previous site on failure. -->
+  <title id="title">Safe replacement deployment lifecycle</title>
+  <desc id="desc">Buzz serves the current site while a CLI ZIP is validated in staging. Publishing coordinates files and metadata. Success exposes the complete new file set, while failure keeps or restores the previous site.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#000" stroke="none"/></marker>
+  </defs>
+
+  <!-- Existing site remains live while the new build is prepared -->
+  <g transform="translate(24 48)"><rect width="144" height="56"/><text x="72" y="34" font-size="14" text-anchor="middle" stroke="none" fill="#000">Site requests</text></g>
+  <path d="M168 76h56" marker-end="url(#arrow)"/>
+  <g transform="translate(224 40)"><rect width="240" height="72"/><text x="16" y="30" font-size="20" font-weight="600" stroke="none" fill="#000">Current live site</text><text x="16" y="54" font-size="12" stroke="none" fill="#666">Complete previous file set</text></g>
+  <g transform="translate(224 120)"><rect width="240" height="32" fill="#e6e6e6"/><text x="120" y="21" font-size="12" text-anchor="middle" stroke="none" fill="#000">Remains available during staging</text></g>
+
+  <!-- New build is validated before any state transition -->
+  <g transform="translate(24 216)"><rect width="128" height="64"/><text x="64" y="28" font-size="14" font-weight="600" text-anchor="middle" stroke="none" fill="#000">CLI ZIP</text><text x="64" y="48" font-size="12" text-anchor="middle" stroke="none" fill="#666">New build</text></g>
+  <g transform="translate(200 192)"><rect width="200" height="112"/><text x="16" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">Staging</text><text x="16" y="56" font-size="12" stroke="none" fill="#000">Extract and validate the</text><text x="16" y="76" font-size="12" stroke="none" fill="#000">complete new file set</text><text x="16" y="96" font-size="12" stroke="none" fill="#666">Nothing is live yet</text></g>
+  <g transform="translate(448 192)"><rect width="160" height="112"/><text x="16" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">Publish</text><text x="16" y="58" font-size="12" stroke="none" fill="#000">Journal coordinates</text><text x="16" y="78" font-size="12" stroke="none" fill="#000">site files + metadata</text></g>
+  <path d="M152 248h48M400 248h48" marker-end="url(#arrow)"/>
+
+  <!-- Publication outcomes -->
+  <g transform="translate(632 104)"><rect width="144" height="112"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Success</text><text x="16" y="52" font-size="12" stroke="none" fill="#000">New file set is live</text><text x="16" y="74" font-size="12" stroke="none" fill="#666">Omitted files are</text><text x="16" y="92" font-size="12" stroke="none" fill="#666">removed</text></g>
+  <g transform="translate(632 272)"><rect width="144" height="112" fill="#e6e6e6"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Failure</text><text x="16" y="52" font-size="12" stroke="none" fill="#000">Previous site</text><text x="16" y="70" font-size="12" stroke="none" fill="#000">stays live</text><text x="16" y="94" font-size="12" stroke="none" fill="#666">Metadata rolls back</text></g>
+  <path d="M608 232h8v-72h16" fill="none" marker-end="url(#arrow)"/>
+  <path d="M608 264h8v64h16" fill="none" marker-end="url(#arrow)"/>
+  <path d="M632 136H512V24H344v16" fill="none" stroke-dasharray="6 6" marker-end="url(#arrow)"/><text x="488" y="16" font-size="12" stroke="none" fill="#666">replace as one complete set</text>
+  <path d="M632 360H16V136h208" fill="none" stroke-dasharray="6 6" marker-end="url(#arrow)"/><text x="416" y="352" font-size="12" stroke="none" fill="#666">restore previous state</text>
+</svg>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="552" viewBox="0 0 800 552" role="img" aria-labelledby="title desc" font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Diagram: shows the ordered file checks and the first response Buzz returns. -->
+  <title id="title">Buzz file lookup and fallback order</title>
+  <desc id="desc">A request path is decoded and checked for traversal, then Buzz checks requested-file candidates, 200.html, 404.html, and finally a plain-text 404. The first match is returned without a redirect.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#000" stroke="none"/></marker>
+  </defs>
+
+  <!-- Request and safety gate -->
+  <g transform="translate(24 16)">
+    <rect width="752" height="56"/>
+    <text x="16" y="24" font-size="20" font-weight="600" stroke="none" fill="#000">Request path</text>
+    <text x="16" y="44" font-size="12" stroke="none" fill="#666">Query ignored; URL-decoded before lookup</text>
+  </g>
+  <path d="M400 72v16" marker-end="url(#arrow)"/>
+  <g transform="translate(264 88)">
+    <rect width="272" height="48"/>
+    <text x="136" y="30" font-size="14" text-anchor="middle" stroke="none" fill="#000">Path stays inside the site root?</text>
+  </g>
+
+  <!-- Ordered requested-file candidates -->
+  <path d="M264 112H224V160" fill="none" marker-end="url(#arrow)"/>
+  <text x="232" y="104" font-size="12" stroke="none" fill="#666">yes</text>
+  <g transform="translate(48 160)"><rect width="352" height="48"/><text x="16" y="30" font-size="14" stroke="none" fill="#000">1. Exact requested file</text></g>
+  <g transform="translate(48 216)"><rect width="352" height="48"/><text x="16" y="30" font-size="14" stroke="none" fill="#000">2. Trailing slash: directory/index.html</text></g>
+  <g transform="translate(48 272)"><rect width="352" height="48"/><text x="16" y="30" font-size="14" stroke="none" fill="#000">3. Non-.html path: path.html</text></g>
+  <g transform="translate(48 328)"><rect width="352" height="48"/><text x="16" y="30" font-size="14" stroke="none" fill="#000">4. Non-.html path: path/index.html</text></g>
+  <path d="M224 208v8M224 264v8M224 320v8" fill="none"/>
+
+  <!-- Any requested-file match exits to the same response -->
+  <path d="M400 184h32M400 240h32M400 296h32M400 352h32M432 184v168M432 268h72" fill="none" marker-end="url(#arrow)"/>
+  <text x="468" y="260" font-size="12" text-anchor="middle" stroke="none" fill="#666">first match</text>
+  <g transform="translate(504 224)">
+    <rect width="248" height="88"/>
+    <text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Serve first matching file</text>
+    <text x="16" y="50" font-size="12" stroke="none" fill="#666">Status 200</text>
+    <text x="16" y="70" font-size="12" stroke="none" fill="#666">No clean-URL redirect</text>
+  </g>
+
+  <!-- SPA and not-found fallbacks -->
+  <path d="M224 376v24" marker-end="url(#arrow)"/>
+  <g transform="translate(48 400)"><rect width="208" height="48"/><text x="104" y="30" font-size="14" text-anchor="middle" stroke="none" fill="#000">Root 200.html exists?</text></g>
+  <path d="M256 424h32" marker-end="url(#arrow)"/><text x="264" y="416" font-size="12" stroke="none" fill="#666">yes</text>
+  <g transform="translate(288 392)"><rect width="184" height="64"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Serve 200.html</text><text x="16" y="48" font-size="12" stroke="none" fill="#666">Status 200</text></g>
+  <path d="M152 448v32" marker-end="url(#arrow)"/><text x="160" y="468" font-size="12" stroke="none" fill="#666">no</text>
+  <g transform="translate(48 480)"><rect width="208" height="48"/><text x="104" y="30" font-size="14" text-anchor="middle" stroke="none" fill="#000">Root 404.html exists?</text></g>
+  <path d="M256 504h32" marker-end="url(#arrow)"/><text x="264" y="496" font-size="12" stroke="none" fill="#666">yes</text>
+  <g transform="translate(288 472)"><rect width="184" height="64"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Serve 404.html</text><text x="16" y="48" font-size="12" stroke="none" fill="#666">Status 404</text></g>
+  <path d="M536 112h232v392h-16" fill="none" marker-end="url(#arrow)"/><text x="544" y="104" font-size="12" stroke="none" fill="#666">no: traversal rejected</text>
+  <path d="M472 504h48" marker-end="url(#arrow)"/><text x="480" y="496" font-size="12" stroke="none" fill="#666">no</text>
+  <g transform="translate(520 472)"><rect width="232" height="64" fill="#e6e6e6"/><text x="16" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">Plain-text 404 Not Found</text><text x="16" y="48" font-size="12" stroke="none" fill="#666">Status 404</text></g>
+</svg>

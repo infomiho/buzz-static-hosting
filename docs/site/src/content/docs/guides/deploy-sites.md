@@ -32,6 +32,8 @@ buzz deploy ./dist --subdomain my-site
 
 A successful redeployment replaces the complete previous file set. Files omitted from the new build are removed from the hosted site. If validation or publishing fails, Buzz leaves the previous deployment in place.
 
+![Buzz staging and publish lifecycle preserving the previous site on deployment failure](../../../assets/diagrams/replacement-deployment-lifecycle.svg)
+
 Only the owner can replace a site. A deployment token can replace only the site to which it is scoped.
 
 ## Inspect The Deployment

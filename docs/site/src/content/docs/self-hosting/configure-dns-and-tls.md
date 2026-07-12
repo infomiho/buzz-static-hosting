@@ -27,6 +27,8 @@ In Cloudflare, open **DNS > Records** and select **Add record**. Create these re
 
 The wildcard record doesn't cover `buzz.example.com`, so both records are required. Use equivalent `AAAA` records only when the server has working public IPv6 routing.
 
+![Separate base and wildcard DNS records feeding Buzz routes and shared TLS coverage](../../../assets/diagrams/dns-routing-tls.svg)
+
 Verify both records from outside the server's local network:
 
 ```bash

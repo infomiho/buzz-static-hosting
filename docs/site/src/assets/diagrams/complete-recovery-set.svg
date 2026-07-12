@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" role="img" aria-labelledby="title desc" font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Diagram: inventories every category required for a complete Buzz recovery set. -->
+  <title id="title">Anatomy of a complete Buzz recovery set</title>
+  <desc id="desc">A complete recovery set combines a cold snapshot containing data.db and sites, the exact deployment revision and configuration, and the certificate or proxy state for either standalone Compose or Coolify.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#000" stroke="none"/></marker>
+  </defs>
+
+  <!-- Buzz data must be captured together -->
+  <g transform="translate(24 24)">
+    <rect width="584" height="128"/>
+    <text x="24" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">1. Cold, consistent /data snapshot</text>
+    <g transform="translate(24 48)"><rect width="248" height="56"/><text x="16" y="24" font-size="14" font-weight="600" stroke="none" fill="#000">/data/data.db</text><text x="16" y="44" font-size="12" stroke="none" fill="#666">Ownership, identity, metadata</text></g>
+    <g transform="translate(312 48)"><rect width="248" height="56"/><text x="16" y="24" font-size="14" font-weight="600" stroke="none" fill="#000">/data/sites</text><text x="16" y="44" font-size="12" stroke="none" fill="#666">Site files + operation journals</text></g>
+    <path d="M272 76h40"/><text x="292" y="70" font-size="12" text-anchor="middle" stroke="none" fill="#666">AND</text>
+    <text x="292" y="120" font-size="12" text-anchor="middle" stroke="none" fill="#666">Neither is sufficient alone</text>
+  </g>
+
+  <!-- Reproducible deployment inputs -->
+  <g transform="translate(24 176)">
+    <rect width="584" height="104"/>
+    <text x="24" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">2. Rebuild configuration</text>
+    <g transform="translate(24 48)"><rect width="160" height="40"/><text x="80" y="25" font-size="12" text-anchor="middle" stroke="none" fill="#000">Exact Git revision</text></g>
+    <g transform="translate(200 48)"><rect width="168" height="40"/><text x="84" y="25" font-size="12" text-anchor="middle" stroke="none" fill="#000">Environment + secrets</text></g>
+    <g transform="translate(384 48)"><rect width="176" height="40"/><text x="88" y="25" font-size="12" text-anchor="middle" stroke="none" fill="#000">Compose + overrides</text></g>
+  </g>
+
+  <!-- Choose the platform-specific TLS and proxy state -->
+  <g transform="translate(24 304)">
+    <rect width="584" height="144"/>
+    <text x="24" y="32" font-size="20" font-weight="600" stroke="none" fill="#000">3. Platform TLS and proxy state</text>
+    <g transform="translate(24 48)"><rect width="248" height="72"/><text x="16" y="26" font-size="14" font-weight="600" stroke="none" fill="#000">Standalone Compose</text><text x="16" y="48" font-size="12" stroke="none" fill="#666">buzz_traefik-certs ACME state</text></g>
+    <g transform="translate(312 48)"><rect width="248" height="72"/><text x="16" y="26" font-size="14" font-weight="600" stroke="none" fill="#000">Coolify</text><text x="16" y="46" font-size="12" stroke="none" fill="#666">Saved proxy + certificate state</text><text x="16" y="62" font-size="12" stroke="none" fill="#666">Use Coolify host backup method</text></g>
+    <text x="292" y="136" font-size="12" text-anchor="middle" stroke="none" fill="#666">Include the branch for your deployment platform</text>
+  </g>
+
+  <!-- Every category feeds the recovery set -->
+  <g transform="translate(640 144)"><rect width="136" height="176" fill="#e6e6e6"/><text x="68" y="40" font-size="20" font-weight="600" text-anchor="middle" stroke="none" fill="#000">Complete</text><text x="68" y="64" font-size="20" font-weight="600" text-anchor="middle" stroke="none" fill="#000">recovery set</text><text x="68" y="104" font-size="12" text-anchor="middle" stroke="none" fill="#000">Encrypted</text><text x="68" y="128" font-size="12" text-anchor="middle" stroke="none" fill="#000">Off-host</text><text x="68" y="152" font-size="12" text-anchor="middle" stroke="none" fill="#000">Checksummed</text></g>
+  <path d="M608 88h16v112h16" fill="none" marker-end="url(#arrow)"/>
+  <path d="M608 228h32" fill="none" marker-end="url(#arrow)"/>
+  <path d="M608 376h16V256h16" fill="none" marker-end="url(#arrow)"/>
+</svg>

@@ -26,6 +26,10 @@ Both bundled deployments mount `buzz_buzz-data` at `/data`. Back up its contents
 - `/data/data.db` contains sites, owners, sessions, deployment tokens, and analytics.
 - `/data/sites` contains deployed files and deployment operation journals.
 
+![Required Buzz data, configuration, and platform state in a complete recovery set](../../../assets/diagrams/complete-recovery-set.svg)
+
+*Include the TLS and proxy branch for the deployment platform you use.*
+
 Site files alone can't reconstruct ownership or credentials. `data.db` alone can't reconstruct deployed content.
 
 A complete host recovery also needs:
