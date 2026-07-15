@@ -4,7 +4,7 @@ from fastapi import Depends, Header, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import config
-from .auth_service import AuthService, Identity, User
+from .auth_service import AccessDenied, AuthService, Identity, User
 from .cookies import COOKIE_NAME
 
 bearer_scheme = HTTPBearer(
@@ -45,7 +45,10 @@ def get_identity(
 
     cookie_token = request.cookies.get(COOKIE_NAME)
     if cookie_token:
-        return auth.authenticate(f"Bearer {cookie_token}")
+        try:
+            return auth.authenticate(f"Bearer {cookie_token}")
+        except AccessDenied:
+            return None
 
     return None
 

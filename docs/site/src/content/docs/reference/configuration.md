@@ -26,6 +26,8 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_MAX_ARCHIVE_PATH_BYTES` | Maximum UTF-8 byte length of a path in a deployment archive. | Buzz server | `1024` | Optional |
 | `BUZZ_GSC_CREDENTIALS` | Google service-account JSON or a path to a readable credentials file. | Buzz server | Not set | Optional |
 | `BUZZ_GSC_PROPERTY` | Google Search Console property. Defaults to `sc-domain:<BUZZ_DOMAIN>`. | Buzz server | Not set | Optional |
+| `BUZZ_ALLOW_REGISTRATION` | Whether new GitHub users can sign up. Existing users keep access when disabled. | Buzz server | `true` | Optional |
+| `BUZZ_ALLOWED_GITHUB_USERS` | Comma-separated GitHub usernames allowed to sign in. When set, unlisted users are denied on every request and listed users may sign up even when registration is disabled. | Buzz server | Not set | Optional |
 | `CF_API_TOKEN` | Cloudflare API token used by Traefik for DNS-01 validation. | Standalone deployment | Not set | Required by the standalone Docker Compose deployment. |
 | `ACME_EMAIL` | Email address used for Let's Encrypt certificate notifications. | Standalone deployment | Not set | Required by the standalone Docker Compose deployment. |
 

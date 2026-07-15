@@ -62,7 +62,7 @@ Restart or redeploy Buzz after changing either variable. Buzz reads environment 
 
    `buzz whoami` should show the GitHub account used during authorization.
 
-Buzz doesn't provide a GitHub organization or user allowlist. Any GitHub user who can reach the server can attempt to sign in and deploy sites. Review [Security](../security/) before exposing Buzz to users you don't administer.
+By default any GitHub user who can reach the server can sign in and deploy sites. Set `BUZZ_ALLOW_REGISTRATION=false` to stop new sign-ups, or `BUZZ_ALLOWED_GITHUB_USERS` to allow only specific GitHub usernames. Review [Security](../security/) before exposing Buzz to users you don't administer.
 
 ## Roll Back Authentication Changes
 

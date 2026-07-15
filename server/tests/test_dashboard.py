@@ -202,3 +202,47 @@ class TestLogout:
         assert COOKIE_NAME in res.headers.get("set-cookie", "")
         # Cookie should be cleared (max-age=0)
         assert "Max-Age=0" in res.headers.get("set-cookie", "")
+
+
+class TestAccessControl:
+    def _lockout_auth(self, db):
+        return AuthService(
+            db=db,
+            github=FakeGitHubClient(),
+            github_client_id="test-id",
+            allowed_github_users=frozenset({"someone-else"}),
+        )
+
+    def test_login_poll_denied_returns_403_with_login(self, app, test_db):
+        db, _ = test_db
+        app.state.auth_service = self._lockout_auth(db)
+        client = TestClient(app)
+
+        start = client.post("/dashboard/login/start").json()
+        res = client.post("/dashboard/login/poll", json={"device_code": start["device_code"]})
+
+        assert res.status_code == 403
+        assert "alice" in res.json()["detail"]
+
+    def test_revoked_session_cookie_shows_login_page(self, app, test_db, user_and_token):
+        db, _ = test_db
+        _, token = user_and_token
+        app.state.auth_service = self._lockout_auth(db)
+        client = TestClient(app)
+
+        client.cookies.set(COOKIE_NAME, token)
+        res = client.get("/")
+
+        assert res.status_code == 200
+        assert "Login with GitHub" in res.text
+
+    def test_revoked_bearer_session_returns_403(self, app, test_db, user_and_token):
+        db, _ = test_db
+        _, token = user_and_token
+        app.state.auth_service = self._lockout_auth(db)
+        client = TestClient(app)
+
+        res = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+        assert res.status_code == 403
+        assert "alice" in res.json()["detail"]

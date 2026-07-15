@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
 
+from .exceptions import Forbidden
 from .github import GitHubClient
+
+logger = logging.getLogger(__name__)
 
 SESSION_TOKEN_PREFIX = "buzz_sess_"
 DEPLOY_TOKEN_PREFIX = "buzz_deploy_"
@@ -93,6 +97,15 @@ class DeviceFlowFailed(Exception):
         self.detail = detail
 
 
+class AccessDenied(Forbidden):
+    def __init__(self, github_login: str):
+        self.github_login = github_login
+        super().__init__(
+            f"GitHub account '{github_login}' is not allowed on this Buzz server. "
+            "Ask the server operator for access."
+        )
+
+
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -106,11 +119,38 @@ def _generate_deploy_token() -> str:
 
 
 class AuthService:
-    def __init__(self, db: Callable, github: GitHubClient | None = None, github_client_id: str | None = None) -> None:
+    def __init__(
+        self,
+        db: Callable,
+        github: GitHubClient | None = None,
+        github_client_id: str | None = None,
+        allow_registration: bool = True,
+        allowed_github_users: frozenset[str] | None = None,
+    ) -> None:
         self._db = db
         self._github = github
         self._github_client_id = github_client_id
+        self._allow_registration = allow_registration
+        self._allowed_github_users = frozenset(
+            login.lower() for login in (allowed_github_users or frozenset())
+        )
         self._pending_codes: dict[str, dict] = {}
+
+    def _ensure_allowed(self, login: str, *, is_new_user: bool, github_id: int | None = None) -> None:
+        if self._allowed_github_users:
+            if login.lower() not in self._allowed_github_users:
+                logger.warning(
+                    "Blocked GitHub user %r (github_id=%s): not in BUZZ_ALLOWED_GITHUB_USERS",
+                    login, github_id,
+                )
+                raise AccessDenied(login)
+            return
+        if is_new_user and not self._allow_registration:
+            logger.warning(
+                "Blocked new GitHub user %r (github_id=%s): registration is disabled",
+                login, github_id,
+            )
+            raise AccessDenied(login)
 
     def authenticate(self, bearer_token: str | None) -> Identity | None:
         if not bearer_token:
@@ -185,10 +225,12 @@ class AuthService:
         access_token = result["access_token"]
         github_user = self._github.get_user(access_token)
 
+        # GitHub has granted the token, so the device code is consumed even
+        # when the user turns out not to be allowed.
+        del self._pending_codes[device_code]
+
         user = self._upsert_user(github_user)
         token = self._create_session(user.id)
-
-        del self._pending_codes[device_code]
 
         return LoginResult(token=token, user=user)
 
@@ -197,6 +239,10 @@ class AuthService:
             existing = conn.execute(
                 "SELECT id FROM users WHERE github_id = ?", (github_user["id"],)
             ).fetchone()
+
+            self._ensure_allowed(
+                github_user["login"], is_new_user=existing is None, github_id=github_user["id"]
+            )
 
             if existing:
                 user_id = existing["id"]
@@ -234,6 +280,7 @@ class AuthService:
             ).fetchone()
         if not row:
             return None
+        self._ensure_allowed(row["github_login"], is_new_user=False)
         return Identity(
             user=User(id=row["user_id"], github_login=row["github_login"], github_name=row["github_name"]),
             token_type="session",
@@ -302,6 +349,7 @@ class AuthService:
             ).fetchone()
             if not row:
                 return None
+            self._ensure_allowed(row["github_login"], is_new_user=False)
             conn.execute(
                 "UPDATE deployment_tokens SET last_used_at = ? WHERE id = ?",
                 (now, token_hash),

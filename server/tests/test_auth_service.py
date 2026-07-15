@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from server.auth_service import (
-    AuthService, Identity, User,
+    AccessDenied, AuthService, Identity, User,
     DeviceFlowDenied, DeviceFlowExpired, DeviceFlowPending, DeviceFlowSlowDown,
     InvalidSession, SiteNotFound, NotSiteOwner, TokenNotFound,
 )
@@ -397,3 +397,143 @@ class TestDeployTokenCrud:
         assert identity is not None
         assert identity.token_type == "deploy"
         assert identity.site_name == "my-site"
+
+
+class TestAccessControl:
+    def _make_auth(self, db, allow_registration=True, allowed_github_users=None, **github_overrides):
+        github = FakeGitHubClient()
+        for k, v in github_overrides.items():
+            setattr(github, k, v)
+        return AuthService(
+            db=db,
+            github=github,
+            github_client_id="test-client-id",
+            allow_registration=allow_registration,
+            allowed_github_users=allowed_github_users,
+        )
+
+    def _login(self, auth):
+        start = auth.start_device_flow()
+        return auth.poll_device_flow(start["device_code"])
+
+    def test_registration_off_keeps_existing_user(self):
+        db = make_test_db()
+        _insert_user(_test_conn)
+
+        auth = self._make_auth(db, allow_registration=False)
+        result = self._login(auth)
+
+        assert result.user.github_login == "alice"
+
+    def test_registration_off_denies_new_user(self):
+        db = make_test_db()
+        auth = self._make_auth(db, allow_registration=False)
+
+        with pytest.raises(AccessDenied):
+            self._login(auth)
+
+        count = _test_conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        assert count == 0
+
+    def test_allowlist_wins_over_disabled_registration(self):
+        db = make_test_db()
+        auth = self._make_auth(
+            db, allow_registration=False, allowed_github_users=frozenset({"alice"})
+        )
+
+        result = self._login(auth)
+
+        assert result.user.github_login == "alice"
+        count = _test_conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        assert count == 1
+
+    def test_allowlist_denies_unlisted_new_user(self):
+        db = make_test_db()
+        auth = self._make_auth(db, allowed_github_users=frozenset({"bob"}))
+
+        with pytest.raises(AccessDenied):
+            self._login(auth)
+
+    def test_allowlist_matches_case_insensitively(self):
+        db = make_test_db()
+        auth = self._make_auth(
+            db,
+            allowed_github_users=frozenset({"alice"}),
+            user={"id": 42, "login": "AlIcE", "name": "Alice"},
+        )
+
+        result = self._login(auth)
+
+        assert result.user.github_login == "AlIcE"
+
+    def test_allowlist_revokes_existing_session(self):
+        db = make_test_db()
+        user_id = _insert_user(_test_conn)
+        token = "buzz_sess_" + secrets.token_urlsafe(32)
+        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+
+        auth = AuthService(db=db, allowed_github_users=frozenset({"bob"}))
+
+        with pytest.raises(AccessDenied):
+            auth.authenticate(f"Bearer {token}")
+
+    def test_allowlist_revokes_existing_deploy_token(self):
+        db = make_test_db()
+        user_id = _insert_user(_test_conn)
+        token = "buzz_deploy_" + secrets.token_urlsafe(32)
+        _insert_deploy_token(_test_conn, token, user_id, "my-site")
+
+        auth = AuthService(db=db, allowed_github_users=frozenset({"bob"}))
+
+        with pytest.raises(AccessDenied):
+            auth.authenticate(f"Bearer {token}")
+
+    def test_allowlist_keeps_listed_existing_user(self):
+        db = make_test_db()
+        user_id = _insert_user(_test_conn)
+        token = "buzz_sess_" + secrets.token_urlsafe(32)
+        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+
+        auth = AuthService(db=db, allowed_github_users=frozenset({"alice"}))
+        identity = auth.authenticate(f"Bearer {token}")
+
+        assert identity is not None
+        assert identity.user.id == user_id
+
+    def test_registration_toggle_does_not_revoke_sessions(self):
+        db = make_test_db()
+        user_id = _insert_user(_test_conn)
+        token = "buzz_sess_" + secrets.token_urlsafe(32)
+        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+
+        auth = AuthService(db=db, allow_registration=False)
+        identity = auth.authenticate(f"Bearer {token}")
+
+        assert identity is not None
+
+    def test_denied_login_consumes_device_code(self):
+        db = make_test_db()
+        auth = self._make_auth(db, allow_registration=False)
+        start = auth.start_device_flow()
+
+        with pytest.raises(AccessDenied):
+            auth.poll_device_flow(start["device_code"])
+
+        with pytest.raises(DeviceFlowExpired):
+            auth.poll_device_flow(start["device_code"])
+
+    def test_revoked_deploy_token_does_not_update_last_used(self):
+        db = make_test_db()
+        user_id = _insert_user(_test_conn)
+        token = "buzz_deploy_" + secrets.token_urlsafe(32)
+        _insert_deploy_token(_test_conn, token, user_id, "my-site")
+
+        auth = AuthService(db=db, allowed_github_users=frozenset({"bob"}))
+
+        with pytest.raises(AccessDenied):
+            auth.authenticate(f"Bearer {token}")
+
+        row = _test_conn.execute(
+            "SELECT last_used_at FROM deployment_tokens WHERE id = ?", (_hash(token),)
+        ).fetchone()
+        assert row["last_used_at"] is None

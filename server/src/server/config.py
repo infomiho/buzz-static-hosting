@@ -16,6 +16,10 @@ GITHUB_CLIENT_ID = environment_value("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = environment_value("GITHUB_CLIENT_SECRET")
 ANALYTICS_SECRET = environment_value("BUZZ_ANALYTICS_SECRET")
 
+# Access control
+ALLOW_REGISTRATION = environment_value("BUZZ_ALLOW_REGISTRATION")
+ALLOWED_GITHUB_USERS = environment_value("BUZZ_ALLOWED_GITHUB_USERS")
+
 # Deployment limits
 MAX_ARCHIVE_BYTES = environment_value("BUZZ_MAX_ARCHIVE_BYTES")
 MAX_SITE_BYTES = environment_value("BUZZ_MAX_SITE_BYTES")

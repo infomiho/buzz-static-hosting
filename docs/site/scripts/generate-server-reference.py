@@ -28,6 +28,8 @@ def display_default(variable: EnvironmentVariable) -> str:
         return "Not set"
     if variable.name == "BUZZ_DATA_DIR":
         return "Server package directory"
+    if isinstance(variable.default, bool):
+        return f"`{str(variable.default).lower()}`"
     return f"`{variable.default}`"
 
 
@@ -87,6 +89,10 @@ def render_env_example() -> str:
 {setting('BUZZ_MAX_SITE_BYTES')}
 {setting('BUZZ_MAX_SITE_FILES')}
 {setting('BUZZ_MAX_ARCHIVE_PATH_BYTES')}
+
+# Access control
+{setting('BUZZ_ALLOW_REGISTRATION', commented=True)}
+{setting('BUZZ_ALLOWED_GITHUB_USERS', commented=True)}
 
 # Standalone Docker Compose deployment
 {setting('CF_API_TOKEN')}

@@ -50,7 +50,11 @@ async def device_start(auth: Annotated[AuthService, Depends(get_auth_service)]):
         400: {
             "model": ErrorResponse,
             "description": "The device flow failed or expired.",
-        }
+        },
+        403: {
+            "model": ErrorResponse,
+            "description": "The GitHub account is not allowed on this server.",
+        },
     },
 )
 async def device_poll(data: DevicePollRequest, auth: Annotated[AuthService, Depends(get_auth_service)]):

@@ -11,7 +11,15 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from .analytics import AnalyticsRecorder, build_analytics_event
 from .api_models import HealthResponse
 from .auth_service import AuthService, Identity
-from .config import CONTENT_TYPES, DOMAIN, GITHUB_CLIENT_ID, MAX_ARCHIVE_BYTES, SITES_DIR
+from .config import (
+    ALLOW_REGISTRATION,
+    ALLOWED_GITHUB_USERS,
+    CONTENT_TYPES,
+    DOMAIN,
+    GITHUB_CLIENT_ID,
+    MAX_ARCHIVE_BYTES,
+    SITES_DIR,
+)
 from .cookies import COOKIE_NAME
 from .site_path import InvalidSubdomain, resolve_site_file
 from .db import db
@@ -119,7 +127,13 @@ def create_app() -> FastAPI:
     )
     github_client = HttpGitHubClient()
     app.state.github_client = github_client
-    app.state.auth_service = AuthService(db=db, github=github_client, github_client_id=GITHUB_CLIENT_ID)
+    app.state.auth_service = AuthService(
+        db=db,
+        github=github_client,
+        github_client_id=GITHUB_CLIENT_ID,
+        allow_registration=ALLOW_REGISTRATION,
+        allowed_github_users=ALLOWED_GITHUB_USERS,
+    )
     app.state.analytics = AnalyticsRecorder(db)
     app.state.search_console = create_search_console_client()
 

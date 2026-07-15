@@ -4,10 +4,27 @@ import argparse
 import uvicorn
 
 from . import config
-from .config import SITES_DIR, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+from .config import (
+    ALLOW_REGISTRATION,
+    ALLOWED_GITHUB_USERS,
+    SITES_DIR,
+    GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET,
+)
 from .db import db, init_db
 from .environment import environment_value
 from .site_store import SiteStore
+
+
+def access_control_warning(
+    allow_registration: bool, allowed_users: frozenset[str] | None, user_count: int
+) -> str | None:
+    if allow_registration or allowed_users or user_count:
+        return None
+    return (
+        "WARNING: BUZZ_ALLOW_REGISTRATION is false, BUZZ_ALLOWED_GITHUB_USERS is empty, "
+        "and no users exist. Nobody can log in to this server."
+    )
 
 
 def main() -> None:
@@ -28,6 +45,12 @@ def main() -> None:
     init_db()
     with db() as conn:
         SiteStore(conn, SITES_DIR).reconcile()
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+    if not config.DEV_MODE:
+        warning = access_control_warning(ALLOW_REGISTRATION, ALLOWED_GITHUB_USERS, user_count)
+        if warning:
+            print(warning)
 
     print(f"Server running on http://localhost:{args.port}")
     if config.DOMAIN:

@@ -12,7 +12,7 @@ Scope = Literal["server", "standalone"]
 class EnvironmentVariable:
     name: str
     description: str
-    default: str | int | None = None
+    default: str | int | bool | None = None
     required: str | None = None
     sensitive: bool = False
     scope: Scope = "server"
@@ -24,6 +24,19 @@ class EnvironmentVariable:
         if value is None:
             return self.default
         return self.parser(value)
+
+
+def parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Expected a boolean value, got {value!r}")
+
+
+def parse_github_logins(value: str) -> frozenset[str]:
+    return frozenset(login.strip().lower() for login in value.split(",") if login.strip())
 
 
 PACKAGE_DIR = Path(__file__).parent.resolve()
@@ -105,6 +118,19 @@ ENVIRONMENT_VARIABLES = (
         "BUZZ_GSC_PROPERTY",
         "Google Search Console property. Defaults to `sc-domain:<BUZZ_DOMAIN>`.",
         example="sc-domain:buzz.example.com",
+    ),
+    EnvironmentVariable(
+        "BUZZ_ALLOW_REGISTRATION",
+        "Whether new GitHub users can sign up. Existing users keep access when disabled.",
+        default=True,
+        example="false",
+        parser=parse_bool,
+    ),
+    EnvironmentVariable(
+        "BUZZ_ALLOWED_GITHUB_USERS",
+        "Comma-separated GitHub usernames allowed to sign in. When set, unlisted users are denied on every request and listed users may sign up even when registration is disabled.",
+        example="alice,bob",
+        parser=parse_github_logins,
     ),
     EnvironmentVariable(
         "CF_API_TOKEN",

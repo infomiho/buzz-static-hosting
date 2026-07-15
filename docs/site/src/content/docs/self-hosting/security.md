@@ -9,11 +9,16 @@ Review Buzz's current controls and unsupported protections before making a serve
 
 ## Control Who Can Use The Server
 
-Buzz authenticates users through a GitHub OAuth app, but it doesn't provide a GitHub organization or user allowlist. Any GitHub user who can reach the server can attempt to sign in, create sites, and consume storage.
+Buzz authenticates users through a GitHub OAuth app. By default any GitHub user who can reach the server can sign in, create sites, and consume storage. Two environment variables restrict this:
 
-Restrict network access at an upstream proxy, virtual private network, or firewall when the server is intended for a closed group. Buzz doesn't include rate limiting, so add and verify rate limits upstream if your threat model requires them.
+- `BUZZ_ALLOW_REGISTRATION=false` stops new sign-ups. Existing users keep signing in and deploying.
+- `BUZZ_ALLOWED_GITHUB_USERS=alice,bob` allows only the listed GitHub usernames. Unlisted users are denied on every request, including active dashboard sessions and existing deployment tokens. Listed users can sign up even when registration is disabled.
 
-Configure these controls before creating public DNS records or starting the deployment. GitHub authentication identifies a user; it doesn't decide whether that user is eligible to use your Buzz server.
+Matching is case-insensitive, and the allowlist wins when both variables are set. Removing a username from the allowlist suspends access without deleting anything; adding it back restores the user's sessions and deployment tokens. The allowlist matches GitHub usernames, so update it when a listed user renames their GitHub account.
+
+Denied users see the same message whether registration is closed or they are missing from the allowlist. The server logs each blocked attempt with the GitHub username, so check the logs when deciding who to add.
+
+Set these variables before creating public DNS records or starting the deployment. Restrict network access at an upstream proxy, virtual private network, or firewall when the server is intended for a closed group. Buzz doesn't include rate limiting, so add and verify rate limits upstream if your threat model requires them.
 
 ## Protect Credentials
 
