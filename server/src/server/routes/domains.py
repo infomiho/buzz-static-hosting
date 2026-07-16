@@ -14,7 +14,12 @@ from ..custom_domains import (
     normalize_hostname,
 )
 from ..db import db
-from ..dependencies import Identity, require_custom_domain_control_ready, require_user
+from ..dependencies import (
+    Identity,
+    require_custom_domain_admission_enabled,
+    require_custom_domain_control_ready,
+    require_user,
+)
 from ..exceptions import BadRequest, Conflict
 from ..site_store import SiteStore
 
@@ -42,6 +47,9 @@ def domain_response(claim: DomainClaim) -> dict:
         "route_error": claim.route_error,
         "challenge_path": claim.challenge_path,
         "challenge_seen_at": claim.challenge_seen_at,
+        "activated_at": claim.activated_at,
+        "activation_checked_at": claim.activation_checked_at,
+        "activation_error": claim.activation_error,
     }
 
 
@@ -84,7 +92,10 @@ async def list_domain_claims(
         429: {"model": ErrorResponse},
         503: {"model": ErrorResponse},
     },
-    dependencies=[Depends(require_custom_domain_control_ready)],
+    dependencies=[
+        Depends(require_custom_domain_control_ready),
+        Depends(require_custom_domain_admission_enabled),
+    ],
 )
 async def create_domain_claim(
     site_name: str,

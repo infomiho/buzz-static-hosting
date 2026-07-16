@@ -36,6 +36,9 @@ def domain_api(tmp_path, monkeypatch):
     monkeypatch.setattr(db_module, "DB_PATH", path)
     monkeypatch.setattr(config, "DEV_MODE", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr(config, "CUSTOM_DOMAIN_ADMISSION_ENABLED", True)
+    monkeypatch.setattr(config, "CUSTOM_DOMAIN_ROUTING_ENABLED", True)
+    monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
     monkeypatch.setattr(config, "TRAEFIK_CONTROL_TOKEN", "configured")
     monkeypatch.setattr(config, "DOMAIN", "buzz.example.com")
     db_module.init_db()
@@ -111,6 +114,21 @@ def test_domain_admission_requires_live_control_plane_readiness(domain_api):
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Custom domain control plane is not ready"
+
+
+def test_domain_admission_requires_production_routing_configuration(
+    domain_api, monkeypatch
+):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset())
+
+    response = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "www.example.com"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Custom domain production routing is not configured"
 
 
 def test_domain_claim_requires_site_ownership(domain_api):

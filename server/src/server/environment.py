@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -12,7 +13,7 @@ Scope = Literal["server", "standalone"]
 class EnvironmentVariable:
     name: str
     description: str
-    default: str | int | bool | None = None
+    default: Any = None
     required: str | None = None
     sensitive: bool = False
     scope: Scope = "server"
@@ -37,6 +38,18 @@ def parse_bool(value: str) -> bool:
 
 def parse_github_logins(value: str) -> frozenset[str]:
     return frozenset(login.strip().lower() for login in value.split(",") if login.strip())
+
+
+def parse_public_ips(value: str) -> frozenset[str]:
+    addresses = set()
+    for raw in value.split(","):
+        if not raw.strip():
+            continue
+        address = ipaddress.ip_address(raw.strip())
+        if not address.is_global:
+            raise ValueError(f"Expected a public ingress IP address, got {address}")
+        addresses.add(str(address))
+    return frozenset(addresses)
 
 
 PACKAGE_DIR = Path(__file__).parent.resolve()
@@ -177,10 +190,30 @@ ENVIRONMENT_VARIABLES = (
     ),
     EnvironmentVariable(
         "BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED",
-        "Whether verified custom domains are published to Traefik. This staging-only switch defaults to disabled.",
+        "Whether verified custom domains are published to Traefik.",
         default=False,
         example="true",
         parser=parse_bool,
+    ),
+    EnvironmentVariable(
+        "BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED",
+        "Whether site owners can create new custom-domain claims.",
+        default=False,
+        example="true",
+        parser=parse_bool,
+    ),
+    EnvironmentVariable(
+        "BUZZ_CUSTOM_DOMAIN_INGRESS_IPS",
+        "Comma-separated public ingress IP addresses allowed for direct custom domains.",
+        default=frozenset(),
+        example="93.184.216.34",
+        parser=parse_public_ips,
+    ),
+    EnvironmentVariable(
+        "BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST",
+        "Internal Traefik hostname used to validate custom-domain TLS and routing.",
+        default="coolify-proxy",
+        example="coolify-proxy",
     ),
     EnvironmentVariable(
         "BUZZ_TRAEFIK_CERT_RESOLVER",

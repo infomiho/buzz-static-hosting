@@ -81,6 +81,9 @@ class DomainClaimResponse(BaseModel):
     route_error: str | None
     challenge_path: str | None
     challenge_seen_at: str | None
+    activated_at: str | None
+    activation_checked_at: str | None
+    activation_error: str | None
 
 
 class CreateTokenRequest(BaseModel):

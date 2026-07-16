@@ -35,7 +35,10 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_TRAEFIK_API_AUTHORIZATION` | Authorization header sent to Traefik's protected runtime API. | Buzz server | Not set | Optional |
 | `BUZZ_TRAEFIK_HTTPS_ENTRYPOINT` | Traefik HTTPS entrypoint expected by custom-domain routers. | Buzz server | `https` | Optional |
 | `BUZZ_TRAEFIK_SERVICE` | Provider-qualified Traefik service used by custom-domain routers. | Buzz server | `buzz@docker` | Optional |
-| `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED` | Whether verified custom domains are published to Traefik. This staging-only switch defaults to disabled. | Buzz server | `false` | Optional |
+| `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED` | Whether verified custom domains are published to Traefik. | Buzz server | `false` | Optional |
+| `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED` | Whether site owners can create new custom-domain claims. | Buzz server | `false` | Optional |
+| `BUZZ_CUSTOM_DOMAIN_INGRESS_IPS` | Comma-separated public ingress IP addresses allowed for direct custom domains. | Buzz server | Not set | Optional |
+| `BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST` | Internal Traefik hostname used to validate custom-domain TLS and routing. | Buzz server | `coolify-proxy` | Optional |
 | `BUZZ_TRAEFIK_CERT_RESOLVER` | Traefik certificate resolver selected by custom-domain routers. | Buzz server | `buzz-custom` | Optional |
 | `BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS` | Interval between custom-domain router reconciliation attempts. | Buzz server | `5` | Optional |
 | `BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER` | ACME directory used by the standalone custom-domain resolver. Keep the staging default until production routing is enabled. | Standalone deployment | `https://acme-staging-v02.api.letsencrypt.org/directory` | Optional |

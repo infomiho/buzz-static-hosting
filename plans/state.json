@@ -13,11 +13,11 @@
   },
   {
     "name": "04-staging-routing-and-withdrawal",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
     "name": "05-production-direct-domain",
-    "status": "pending"
+    "status": "in_progress"
   },
   {
     "name": "06-multiple-direct-aliases",

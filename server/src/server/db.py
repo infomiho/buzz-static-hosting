@@ -92,10 +92,20 @@ def _custom_domain_routing(conn: sqlite3.Connection) -> None:
         ON custom_domain_claims(challenge_token) WHERE challenge_token IS NOT NULL""")
 
 
+def _custom_domain_activation(conn: sqlite3.Connection) -> None:
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN activated_at TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN activation_checked_at TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN activation_error TEXT""")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _base_schema,
     _custom_domain_claims,
     _custom_domain_routing,
+    _custom_domain_activation,
 )
 
 

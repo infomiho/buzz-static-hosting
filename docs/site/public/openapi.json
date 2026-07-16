@@ -255,6 +255,39 @@
       },
       "DomainClaimResponse": {
         "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "activation_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Checked At"
+          },
+          "activation_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Error"
+          },
           "challenge_path": {
             "anyOf": [
               {
@@ -392,7 +425,10 @@
           "route_generation",
           "route_error",
           "challenge_path",
-          "challenge_seen_at"
+          "challenge_seen_at",
+          "activated_at",
+          "activation_checked_at",
+          "activation_error"
         ],
         "title": "DomainClaimResponse",
         "type": "object"

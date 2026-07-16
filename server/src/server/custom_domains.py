@@ -67,6 +67,9 @@ class DomainClaim:
     removal_requested_at: str | None
     withdrawn_at: str | None
     challenge_seen_at: str | None
+    activated_at: str | None
+    activation_checked_at: str | None
+    activation_error: str | None
 
     @property
     def verification_name(self) -> str:
@@ -299,7 +302,9 @@ class DomainClaimStore:
                     """UPDATE custom_domain_claims
                     SET route_status = 'publishing', route_generation = route_generation + 1,
                         challenge_token = ?, challenge_seen_at = NULL,
-                        route_updated_at = ?, route_error = NULL, withdrawn_at = NULL
+                        route_updated_at = ?, route_error = NULL, withdrawn_at = NULL,
+                        activated_at = NULL, activation_checked_at = NULL,
+                        activation_error = NULL
                     WHERE id = ?""",
                     (f"bdc_{secrets.token_urlsafe(32)}", now.isoformat(), row["id"]),
                 )
@@ -330,6 +335,65 @@ class DomainClaimStore:
             ORDER BY id"""
         ).fetchall()
         return [self._from_row(row) for row in rows]
+
+    def activation_candidates(self) -> list[DomainClaim]:
+        rows = self._conn.execute(
+            """SELECT * FROM custom_domain_claims
+            WHERE status = 'verified' AND route_status = 'routed'
+              AND activated_at IS NULL
+            ORDER BY activation_checked_at IS NOT NULL, activation_checked_at, id"""
+        ).fetchall()
+        return [self._from_row(row) for row in rows]
+
+    def mark_activated(
+        self,
+        claim_id: int,
+        generation: int,
+        now: datetime | None = None,
+    ) -> bool:
+        now = now or datetime.now(timezone.utc)
+        cursor = self._conn.execute(
+            """UPDATE custom_domain_claims
+            SET activated_at = ?, activation_checked_at = ?, activation_error = NULL
+            WHERE id = ? AND route_generation = ? AND status = 'verified'
+              AND route_status = 'routed' AND activated_at IS NULL""",
+            (now.isoformat(), now.isoformat(), claim_id, generation),
+        )
+        return cursor.rowcount > 0
+
+    def record_activation_error(
+        self,
+        claim_id: int,
+        generation: int,
+        error: str,
+        now: datetime | None = None,
+    ) -> bool:
+        now = now or datetime.now(timezone.utc)
+        claim = self._conn.execute(
+            """SELECT activation_error FROM custom_domain_claims
+            WHERE id = ? AND route_generation = ? AND status = 'verified'
+              AND route_status = 'routed' AND activated_at IS NULL""",
+            (claim_id, generation),
+        ).fetchone()
+        if not claim:
+            return False
+        cursor = self._conn.execute(
+            """UPDATE custom_domain_claims
+            SET activation_checked_at = ?, activation_error = ?
+            WHERE id = ? AND route_generation = ? AND status = 'verified'
+              AND route_status = 'routed' AND activated_at IS NULL""",
+            (now.isoformat(), error, claim_id, generation),
+        )
+        return cursor.rowcount > 0 and claim["activation_error"] != error
+
+    def find_activated(self, hostname: str) -> DomainClaim | None:
+        row = self._conn.execute(
+            """SELECT * FROM custom_domain_claims
+            WHERE hostname = ? AND status = 'verified' AND route_status = 'routed'
+              AND activated_at IS NOT NULL AND site_name IS NOT NULL""",
+            (hostname,),
+        ).fetchone()
+        return self._from_row(row) if row else None
 
     def mark_routed(
         self,
@@ -444,4 +508,7 @@ class DomainClaimStore:
             removal_requested_at=row["removal_requested_at"],
             withdrawn_at=row["withdrawn_at"],
             challenge_seen_at=row["challenge_seen_at"],
+            activated_at=row["activated_at"],
+            activation_checked_at=row["activation_checked_at"],
+            activation_error=row["activation_error"],
         )

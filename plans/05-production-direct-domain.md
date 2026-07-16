@@ -16,9 +16,9 @@ A site owner can attach a domain, prove ownership, obtain HTTPS, serve the stati
 - Domain activation requires:
   - TXT ownership verified.
   - Router acknowledged.
-  - Public challenge reaches the expected claim and site.
-  - Origin TLS is valid through `coolify-proxy:443` with custom SNI and Host.
-  - Public TLS is valid for the hostname.
+  - Every resolved address belongs to the configured public ingress allowlist.
+  - Trusted origin TLS through `coolify-proxy:443` with custom SNI and Host.
+  - The origin challenge identifies the expected claim, generation, and site.
 - Custom hosts serve static `GET` and `HEAD` only.
 - Analytics resolve to the canonical site identity.
 - Dashboard supports the complete lifecycle.
@@ -29,32 +29,31 @@ A site owner can attach a domain, prove ownership, obtain HTTPS, serve the stati
 
 ## Implementation
 
-- Add explicit direct routing mode.
-- Query authoritative DNS and at least two independent recursive resolvers across repeated checks.
-- Resolve once, validate every address, and pin public probe connections.
+- Keep direct routing as the only supported custom-domain mode.
+- Resolve once and validate every address against an operator-owned ingress allowlist.
 - Reject private, loopback, link-local, metadata, and unexpected ingress addresses.
-- Disable redirects unless a bounded, revalidated policy is explicitly required.
-- Connect origin probes directly to `coolify-proxy:443` through Docker DNS with custom SNI and Host. Do not depend on public-IP hairpin routing from the container.
-- Validate public and origin certificate chains, SANs, and expiration.
+- Connect a bounded, non-redirecting origin probe directly to `coolify-proxy:443` through Docker DNS with custom SNI and Host.
+- Use the platform trust store to validate the certificate chain, SAN, and validity.
+- Latch activation for the current route generation only after the exact challenge response succeeds.
 - Add the verified/routable hostname map to `server/src/server/app.py`.
 - Preserve control-host isolation and canonical analytics.
-- Add DNS, router, origin TLS, and public TLS statuses to the dashboard.
+- Expose one actionable activation result rather than a transient status matrix.
 - Roll out against Let’s Encrypt staging before enabling production issuance.
 
 ## Verification
 
-- Tests cover DNS rebinding, mixed public/private answers, unexpected AAAA, redirects, timeouts, oversized responses, invalid chains, wrong SANs, expired certificates, and wrong challenge tokens.
+- Tests cover mixed public/private answers, unexpected AAAA, redirects, timeouts, oversized responses, invalid chains, wrong SANs, expired certificates, and wrong challenge tokens.
 - Custom hosts cannot access health, dashboard, authentication, API, or OpenAPI routes.
 - Non-GET/HEAD methods return `405`.
 - Canonical and custom hostnames serve the same files and analytics site identity.
 - A controlled production hostname survives restart, redeploy, renewal setup, removal, and re-addition.
-- Public reachability of ports 80 and 443 is verified independently from the container-local origin probe.
+- Public reachability of ports 80 and 443 is verified during controlled rollout.
 
 ## Acceptance Criteria
 
 - Buzz can accurately claim support for direct custom domains.
 - Operators who leave custom domains disabled receive unchanged canonical Buzz behavior and no custom-domain ACME activity.
-- A domain is never shown as active before origin and public TLS succeed.
+- A domain is never shown as active before trusted origin TLS and exact challenge validation succeed.
 - Canonical Buzz URLs remain available throughout the lifecycle.
 - Failed custom-domain infrastructure does not interrupt canonical hosting.
 

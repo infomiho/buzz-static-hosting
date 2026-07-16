@@ -146,6 +146,8 @@ Keep the `buzz-custom` resolver on Let's Encrypt's staging directory during this
 1. Add this variable to the Buzz application and redeploy it:
 
    ```text
+   BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=true
+   BUZZ_CUSTOM_DOMAIN_INGRESS_IPS=your-public-ingress-ip
    BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=true
    ```
 
@@ -154,7 +156,36 @@ Keep the `buzz-custom` resolver on Let's Encrypt's staging directory during this
 4. Wait for the dashboard to report that Traefik acknowledged the router.
 5. Open the staging verification URL displayed by Buzz. The request records that the public hostname reached the expected Buzz site. No other path on that custom hostname is served during this stage.
 
+After creating the controlled test claim, set `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=false` and redeploy Buzz to close admission while validation continues.
+
 To stop staging routing, set `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=false` and redeploy Buzz. Buzz immediately emits an empty custom-domain snapshot and stops serving challenge paths. Keep the provider configured until every claim reports that its router was withdrawn. Turning off `BUZZ_CUSTOM_DOMAINS_ENABLED` or deleting the provider first is not a withdrawal mechanism because a running Traefik instance retains its last valid snapshot after polling failures.
+
+### Enable Direct Production Domains
+
+Complete the staging publication, challenge, withdrawal, reuse, and proxy-restart checks before enabling production certificates.
+
+1. Add a separate production resolver to **Servers > Proxy** so staging certificate history remains isolated:
+
+   ```text
+   --certificatesresolvers.buzz-production.acme.email=admin@example.com
+   --certificatesresolvers.buzz-production.acme.storage=/traefik/acme.json
+   --certificatesresolvers.buzz-production.acme.httpchallenge.entrypoint=http
+   ```
+
+2. Save and restart the proxy, then configure Buzz and redeploy it:
+
+   ```text
+   BUZZ_TRAEFIK_CERT_RESOLVER=buzz-production
+   BUZZ_CUSTOM_DOMAIN_INGRESS_IPS=your-public-ingress-ip
+   BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST=coolify-proxy
+   BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=true
+   ```
+
+   Replace the example ingress address with every public IPv4 or IPv6 address that reaches this proxy. Every DNS answer for a direct custom hostname must be public and present in this allowlist.
+
+3. Keep `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=false` during controlled rollout. Set it to `true` only when site owners should be able to create new claims.
+
+Buzz marks a routed hostname active only after its DNS answers match the ingress allowlist and a trusted TLS request through `coolify-proxy:443` returns the exact generation challenge. Custom-host requests then resolve files and analytics through the canonical Buzz site identity. Cloudflare-proxied hostnames remain unsupported.
 
 If the proxy fails to restart, Buzz has no valid certificate, or another application loses TLS, paste the complete saved configuration back into **Servers > Proxy**, save it, and restart the proxy. Do not keep retrying certificate issuance against the production Let's Encrypt endpoint while the same error persists.
 

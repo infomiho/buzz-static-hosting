@@ -134,7 +134,7 @@
                 <h2>Custom domains</h2>
                 <p class="mt-1 text-rule">Prove ownership of a hostname before Buzz prepares routing.</p>
             </div>
-            {% if custom_domains_available and not domain_claims %}
+            {% if custom_domains_available and custom_domain_admission_enabled and not domain_claims %}
             <button class="btn-sm-outline" id="open-domain-dialog">Add custom domain</button>
             {% endif %}
         </header>
@@ -154,16 +154,26 @@
                         <div class="flex flex-wrap items-center justify-between gap-4">
                             <div>
                                 {% if claim.status == 'verified' %}
-                                    {% if claim.route_status == 'publishing' %}
-                                    <p class="text-rule">Publishing the staging route and waiting for Traefik acknowledgement.</p>
+                                    {% if claim.route_status == 'routed' and claim.activated_at %}
+                                    <p class="font-bold text-success">Active at <a class="underline decoration-2 underline-offset-4" href="https://{{ claim.hostname }}">https://{{ claim.hostname }}</a></p>
+                                    {% elif claim.route_status == 'publishing' %}
+                                    <p class="text-rule">Publishing the route and waiting for Traefik acknowledgement.</p>
                                     {% elif claim.route_status == 'routed' %}
-                                        {% if claim.challenge_seen_at %}
-                                        <p class="text-rule">Challenge request reached Buzz. Only the verification path is available in staging.</p>
+                                        {% if claim.activation_error == 'dns_unexpected_address' %}
+                                        <p class="text-danger-dark">DNS must resolve only to this Buzz server's configured ingress addresses.</p>
+                                        {% elif claim.activation_error == 'dns_no_addresses' %}
+                                        <p class="text-danger-dark">DNS does not currently resolve to an address.</p>
+                                        {% elif claim.activation_error == 'dns_unavailable' %}
+                                        <p class="text-danger-dark">DNS could not be checked. Buzz will retry automatically.</p>
+                                        {% elif claim.activation_error == 'tls_invalid' %}
+                                        <p class="text-rule">Waiting for a trusted TLS certificate.</p>
+                                        {% elif claim.activation_error in ('origin_unavailable', 'challenge_mismatch') %}
+                                        <p class="text-danger-dark">Buzz could not validate the domain route. It will retry automatically.</p>
                                         {% else %}
-                                        <p class="text-rule">Router acknowledged. Open the staging verification URL to prove the public route.</p>
+                                        <p class="text-rule">Securing and validating the domain.</p>
                                         {% endif %}
                                     {% elif claim.route_status == 'removing' %}
-                                    <p class="text-rule">Removing the staging route. The domain remains reserved until Traefik confirms withdrawal.</p>
+                                    <p class="text-rule">Removing the route. The domain remains reserved until Traefik confirms withdrawal.</p>
                                     {% else %}
                                     <p class="text-rule">Ready for staging routing when the operator enables it.</p>
                                     {% endif %}
@@ -198,9 +208,9 @@
                         {% endif %}
                     </div>
                     {% endif %}
-                    {% if claim.challenge_path and claim.route_status in ('publishing', 'routed') %}
+                    {% if claim.challenge_path and claim.route_status in ('publishing', 'routed') and not claim.activated_at %}
                     <div class="mt-4 border-t-2 border-ink pt-4">
-                        <p class="font-bold">Staging verification URL</p>
+                        <p class="font-bold">Verification URL</p>
                         <p class="mt-2 overflow-x-auto font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>
                     </div>
                     {% endif %}
@@ -221,7 +231,7 @@
 
 {% include "_deploy_modal.html" %}
 
-{% if custom_domains_available and not domain_claims %}
+{% if custom_domains_available and custom_domain_admission_enabled and not domain_claims %}
 <dialog id="add-domain-dialog" class="dialog">
     <div>
         <header>

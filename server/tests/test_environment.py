@@ -5,6 +5,7 @@ from server.environment import (
     ENVIRONMENT_VARIABLES,
     parse_bool,
     parse_github_logins,
+    parse_public_ips,
 )
 
 
@@ -37,6 +38,9 @@ def test_environment_registry_covers_server_and_deployment_settings():
         "BUZZ_TRAEFIK_HTTPS_ENTRYPOINT",
         "BUZZ_TRAEFIK_SERVICE",
         "BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED",
+        "BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED",
+        "BUZZ_CUSTOM_DOMAIN_INGRESS_IPS",
+        "BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST",
         "BUZZ_TRAEFIK_CERT_RESOLVER",
         "BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS",
         "BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER",
@@ -94,6 +98,19 @@ def test_custom_domains_default_to_disabled(monkeypatch):
 def test_custom_domain_routing_defaults_to_disabled(monkeypatch):
     monkeypatch.delenv("BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED", raising=False)
     assert ENVIRONMENT_BY_NAME["BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED"].read() is False
+
+
+def test_custom_domain_admission_defaults_to_disabled(monkeypatch):
+    monkeypatch.delenv("BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED", raising=False)
+    assert ENVIRONMENT_BY_NAME["BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED"].read() is False
+
+
+def test_public_ingress_ips_are_normalized_and_must_be_global():
+    assert parse_public_ips(" 8.8.8.8,2001:4860:4860::8888 ") == frozenset(
+        {"8.8.8.8", "2001:4860:4860::8888"}
+    )
+    with pytest.raises(ValueError, match="public ingress"):
+        parse_public_ips("127.0.0.1")
 
 
 def test_sensitive_settings_are_marked():

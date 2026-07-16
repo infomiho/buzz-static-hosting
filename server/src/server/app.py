@@ -18,6 +18,8 @@ from .config import (
     ALLOW_REGISTRATION,
     ALLOWED_GITHUB_USERS,
     CONTENT_TYPES,
+    CUSTOM_DOMAIN_INGRESS_IPS,
+    CUSTOM_DOMAIN_ORIGIN_HOST,
     CUSTOM_DOMAIN_RECONCILE_SECONDS,
     CUSTOM_DOMAIN_ROUTING_ENABLED,
     CUSTOM_DOMAINS_ENABLED,
@@ -35,6 +37,7 @@ from .config import (
 )
 from .cookies import COOKIE_NAME
 from .custom_domains import DnsTxtResolver, DomainClaimStore
+from .domain_activation import DomainActivator
 from .domain_routing import DomainRouteReconciler, build_traefik_snapshot
 from .site_path import InvalidSubdomain, resolve_site_file
 from .db import db
@@ -155,6 +158,10 @@ def create_app() -> FastAPI:
                 app.state.traefik_control = control_server
                 control_server.start()
                 if runtime_client:
+                    activator = DomainActivator(
+                        CUSTOM_DOMAIN_INGRESS_IPS,
+                        CUSTOM_DOMAIN_ORIGIN_HOST,
+                    )
                     reconciler = DomainRouteReconciler(
                         runtime_client,
                         TRAEFIK_HTTPS_ENTRYPOINT,
@@ -171,6 +178,7 @@ def create_app() -> FastAPI:
                             try:
                                 await asyncio.to_thread(control_server.refresh_readiness)
                                 await asyncio.to_thread(reconciler.run_once)
+                                await asyncio.to_thread(activator.run_once)
                             except Exception:
                                 logger.exception("Custom domain reconciliation failed")
                             try:
@@ -308,6 +316,16 @@ def create_app() -> FastAPI:
             return await serve_static(request, subdomain, request.url.path)
 
         if not is_control_host(host):
+            site_name = resolve_activated_custom_domain(request.url.hostname)
+            if site_name:
+                if request.method not in {"GET", "HEAD"}:
+                    return Response(
+                        content="Method Not Allowed",
+                        status_code=405,
+                        headers={"Allow": "GET, HEAD"},
+                        media_type="text/plain",
+                    )
+                return await serve_static(request, site_name, request.url.path)
             return Response(
                 content="Misdirected Request",
                 status_code=421,
@@ -393,6 +411,14 @@ def resolve_custom_domain_challenge(
     if not claim or not claim.site_name:
         return None
     return claim.id, claim.site_name, token
+
+
+def resolve_activated_custom_domain(hostname: str | None) -> str | None:
+    if not CUSTOM_DOMAINS_ENABLED or not CUSTOM_DOMAIN_ROUTING_ENABLED or not hostname:
+        return None
+    with db() as conn:
+        claim = DomainClaimStore(conn).find_activated(hostname.lower().rstrip("."))
+    return claim.site_name if claim else None
 
 
 async def serve_static(request: Request, subdomain: str, path: str) -> Response:

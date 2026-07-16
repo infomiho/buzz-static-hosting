@@ -19,6 +19,10 @@ def test_fresh_database_runs_all_migrations(tmp_path, monkeypatch):
         }
         assert "sites" in tables
         assert "custom_domain_claims" in tables
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(custom_domain_claims)")
+        }
+        assert {"activated_at", "activation_checked_at", "activation_error"} <= columns
 
 
 def test_existing_unversioned_database_upgrades_without_data_loss(tmp_path, monkeypatch):

@@ -30,6 +30,8 @@ def display_default(variable: EnvironmentVariable) -> str:
         return "Server package directory"
     if isinstance(variable.default, bool):
         return f"`{str(variable.default).lower()}`"
+    if isinstance(variable.default, (frozenset, set)) and not variable.default:
+        return "Not set"
     return f"`{variable.default}`"
 
 

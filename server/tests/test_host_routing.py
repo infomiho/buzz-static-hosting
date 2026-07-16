@@ -149,6 +149,39 @@ def test_challenge_token_is_bound_to_its_verified_hostname(tmp_path, monkeypatch
     assert withdrawn.status_code == 404
 
 
+def test_activated_custom_domain_serves_canonical_site_identity(tmp_path, monkeypatch):
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
+    db_module.init_db()
+    site_dir = tmp_path / "my-site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text("custom domain content")
+    with db_module.db() as conn:
+        conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
+        store = DomainClaimStore(conn)
+        claim = store.create("my-site", "www.example.com")
+        store.record_check(claim.id, "my-site", (claim.verification_value,))
+        claim = store.prepare_routes(True)[0]
+        store.mark_routed(claim.id, claim.route_generation)
+        store.mark_activated(claim.id, claim.route_generation)
+    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.app.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
+    client = make_client(tmp_path, monkeypatch)
+    headers = {"host": "www.example.com"}
+
+    response = client.get("/", headers=headers)
+
+    assert response.status_code == 200
+    assert response.text == "custom domain content"
+    assert client.get("/health", headers=headers).status_code == 404
+    method = client.post("/", headers=headers)
+    assert method.status_code == 405
+    assert method.headers["allow"] == "GET, HEAD"
+
+    with db_module.db() as conn:
+        DomainClaimStore(conn).cancel(claim.id, "my-site")
+    assert client.get("/", headers=headers).status_code == 421
+
+
 def test_cookie_authenticated_mutations_reject_tenant_origin(tmp_path, monkeypatch):
     client = make_client(tmp_path, monkeypatch)
     headers = {

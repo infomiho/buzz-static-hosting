@@ -84,3 +84,16 @@ def require_custom_domain_control_ready(request: Request) -> None:
             status_code=503,
             detail="Custom domain control plane is not ready",
         )
+
+
+def require_custom_domain_admission_enabled() -> None:
+    if not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="New custom domain claims are not enabled on this Buzz server",
+        )
+    if not config.CUSTOM_DOMAIN_ROUTING_ENABLED or not config.CUSTOM_DOMAIN_INGRESS_IPS:
+        raise HTTPException(
+            status_code=503,
+            detail="Custom domain production routing is not configured",
+        )

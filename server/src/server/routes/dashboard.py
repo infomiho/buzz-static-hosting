@@ -108,6 +108,7 @@ async def site_detail(
         "files": files,
         "domain": domain,
         "custom_domains_available": custom_domains_available,
+        "custom_domain_admission_enabled": config.CUSTOM_DOMAIN_ADMISSION_ENABLED,
         "domain_claims": domain_claims,
     })
 
