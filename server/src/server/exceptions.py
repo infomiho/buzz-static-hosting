@@ -12,3 +12,7 @@ class NotFound(Exception):
 
 class PayloadTooLarge(Exception):
     """413 - request or expanded content exceeds a configured limit."""
+
+
+class Conflict(Exception):
+    """409 - the requested state conflicts with an existing resource."""

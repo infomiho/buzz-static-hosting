@@ -65,3 +65,22 @@ def require_identity(identity: Annotated[Identity | None, Depends(get_identity)]
     if not identity:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return identity
+
+
+def require_custom_domain_control_ready(request: Request) -> None:
+    if not config.CUSTOM_DOMAINS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Custom domains are not enabled on this Buzz server",
+        )
+    control = getattr(request.app.state, "traefik_control", None)
+    if not config.TRAEFIK_CONTROL_TOKEN or control is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Custom domains are enabled but the control plane is not configured",
+        )
+    if not control.is_ready():
+        raise HTTPException(
+            status_code=503,
+            detail="Custom domain control plane is not ready",
+        )

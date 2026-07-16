@@ -13,7 +13,7 @@ Complete these prerequisites:
 
 - Install Docker Engine with the Docker Compose plugin.
 - Point `buzz.example.com` and `*.buzz.example.com` at the host.
-- Allow inbound TCP traffic on port `443`. Allow port `80` if you want the bundled HTTP-to-HTTPS redirect.
+- Allow inbound TCP traffic on port `443`. Port `80` is also required when the optional custom-domain HTTP-01 resolver is enabled; otherwise it is used only for the bundled HTTP-to-HTTPS redirect.
 - Create a Cloudflare API token and a GitHub OAuth app.
 - Complete the access decision in the [Self-Hosting Overview](../overview/). Configure upstream controls before deployment if Buzz is for a closed group.
 
@@ -83,6 +83,53 @@ Do not remove either volume during routine updates.
    ```
 
 3. Open `https://buzz.example.com` and start a GitHub sign-in.
+
+## Prepare The Optional Custom Domain Control Plane
+
+Custom domains are disabled by default. Skip this section when the operator does not want Buzz to manage custom domains.
+
+To enable the private control plane, generate a random token:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
+
+Add these values to `.env`:
+
+```text
+BUZZ_CUSTOM_DOMAINS_ENABLED=true
+BUZZ_TRAEFIK_CONTROL_TOKEN=replace-with-the-generated-token
+```
+
+Recreate the services:
+
+```bash
+docker compose up -d --build
+```
+
+The bundled Compose configuration then enables Traefik's HTTP provider, which polls the private Buzz listener on port `8081`. The port is exposed only to the Compose network. It also prepares:
+
+- The `buzz-custom` ACME resolver using HTTP-01 on entrypoint `web`.
+- A protected Traefik runtime API on the private `buzz-admin` entrypoint.
+- Runtime checks for entrypoint `websecure` and service `buzz@docker`.
+
+Check the private readiness response:
+
+```bash
+docker compose exec server uv run python -c 'import json,os,urllib.request; token=os.environ["BUZZ_TRAEFIK_CONTROL_TOKEN"]; request=urllib.request.Request("http://localhost:8081/ready",headers={"Authorization":f"Bearer {token}"}); print(json.dumps(json.load(urllib.request.urlopen(request)),indent=2))'
+```
+
+This stage can confirm provider polling, runtime API access, `buzz@docker`, and the HTTPS entrypoint. It cannot prove that the unused ACME resolver can issue certificates. Certificate issuance and ACME storage are exercised later with a staging hostname.
+
+To exercise staging-only exact-host routing, add this value and recreate the services:
+
+```text
+BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=true
+```
+
+The bundled `buzz-custom` resolver defaults to Let's Encrypt's staging directory through `BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER`. Add and TXT-verify a hostname from its site detail page, wait for router acknowledgement, then open the displayed verification URL. Only that reserved verification path is available on the custom hostname in this stage.
+
+Set `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=false` to withdraw staging routers. Wait for acknowledged withdrawal before disabling the custom-domain control plane. Do not change `BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER` to production until the production custom-domain stage is implemented and verified.
 
 If a container exits or TLS isn't issued, inspect the logs:
 

@@ -9,7 +9,7 @@ import tempfile
 import threading
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from sqlite3 import Connection, OperationalError, Row
 from typing import BinaryIO
@@ -20,7 +20,7 @@ from .config import (
     MAX_SITE_BYTES,
     MAX_SITE_FILES,
 )
-from .exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
+from .exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
 
 
 _ARCHIVE_CHUNK_BYTES = 1024 * 1024
@@ -128,6 +128,7 @@ class SiteStore:
                 self._begin_write()
                 transaction_started = True
                 self._require_access(name, owner_id)
+                self._ensure_no_active_custom_domain(name)
 
                 if site_dir.exists() or site_dir.is_symlink():
                     backup_dir = self._backup_path(name)
@@ -631,3 +632,17 @@ class SiteStore:
             except OperationalError as exc:
                 if "no such table" not in str(exc).lower():
                     raise
+
+    def _ensure_no_active_custom_domain(self, name: str) -> None:
+        self._conn.execute(
+            """UPDATE custom_domain_claims SET status = 'expired'
+            WHERE status = 'pending' AND expires_at <= ?""",
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+        claim = self._conn.execute(
+            """SELECT 1 FROM custom_domain_claims
+            WHERE site_name = ? AND status IN ('pending', 'verified') LIMIT 1""",
+            (name,),
+        ).fetchone()
+        if claim:
+            raise Conflict("Remove the site's custom domain before deleting the site")

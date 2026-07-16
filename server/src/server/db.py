@@ -2,50 +2,127 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from typing import Generator
+from typing import Callable, Generator
 
 from .analytics import init_analytics_schema
 from .config import DB_PATH
+
+Migration = Callable[[sqlite3.Connection], None]
+
+
+def _configure_connection(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _base_schema(conn: sqlite3.Connection) -> None:
+    conn.execute("""CREATE TABLE IF NOT EXISTS sites (
+        name TEXT PRIMARY KEY,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        size_bytes INTEGER,
+        owner_id INTEGER)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        github_id INTEGER UNIQUE NOT NULL,
+        github_login TEXT NOT NULL,
+        github_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS deployment_tokens (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        site_name TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME,
+        last_used_at DATETIME,
+        FOREIGN KEY (site_name) REFERENCES sites(name) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(sites)")}
+    if "owner_id" not in columns:
+        conn.execute("ALTER TABLE sites ADD COLUMN owner_id INTEGER")
+    init_analytics_schema(conn)
+
+
+def _custom_domain_claims(conn: sqlite3.Connection) -> None:
+    conn.execute("""CREATE TABLE custom_domain_claims (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hostname TEXT NOT NULL,
+        site_name TEXT,
+        verification_token TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'verified', 'expired', 'cancelled')),
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        verified_at TEXT,
+        last_checked_at TEXT,
+        last_error TEXT,
+        FOREIGN KEY (site_name) REFERENCES sites(name) ON DELETE SET NULL)""")
+    conn.execute("""CREATE UNIQUE INDEX custom_domain_claims_verified_hostname
+        ON custom_domain_claims(hostname) WHERE status = 'verified'""")
+    conn.execute("""CREATE UNIQUE INDEX custom_domain_claims_active_site
+        ON custom_domain_claims(site_name) WHERE status IN ('pending', 'verified')""")
+    conn.execute("""CREATE INDEX custom_domain_claims_expiration
+        ON custom_domain_claims(status, expires_at)""")
+
+
+def _custom_domain_routing(conn: sqlite3.Connection) -> None:
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN challenge_token TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN route_status TEXT NOT NULL DEFAULT 'not_routed'
+        CHECK (route_status IN ('not_routed', 'publishing', 'routed', 'removing', 'removed'))""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN route_generation INTEGER NOT NULL DEFAULT 0""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN route_error TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN route_updated_at TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN removal_requested_at TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN withdrawn_at TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN challenge_seen_at TEXT""")
+    conn.execute("""CREATE UNIQUE INDEX custom_domain_claims_challenge_token
+        ON custom_domain_claims(challenge_token) WHERE challenge_token IS NOT NULL""")
+
+
+MIGRATIONS: tuple[Migration, ...] = (
+    _base_schema,
+    _custom_domain_claims,
+    _custom_domain_routing,
+)
 
 
 def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
     try:
-        conn.execute("PRAGMA busy_timeout = 5000")
-        conn.execute("""CREATE TABLE IF NOT EXISTS sites (
-            name TEXT PRIMARY KEY,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            size_bytes INTEGER,
-            owner_id INTEGER)""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            github_id INTEGER UNIQUE NOT NULL,
-            github_login TEXT NOT NULL,
-            github_name TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS sessions (
-            id TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            expires_at DATETIME NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS deployment_tokens (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            site_name TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            expires_at DATETIME,
-            last_used_at DATETIME,
-            FOREIGN KEY (site_name) REFERENCES sites(name) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
-        try:
-            conn.execute("ALTER TABLE sites ADD COLUMN owner_id INTEGER")
-        except sqlite3.OperationalError as exc:
-            if "duplicate column name" not in str(exc).lower():
-                raise
-        init_analytics_schema(conn)
+        _configure_connection(conn)
+        conn.execute("BEGIN IMMEDIATE")
+        current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if current_version > len(MIGRATIONS):
+            raise RuntimeError(
+                f"Database schema version {current_version} is newer than supported version {len(MIGRATIONS)}"
+            )
+        for version, migration in enumerate(MIGRATIONS, start=1):
+            if version <= current_version:
+                continue
+            migration(conn)
+            conn.execute(f"PRAGMA user_version = {version}")
+        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(
+                "Database contains foreign-key violations; restore or repair it before starting Buzz"
+            )
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -53,7 +130,7 @@ def init_db() -> None:
 @contextmanager
 def db() -> Generator[sqlite3.Connection, None, None]:
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA busy_timeout = 5000")
+    _configure_connection(conn)
     conn.row_factory = sqlite3.Row
     try:
         yield conn

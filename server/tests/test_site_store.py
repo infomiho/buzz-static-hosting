@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from server.exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
+from server.exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
 from server.site_store import DeploymentLimits, SiteStore
 
 
@@ -22,6 +22,11 @@ def make_db() -> sqlite3.Connection:
         "  owner_id INTEGER"
         ")"
     )
+    conn.execute("""CREATE TABLE custom_domain_claims (
+        site_name TEXT,
+        status TEXT,
+        expires_at TEXT
+    )""")
     return conn
 
 
@@ -337,6 +342,36 @@ class TestDeclaredEntryCount:
 
 
 class TestDelete:
+    def test_active_custom_domain_blocks_delete_before_filesystem_mutation(self, tmp_path):
+        conn = make_db()
+        store = SiteStore(conn, tmp_path)
+        store.deploy("my-site", archive({"index.html": "content"}), owner_id=1)
+        conn.execute(
+            "INSERT INTO custom_domain_claims (site_name, status) VALUES ('my-site', 'verified')"
+        )
+        conn.commit()
+
+        with pytest.raises(Conflict, match="Remove the site's custom domain"):
+            store.delete("my-site", owner_id=1)
+
+        assert (tmp_path / "my-site" / "index.html").read_text() == "content"
+        assert conn.execute("SELECT name FROM sites WHERE name = 'my-site'").fetchone()
+
+    def test_expired_pending_custom_domain_does_not_block_delete(self, tmp_path):
+        conn = make_db()
+        store = SiteStore(conn, tmp_path)
+        store.deploy("my-site", archive({"index.html": "content"}), owner_id=1)
+        conn.execute(
+            """INSERT INTO custom_domain_claims (site_name, status, expires_at)
+            VALUES ('my-site', 'pending', '2020-01-01T00:00:00+00:00')"""
+        )
+        conn.commit()
+
+        store.delete("my-site", owner_id=1)
+
+        assert not (tmp_path / "my-site").exists()
+        assert conn.execute("SELECT name FROM sites WHERE name = 'my-site'").fetchone() is None
+
     def test_removes_directory_and_db_row(self, tmp_path):
         conn = make_db()
         store = SiteStore(conn, tmp_path)

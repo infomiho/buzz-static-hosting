@@ -13,6 +13,12 @@ Requests to a site hostname are isolated from control routes. For example, `/hea
 
 Site hostnames accept `GET` and `HEAD`. Other methods return `405 Method Not Allowed` with `Allow: GET, HEAD`.
 
+## Custom Hostname Normalization
+
+When the optional custom-domain control plane is enabled, Buzz trims surrounding whitespace and a trailing dot, applies non-transitional UTS #46 processing through IDNA2008, and stores the lowercase ASCII hostname. For example, `München.Example.` becomes `xn--mnchen-3ya.example`.
+
+Claims reject URLs, ports, paths, wildcards, IP addresses, single-label and local names, and the configured Buzz domain or any of its subdomains. TXT verification and routing always use the normalized ASCII hostname.
+
 ## File Lookup Order
 
 Buzz decodes the URL path, rejects paths that escape the site directory, and checks candidates in this order:

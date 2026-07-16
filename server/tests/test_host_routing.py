@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 
+from server import db as db_module
 from server.app import create_app
 from server.cookies import COOKIE_NAME
+from server.custom_domains import DomainClaimStore
 
 
 class StubAuth:
@@ -77,6 +79,74 @@ def test_control_routes_require_the_control_host(tmp_path, monkeypatch):
 
     assert client.get("/health", headers={"host": "localhost:8080"}).status_code == 200
     assert client.get("/health", headers={"host": "attacker.example"}).status_code == 421
+
+
+def test_verified_custom_domain_exposes_only_reserved_challenge(tmp_path, monkeypatch):
+    token = "bdc_test"
+    monkeypatch.setattr(
+        "server.app.resolve_custom_domain_challenge",
+        lambda hostname, path: (
+            (7, "my-site", token)
+            if hostname == "www.example.com"
+            and path == f"/.well-known/buzz-domain-check/{token}"
+            else None
+        ),
+    )
+    client = make_client(tmp_path, monkeypatch)
+    headers = {"host": "www.example.com"}
+
+    response = client.get(f"/.well-known/buzz-domain-check/{token}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.text == "buzz-domain-check=bdc_test;site=my-site"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-buzz-domain-claim"] == "7"
+    assert client.get("/health", headers=headers).status_code == 421
+    assert client.post(f"/.well-known/buzz-domain-check/{token}", headers=headers).status_code == 405
+
+
+def test_reserved_challenge_namespace_never_falls_through_to_static_files(
+    tmp_path, monkeypatch
+):
+    site_dir = tmp_path / "tenant" / ".well-known" / "buzz-domain-check"
+    site_dir.mkdir(parents=True)
+    (site_dir / "attacker-token").write_text("site-controlled")
+    client = make_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/.well-known/buzz-domain-check/attacker-token",
+        headers={"host": "tenant.localhost:8080"},
+    )
+
+    assert response.status_code == 404
+    assert response.text == "404 Not Found"
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_challenge_token_is_bound_to_its_verified_hostname(tmp_path, monkeypatch):
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
+    db_module.init_db()
+    with db_module.db() as conn:
+        conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
+        store = DomainClaimStore(conn)
+        claim = store.create("my-site", "www.example.com")
+        store.record_check(claim.id, "my-site", (claim.verification_value,))
+        claim = store.prepare_routes(True)[0]
+    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.app.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
+    client = make_client(tmp_path, monkeypatch)
+
+    expected = client.get(claim.challenge_path, headers={"host": claim.hostname})
+    wrong_host = client.get(claim.challenge_path, headers={"host": "other.example.com"})
+
+    assert expected.status_code == 200
+    assert expected.headers["x-buzz-domain-claim"] == str(claim.id)
+    assert wrong_host.status_code == 404
+
+    with db_module.db() as conn:
+        DomainClaimStore(conn).cancel(claim.id, "my-site")
+    withdrawn = client.get(claim.challenge_path, headers={"host": claim.hostname})
+    assert withdrawn.status_code == 404
 
 
 def test_cookie_authenticated_mutations_reject_tenant_origin(tmp_path, monkeypatch):

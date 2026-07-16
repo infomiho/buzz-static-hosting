@@ -78,6 +78,84 @@ The Buzz application labels intentionally set `tls=true` without `tls.certresolv
 
 Traefik requires DNS-01 validation for wildcard certificates and derives certificate names from a router's TLS domains. See Traefik's [ACME certificate resolver documentation](https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/).
 
+## Prepare The Optional Custom Domain Control Plane
+
+Custom domains are disabled by default. Skip this section when the operator does not want Buzz to manage custom domains. The existing dashboard and wildcard site hosting do not require these changes.
+
+1. Generate a high-entropy control token and keep it out of source control:
+
+   ```bash
+   python -c 'import secrets; print(secrets.token_urlsafe(48))'
+   ```
+
+2. Add these variables to the Buzz application and redeploy it:
+
+   ```text
+   BUZZ_CUSTOM_DOMAINS_ENABLED=true
+   BUZZ_TRAEFIK_CONTROL_TOKEN=replace-with-the-generated-token
+   ```
+
+   The application starts a private listener on port `8081` with the network alias `buzz-traefik-control`. The port is not published or attached to a public Traefik router.
+
+3. Return to **Servers > Proxy** and add these arguments to the Traefik service's `command` list. Replace both token placeholders with the same generated token and replace the email placeholder:
+
+   ```text
+   --providers.http=true
+   --providers.http.endpoint=http://buzz-traefik-control:8081/traefik
+   --providers.http.headers.Authorization=Bearer replace-with-the-generated-token
+   --providers.http.pollInterval=5s
+   --providers.http.pollTimeout=2s
+   --providers.http.maxResponseBodySize=1048576
+   --api=true
+   --entrypoints.buzz-admin.address=:8082
+   --certificatesresolvers.buzz-custom.acme.email=admin@example.com
+   --certificatesresolvers.buzz-custom.acme.storage=/traefik/acme.json
+   --certificatesresolvers.buzz-custom.acme.httpchallenge.entrypoint=http
+   --certificatesresolvers.buzz-custom.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+   ```
+
+   Keep the existing Cloudflare DNS-01 `letsencrypt` resolver. The new `buzz-custom` resolver is separate and uses Coolify's `http` entrypoint for individual customer hostnames.
+
+4. Add these labels to the Traefik service, replacing the token placeholder again:
+
+   ```text
+   traefik.enable=true
+   traefik.http.routers.buzz-runtime-api.rule=PathPrefix(`/api`) && Header(`Authorization`, `Bearer replace-with-the-generated-token`)
+   traefik.http.routers.buzz-runtime-api.entrypoints=buzz-admin
+   traefik.http.routers.buzz-runtime-api.service=api@internal
+   ```
+
+   The `buzz-admin` entrypoint is not published on the host. Its authorization rule still prevents other containers on the shared Docker network from reading Traefik runtime state.
+
+5. Save and restart the proxy through **Servers > Proxy**. Do not use **Reset proxy configuration**, which replaces custom proxy settings with Coolify defaults.
+
+6. Open a terminal for the Buzz container and inspect the private readiness response:
+
+   ```bash
+   uv run python -c 'import json,os,urllib.request; token=os.environ["BUZZ_TRAEFIK_CONTROL_TOKEN"]; request=urllib.request.Request("http://localhost:8081/ready",headers={"Authorization":f"Bearer {token}"}); print(json.dumps(json.load(urllib.request.urlopen(request)),indent=2))'
+   ```
+
+The automated checks cover provider polling, protected runtime API access, entrypoint `https`, and service `buzz@docker`. They do not claim that the unused resolver or ACME storage has issued a certificate. Exercise those later with a staging hostname before production custom domains are admitted.
+
+Back up the modified proxy configuration and `/data/coolify/proxy`. A proxy restart loses the HTTP provider's in-memory snapshot until it polls Buzz again. A failed poll on a running proxy leaves the previous valid snapshot active.
+
+### Exercise Staging Routing
+
+Keep the `buzz-custom` resolver on Let's Encrypt's staging directory during this step. Staging certificates are not trusted by browsers and must not be presented as production custom-domain support.
+
+1. Add this variable to the Buzz application and redeploy it:
+
+   ```text
+   BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=true
+   ```
+
+2. Open a site's detail page, add a custom hostname, publish the displayed TXT record, and select **Check now**.
+3. After ownership verifies, Buzz publishes one exact generation-qualified `Host()` router through the HTTP provider.
+4. Wait for the dashboard to report that Traefik acknowledged the router.
+5. Open the staging verification URL displayed by Buzz. The request records that the public hostname reached the expected Buzz site. No other path on that custom hostname is served during this stage.
+
+To stop staging routing, set `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=false` and redeploy Buzz. Buzz immediately emits an empty custom-domain snapshot and stops serving challenge paths. Keep the provider configured until every claim reports that its router was withdrawn. Turning off `BUZZ_CUSTOM_DOMAINS_ENABLED` or deleting the provider first is not a withdrawal mechanism because a running Traefik instance retains its last valid snapshot after polling failures.
+
 If the proxy fails to restart, Buzz has no valid certificate, or another application loses TLS, paste the complete saved configuration back into **Servers > Proxy**, save it, and restart the proxy. Do not keep retrying certificate issuance against the production Let's Encrypt endpoint while the same error persists.
 
 ## Deploy And Verify Buzz

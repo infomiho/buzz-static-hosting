@@ -5,14 +5,26 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      - --providers.http=${BUZZ_CUSTOM_DOMAINS_ENABLED:-false}
+      - --providers.http.endpoint=http://server:8081/traefik
+      - "--providers.http.headers.Authorization=Bearer ${BUZZ_TRAEFIK_CONTROL_TOKEN:-}"
+      - --providers.http.pollInterval=5s
+      - --providers.http.pollTimeout=2s
+      - --providers.http.maxResponseBodySize=1048576
+      - --api=true
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
+      - --entrypoints.buzz-admin.address=:8082
       - --certificatesresolvers.cloudflare.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare
       - --certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      - --certificatesresolvers.buzz-custom.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.buzz-custom.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.buzz-custom.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.buzz-custom.acme.caserver=${BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER:-https://acme-staging-v02.api.letsencrypt.org/directory}
     environment:
       - CF_DNS_API_TOKEN=${CF_API_TOKEN}
     ports:
@@ -26,6 +38,9 @@ services:
       - traefik.http.routers.wildcard-certs.tls.certresolver=cloudflare
       - traefik.http.routers.wildcard-certs.tls.domains[0].main=${BUZZ_DOMAIN}
       - traefik.http.routers.wildcard-certs.tls.domains[0].sans=*.${BUZZ_DOMAIN}
+      - "traefik.http.routers.buzz-runtime-api.rule=PathPrefix(`/api`) && Header(`Authorization`, `Bearer ${BUZZ_TRAEFIK_CONTROL_TOKEN:-}`)"
+      - traefik.http.routers.buzz-runtime-api.entrypoints=buzz-admin
+      - traefik.http.routers.buzz-runtime-api.service=api@internal
 
   server:
     build: .
@@ -44,10 +59,19 @@ services:
       - BUZZ_GSC_PROPERTY=${BUZZ_GSC_PROPERTY:-}
       - BUZZ_ALLOW_REGISTRATION=${BUZZ_ALLOW_REGISTRATION:-true}
       - BUZZ_ALLOWED_GITHUB_USERS=${BUZZ_ALLOWED_GITHUB_USERS:-}
+      - BUZZ_CUSTOM_DOMAINS_ENABLED=${BUZZ_CUSTOM_DOMAINS_ENABLED:-false}
+      - BUZZ_TRAEFIK_CONTROL_TOKEN=${BUZZ_TRAEFIK_CONTROL_TOKEN:-}
+      - BUZZ_TRAEFIK_API_URL=http://traefik:8082/api
+      - "BUZZ_TRAEFIK_API_AUTHORIZATION=Bearer ${BUZZ_TRAEFIK_CONTROL_TOKEN:-}"
+      - BUZZ_TRAEFIK_HTTPS_ENTRYPOINT=websecure
+      - BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=${BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED:-false}
+      - BUZZ_TRAEFIK_CERT_RESOLVER=buzz-custom
+      - BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS=${BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS:-5}
     volumes:
       - buzz-data:/data
     expose:
       - "8080"
+      - "8081"
     labels:
       - traefik.enable=true
       - traefik.http.routers.buzz.rule=Host(`${BUZZ_DOMAIN}`)

@@ -111,7 +111,10 @@ async def deploy(
         await file.seek(0)
         record = await run_in_threadpool(_deploy_site, subdomain, file.file, identity.user.id)
 
-    return {"url": build_site_url(record.name, DOMAIN, request.url.port or 8080)}
+    return {
+        "name": record.name,
+        "url": build_site_url(record.name, DOMAIN, request.url.port or 8080),
+    }
 
 
 @router.get(

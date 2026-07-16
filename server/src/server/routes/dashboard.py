@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from .. import config
 from ..analytics import AnalyticsStore
 from ..auth_service import (
     AuthService,
@@ -21,6 +22,7 @@ from ..auth_service import (
 )
 from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
+from ..custom_domains import DomainClaimStore
 from ..db import db
 from ..dependencies import get_auth_service, require_user
 from ..search_console import SearchConsoleError
@@ -78,10 +80,21 @@ async def site_detail(
     identity: Annotated[Identity, Depends(require_user)],
 ):
     domain = DOMAIN or "localhost:8080"
+    control = getattr(request.app.state, "traefik_control", None)
+    custom_domains_available = bool(
+        config.CUSTOM_DOMAINS_ENABLED
+        and control
+        and control.is_ready()
+    )
     with db() as conn:
         store = SiteStore(conn, SITES_DIR)
         site = store.get_by_name(name, identity.user.id)
         files = store.list_files(name, identity.user.id)
+        domain_claims = [
+            claim
+            for claim in DomainClaimStore(conn).list_for_site(name)
+            if claim.status in {"pending", "verified"}
+        ]
 
     if domain and domain != "localhost:8080":
         site_url = f"https://{name}.{domain}"
@@ -94,6 +107,8 @@ async def site_detail(
         "site_url": site_url,
         "files": files,
         "domain": domain,
+        "custom_domains_available": custom_domains_available,
+        "domain_claims": domain_claims,
     })
 
 

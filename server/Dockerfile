@@ -28,6 +28,6 @@ RUN mkdir -p /data/sites
 
 VOLUME /data
 
-EXPOSE 8080
+EXPOSE 8080 8081
 
 CMD ["uv", "run", "python", "-m", "server", "--port", "8080"]

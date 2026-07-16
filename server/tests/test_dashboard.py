@@ -157,6 +157,90 @@ class TestCookieAuthOnApiRoutes:
         assert res.status_code == 401
 
 
+class TestCustomDomains:
+    def test_site_detail_shows_disabled_operator_state(
+        self, test_db, client, user_and_token, tmp_path, monkeypatch
+    ):
+        db, conn = test_db
+        user_id, token = user_and_token
+        conn.execute(
+            "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('my-site', ?, 0)",
+            (user_id,),
+        )
+        conn.execute("""CREATE TABLE custom_domain_claims (
+            id INTEGER PRIMARY KEY,
+            site_name TEXT,
+            status TEXT,
+            expires_at TEXT
+        )""")
+        conn.commit()
+        (tmp_path / "my-site").mkdir()
+        monkeypatch.setattr("server.routes.dashboard.db", db)
+        monkeypatch.setattr("server.routes.dashboard.SITES_DIR", tmp_path)
+        monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", False)
+        client.cookies.set(COOKIE_NAME, token)
+
+        response = client.get("/dashboard/sites/my-site")
+
+        assert response.status_code == 200
+        assert "Custom domains" in response.text
+        assert "control plane is disabled or not ready" in response.text
+        assert "Add custom domain" not in response.text
+
+    def test_site_detail_shows_pending_verification_record(
+        self, test_db, client, user_and_token, tmp_path, monkeypatch
+    ):
+        db, conn = test_db
+        user_id, token = user_and_token
+        conn.execute(
+            "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('my-site', ?, 0)",
+            (user_id,),
+        )
+        conn.execute("""CREATE TABLE custom_domain_claims (
+            id INTEGER PRIMARY KEY,
+            hostname TEXT NOT NULL,
+            site_name TEXT,
+            verification_token TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            verified_at TEXT,
+            last_checked_at TEXT,
+            last_error TEXT,
+            challenge_token TEXT,
+            route_status TEXT NOT NULL DEFAULT 'not_routed',
+            route_generation INTEGER NOT NULL DEFAULT 0,
+            route_error TEXT,
+            route_updated_at TEXT,
+            removal_requested_at TEXT,
+            withdrawn_at TEXT,
+            challenge_seen_at TEXT
+        )""")
+        conn.execute("""INSERT INTO custom_domain_claims
+            (id, hostname, site_name, verification_token, status, created_at, expires_at)
+            VALUES (1, 'www.example.com', 'my-site', 'bdv_test', 'pending',
+                    '2026-07-16T00:00:00+00:00', '2026-07-17T00:00:00+00:00')""")
+        conn.commit()
+        (tmp_path / "my-site").mkdir()
+        monkeypatch.setattr("server.routes.dashboard.db", db)
+        monkeypatch.setattr("server.routes.dashboard.SITES_DIR", tmp_path)
+        monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
+        monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured")
+        client.cookies.set(COOKIE_NAME, token)
+
+        response = client.get("/dashboard/sites/my-site")
+
+        assert response.status_code == 200
+        assert "www.example.com" in response.text
+        assert "_buzz.www.example.com" in response.text
+        assert "buzz-domain-verification=bdv_test" in response.text
+        assert "Waiting for DNS verification" in response.text
+        assert response.text.index("Analytics") < response.text.index("Custom domains")
+        assert response.text.index("Files") < response.text.index("Custom domains")
+        assert 'id="remove-domain-dialog"' in response.text
+        assert "Buzz will stop tracking its ownership" in response.text
+
+
 class TestLoginFlow:
     def test_login_start_returns_device_code(self, client):
         res = client.post("/dashboard/login/start")

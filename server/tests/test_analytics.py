@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from server import db as db_module
 from server.analytics import AnalyticsEvent, AnalyticsStore, build_analytics_event, init_analytics_schema
 from server.app import create_app
 from server.site_store import SiteStore
@@ -20,6 +21,11 @@ def make_db() -> sqlite3.Connection:
         "  owner_id INTEGER"
         ")"
     )
+    conn.execute("""CREATE TABLE custom_domain_claims (
+        site_name TEXT,
+        status TEXT,
+        expires_at TEXT
+    )""")
     init_analytics_schema(conn)
     return conn
 
@@ -212,6 +218,8 @@ class TestAnalyticsIntegration:
         (site / "index.html").write_text("hello")
         (site / "style.css").write_text("body{}")
         monkeypatch.setattr("server.app.SITES_DIR", tmp_path)
+        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "app.db")
+        db_module.init_db()
 
         app = create_app()
         capture = CaptureAnalytics()
@@ -226,7 +234,7 @@ class TestAnalyticsIntegration:
             ("/missing", False, True),
         ]
 
-    def test_site_analytics_route_requires_site_ownership(self, monkeypatch):
+    def test_site_analytics_route_requires_site_ownership(self, tmp_path, monkeypatch):
         conn = make_db()
         conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 0, 1)")
         AnalyticsStore(conn).record(AnalyticsEvent(
@@ -245,6 +253,8 @@ class TestAnalyticsIntegration:
 
         monkeypatch.setattr("server.config.DEV_MODE", True)
         monkeypatch.setattr("server.routes.dashboard.db", test_db)
+        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "app.db")
+        db_module.init_db()
         app = create_app()
 
         with TestClient(app) as client:

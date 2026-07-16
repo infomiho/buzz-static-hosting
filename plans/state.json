@@ -1,0 +1,38 @@
+[
+  {
+    "name": "01-explicit-deployment-identity",
+    "status": "completed"
+  },
+  {
+    "name": "02-empty-traefik-control-plane",
+    "status": "completed"
+  },
+  {
+    "name": "03-domain-ownership-readiness",
+    "status": "completed"
+  },
+  {
+    "name": "04-staging-routing-and-withdrawal",
+    "status": "in_progress"
+  },
+  {
+    "name": "05-production-direct-domain",
+    "status": "pending"
+  },
+  {
+    "name": "06-multiple-direct-aliases",
+    "status": "pending"
+  },
+  {
+    "name": "07-cli-domain-management",
+    "status": "pending"
+  },
+  {
+    "name": "08-cloudflare-proxy-diagnostics",
+    "status": "pending"
+  },
+  {
+    "name": "09-cloudflare-proxy-activation",
+    "status": "pending"
+  }
+]

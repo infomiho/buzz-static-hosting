@@ -126,9 +126,131 @@
             </div>
         </details>
     </div>
+
+    <!-- Custom domains -->
+    <div class="card" id="custom-domains">
+        <header class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h2>Custom domains</h2>
+                <p class="mt-1 text-rule">Prove ownership of a hostname before Buzz prepares routing.</p>
+            </div>
+            {% if custom_domains_available and not domain_claims %}
+            <button class="btn-sm-outline" id="open-domain-dialog">Add custom domain</button>
+            {% endif %}
+        </header>
+        <section>
+            {% if domain_claims %}
+                {% for claim in domain_claims %}
+                <article class="border-2 border-ink p-4" data-domain-claim="{{ claim.id }}">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h3 class="font-mono text-lg font-bold">{{ claim.hostname }}</h3>
+                            {% if claim.status == 'verified' %}
+                            <p class="mt-1 font-bold text-success">Ownership verified</p>
+                                {% if claim.route_status == 'publishing' %}
+                                <p class="mt-1 text-rule">Publishing the staging route and waiting for Traefik acknowledgement.</p>
+                                {% elif claim.route_status == 'routed' %}
+                                    {% if claim.challenge_seen_at %}
+                                    <p class="mt-1 text-rule">Challenge request reached Buzz. Only the verification path is available in staging.</p>
+                                    {% else %}
+                                    <p class="mt-1 text-rule">Router acknowledged. Open the staging verification URL to prove the public route.</p>
+                                    {% endif %}
+                                {% elif claim.route_status == 'removing' %}
+                                <p class="mt-1 text-rule">Removing the staging route. The domain remains reserved until Traefik confirms withdrawal.</p>
+                                {% else %}
+                                <p class="mt-1 text-rule">Ready for staging routing when the operator enables it.</p>
+                                {% endif %}
+                            {% else %}
+                            <p class="mt-1 font-bold">Waiting for DNS verification</p>
+                            <p class="mt-1 text-rule">The claim expires {{ claim.expires_at[:16].replace('T', ' ') }} UTC.</p>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-wrap gap-3">
+                            {% if claim.status == 'pending' and custom_domains_available %}
+                            <button class="btn-sm-outline check-domain" data-claim-id="{{ claim.id }}">Check now</button>
+                            {% endif %}
+                            {% if claim.route_status != 'removing' %}
+                            <button class="btn-sm-outline border-danger text-danger-dark remove-domain" data-claim-id="{{ claim.id }}" data-hostname="{{ claim.hostname }}">Remove</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if claim.status == 'pending' %}
+                    <div class="mt-5 border-t-2 border-ink pt-4">
+                        <p class="font-bold">Add this DNS record</p>
+                        <dl class="mt-3 grid gap-3 sm:grid-cols-[8rem_1fr]">
+                            <dt class="font-bold">Type</dt>
+                            <dd class="font-mono">TXT</dd>
+                            <dt class="font-bold">Name</dt>
+                            <dd class="overflow-x-auto font-mono">{{ claim.verification_name }}</dd>
+                            <dt class="font-bold">Value</dt>
+                            <dd class="overflow-x-auto font-mono">{{ claim.verification_value }}</dd>
+                        </dl>
+                        {% if claim.last_error == 'txt_mismatch' %}
+                        <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">Buzz did not find the expected TXT value. DNS changes can take time to propagate.</p>
+                        {% elif claim.last_error == 'dns_unavailable' %}
+                        <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">Buzz could not complete the DNS lookup. Try again shortly.</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if claim.challenge_path and claim.route_status in ('publishing', 'routed') %}
+                    <div class="mt-5 border-t-2 border-ink pt-4">
+                        <p class="font-bold">Staging verification URL</p>
+                        <p class="mt-2 overflow-x-auto font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>
+                    </div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            {% elif not custom_domains_available %}
+            <h3 class="text-xl font-bold">Not available</h3>
+            <p class="mt-2 text-rule">The custom-domain control plane is disabled or not ready. Existing claims remain visible for safe removal.</p>
+            {% else %}
+            <h3 class="text-xl font-bold">No custom domain claim</h3>
+            <p class="mt-2 text-rule">Your site remains available at its permanent Buzz URL.</p>
+            {% endif %}
+            <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark" id="domain-action-error" role="alert"></p>
+        </section>
+    </div>
 </div>
 
 {% include "_deploy_modal.html" %}
+
+{% if custom_domains_available and not domain_claims %}
+<dialog id="add-domain-dialog" class="dialog">
+    <div>
+        <header>
+            <h2>Add custom domain</h2>
+            <p>Enter a hostname you control. Buzz will provide a TXT record to prove ownership.</p>
+        </header>
+        <section>
+            <form id="add-domain-form">
+                <label for="domain-hostname" class="font-bold">Domain</label>
+                <input id="domain-hostname" name="hostname" class="input mt-1" placeholder="www.example.com" autocomplete="off" spellcheck="false" required />
+                <p class="mt-2 text-rule">Enter the hostname only, without <span class="font-mono">https://</span>, a port, or a path.</p>
+                <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="add-domain-error" role="alert"></p>
+            </form>
+        </section>
+        <footer>
+            <button type="button" class="btn-outline" id="cancel-domain-dialog">Cancel</button>
+            <button type="submit" form="add-domain-form" class="btn" id="submit-domain">Add domain</button>
+        </footer>
+    </div>
+</dialog>
+{% endif %}
+
+{% if domain_claims %}
+<dialog id="remove-domain-dialog" class="dialog">
+    <div>
+        <header>
+            <h2>Remove custom domain</h2>
+            <p>Remove <strong id="remove-domain-hostname"></strong> from this site? Buzz will stop tracking its ownership, but will not change its DNS records.</p>
+        </header>
+        <footer>
+            <button type="button" class="btn-outline" id="cancel-remove-domain">Cancel</button>
+            <button type="button" class="btn-destructive" id="confirm-remove-domain">Remove domain</button>
+        </footer>
+    </div>
+</dialog>
+{% endif %}
 
 <!-- Delete site dialog -->
 <dialog id="delete-site-dialog" class="dialog">
@@ -136,6 +258,7 @@
         <header>
             <h2>Delete site</h2>
             <p>Are you sure you want to delete <strong>{{ site.name }}</strong>? This will remove all deployed files and cannot be undone.</p>
+            <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="delete-site-error" role="alert"></p>
         </header>
         <footer>
             <button class="btn-outline" onclick="document.getElementById('delete-site-dialog').close()">Cancel</button>
@@ -162,6 +285,95 @@ function formatSize(bytes) {
     const units = ['B', 'KB', 'MB', 'GB'];
     const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
     return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+async function domainRequest(path, options = {}) {
+    const response = await fetch('/sites/' + encodeURIComponent(SITE_NAME) + '/domains' + path, options);
+    if (response.ok) return response;
+    let message = 'Buzz could not update this custom domain.';
+    try {
+        const data = await response.json();
+        if (data.detail) message = data.detail;
+    } catch {}
+    throw new Error(message);
+}
+
+function showDomainError(message) {
+    const error = document.getElementById('domain-action-error');
+    error.textContent = message;
+    error.classList.remove('hidden');
+}
+
+function initCustomDomains() {
+    const dialog = document.getElementById('add-domain-dialog');
+    const openButton = document.getElementById('open-domain-dialog');
+    const cancelButton = document.getElementById('cancel-domain-dialog');
+    const form = document.getElementById('add-domain-form');
+    if (dialog && openButton && cancelButton && form) {
+        openButton.addEventListener('click', () => dialog.showModal());
+        cancelButton.addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const submit = document.getElementById('submit-domain');
+            const error = document.getElementById('add-domain-error');
+            submit.disabled = true;
+            error.classList.add('hidden');
+            try {
+                await domainRequest('', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hostname: form.elements.hostname.value }),
+                });
+                location.reload();
+            } catch (requestError) {
+                error.textContent = requestError.message;
+                error.classList.remove('hidden');
+                submit.disabled = false;
+            }
+        });
+    }
+
+    document.querySelectorAll('.check-domain').forEach(button => {
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            button.textContent = 'Checking...';
+            try {
+                await domainRequest('/' + button.dataset.claimId + '/check', { method: 'POST' });
+                location.reload();
+            } catch (error) {
+                showDomainError(error.message);
+                button.disabled = false;
+                button.textContent = 'Check now';
+            }
+        });
+    });
+
+    const removeDialog = document.getElementById('remove-domain-dialog');
+    const cancelRemove = document.getElementById('cancel-remove-domain');
+    const confirmRemove = document.getElementById('confirm-remove-domain');
+    let removeButton;
+    if (removeDialog && cancelRemove && confirmRemove) {
+        cancelRemove.addEventListener('click', () => removeDialog.close());
+        document.querySelectorAll('.remove-domain').forEach(button => {
+            button.addEventListener('click', () => {
+                removeButton = button;
+                document.getElementById('remove-domain-hostname').textContent = button.dataset.hostname;
+                removeDialog.showModal();
+            });
+        });
+        confirmRemove.addEventListener('click', async () => {
+            if (!removeButton) return;
+            confirmRemove.disabled = true;
+            try {
+                await domainRequest('/' + removeButton.dataset.claimId, { method: 'DELETE' });
+                location.reload();
+            } catch (error) {
+                removeDialog.close();
+                showDomainError(error.message);
+                confirmRemove.disabled = false;
+            }
+        });
+    }
 }
 
 function renderDimension(title, rows) {
@@ -360,11 +572,15 @@ document.getElementById('confirm-delete-site').addEventListener('click', async f
     } else {
         this.disabled = false;
         this.textContent = 'Delete';
-        document.getElementById('delete-site-dialog').close();
+        const error = document.getElementById('delete-site-error');
+        const body = await res.json().catch(() => ({}));
+        error.textContent = body.detail || 'Could not delete this site.';
+        error.classList.remove('hidden');
     }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    initCustomDomains();
     loadAnalytics();
     initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown', loadSearchTerms);
     initDisclosure('files-details', 'buzz:' + SITE_NAME + ':files');

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from server.app import create_app
 from server.exceptions import BadRequest
 from server.routes.sites import validate_subdomain, build_site_url
+from server.site_store import SiteRecord
 
 
 class TestValidateSubdomain:
@@ -35,6 +36,32 @@ class TestBuildSiteUrl:
 
     def test_without_domain_custom_port(self):
         assert build_site_url("my-site", None, 3000) == "http://my-site.localhost:3000"
+
+
+def test_deploy_returns_explicit_site_name(monkeypatch):
+    monkeypatch.setattr("server.config.DEV_MODE", True)
+    monkeypatch.setattr(
+        "server.routes.sites._deploy_site",
+        lambda subdomain, archive, owner_id: SiteRecord(
+            name=subdomain,
+            owner_id=owner_id,
+            size_bytes=0,
+            created_at="2026-07-16T00:00:00Z",
+        ),
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/deploy",
+        headers={"x-subdomain": "my-site"},
+        files={"file": ("site.zip", b"zip", "application/zip")},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "name": "my-site",
+        "url": "http://my-site.localhost:8080",
+    }
 
 
 def test_deploy_rejects_compressed_upload_over_limit(monkeypatch):

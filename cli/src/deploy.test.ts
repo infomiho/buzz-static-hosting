@@ -107,17 +107,32 @@ function fakeTextFetch(status: number, body: string): typeof fetch {
 describe("uploadSite", () => {
   const zip = Buffer.from("fake-zip-content");
 
-  it("returns url and subdomain on success", async () => {
+  it("returns the explicit site name on success", async () => {
     const result = await uploadSite(
       "http://localhost:8080",
       "test-token",
       zip,
       "my-site",
-      fakeFetch(200, { url: "https://my-site.example.com" })
+      fakeFetch(200, {
+        name: "my-site",
+        url: "https://custom.example.com",
+      })
     );
 
-    expect(result.url).toBe("https://my-site.example.com");
+    expect(result.url).toBe("https://custom.example.com");
     expect(result.subdomain).toBe("my-site");
+  });
+
+  it("rejects a deployment response without a site name", async () => {
+    await expect(
+      uploadSite(
+        "http://localhost:8080",
+        "test-token",
+        zip,
+        undefined,
+        fakeFetch(200, { url: "https://custom.example.com" })
+      )
+    ).rejects.toThrow("Server returned an invalid deployment response");
   });
 
   it("throws CliError on 401", async () => {

@@ -16,12 +16,23 @@ services:
       - BUZZ_GSC_PROPERTY=${BUZZ_GSC_PROPERTY:-}
       - BUZZ_ALLOW_REGISTRATION=${BUZZ_ALLOW_REGISTRATION:-true}
       - BUZZ_ALLOWED_GITHUB_USERS=${BUZZ_ALLOWED_GITHUB_USERS:-}
+      - BUZZ_CUSTOM_DOMAINS_ENABLED=${BUZZ_CUSTOM_DOMAINS_ENABLED:-false}
+      - BUZZ_TRAEFIK_CONTROL_TOKEN=${BUZZ_TRAEFIK_CONTROL_TOKEN:-}
+      - BUZZ_TRAEFIK_API_URL=http://coolify-proxy:8082/api
+      - "BUZZ_TRAEFIK_API_AUTHORIZATION=Bearer ${BUZZ_TRAEFIK_CONTROL_TOKEN:-}"
+      - BUZZ_TRAEFIK_HTTPS_ENTRYPOINT=https
+      - BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=${BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED:-false}
+      - BUZZ_TRAEFIK_CERT_RESOLVER=buzz-custom
+      - BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS=${BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS:-5}
     volumes:
       - buzz-data:/data
     expose:
       - "8080"
+      - "8081"
     networks:
-      - coolify
+      coolify:
+        aliases:
+          - buzz-traefik-control
     labels:
       - traefik.enable=true
       - "traefik.http.routers.buzz.rule=Host(`${BUZZ_DOMAIN}`)"

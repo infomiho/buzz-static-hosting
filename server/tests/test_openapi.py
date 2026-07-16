@@ -11,6 +11,9 @@ def test_openapi_contains_only_public_api_paths():
         "/deploy",
         "/sites",
         "/sites/{name}",
+        "/sites/{site_name}/domains",
+        "/sites/{site_name}/domains/{claim_id}/check",
+        "/sites/{site_name}/domains/{claim_id}",
         "/tokens",
         "/tokens/{token_id}",
         "/health",
@@ -32,6 +35,10 @@ def test_openapi_uses_stable_unique_operation_ids():
         "deploySite",
         "listSites",
         "deleteSite",
+        "listDomainClaims",
+        "createDomainClaim",
+        "checkDomainClaim",
+        "cancelDomainClaim",
         "listDeploymentTokens",
         "createDeploymentToken",
         "deleteDeploymentToken",
@@ -51,7 +58,8 @@ def test_openapi_documents_bearer_authentication():
 
 
 def test_openapi_documents_deployment_upload():
-    operation = create_app().openapi()["paths"]["/deploy"]["post"]
+    schema = create_app().openapi()
+    operation = schema["paths"]["/deploy"]["post"]
     request_body = operation["requestBody"]
     assert request_body["required"] is True
     file_schema = request_body["content"]["multipart/form-data"]["schema"][
@@ -61,6 +69,10 @@ def test_openapi_documents_deployment_upload():
     assert file_schema["format"] == "binary"
     headers = {parameter["name"] for parameter in operation["parameters"]}
     assert headers == {"x-subdomain"}
+    assert set(schema["components"]["schemas"]["DeploymentResponse"]["required"]) == {
+        "name",
+        "url",
+    }
 
 
 def test_delete_operations_document_no_content():

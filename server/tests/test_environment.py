@@ -29,6 +29,17 @@ def test_environment_registry_covers_server_and_deployment_settings():
         "BUZZ_GSC_PROPERTY",
         "BUZZ_ALLOW_REGISTRATION",
         "BUZZ_ALLOWED_GITHUB_USERS",
+        "BUZZ_CUSTOM_DOMAINS_ENABLED",
+        "BUZZ_TRAEFIK_CONTROL_TOKEN",
+        "BUZZ_TRAEFIK_CONTROL_PORT",
+        "BUZZ_TRAEFIK_API_URL",
+        "BUZZ_TRAEFIK_API_AUTHORIZATION",
+        "BUZZ_TRAEFIK_HTTPS_ENTRYPOINT",
+        "BUZZ_TRAEFIK_SERVICE",
+        "BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED",
+        "BUZZ_TRAEFIK_CERT_RESOLVER",
+        "BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS",
+        "BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER",
         "CF_API_TOKEN",
         "ACME_EMAIL",
     }
@@ -75,6 +86,16 @@ def test_allow_registration_defaults_to_true(monkeypatch):
     assert ENVIRONMENT_BY_NAME["BUZZ_ALLOW_REGISTRATION"].read() is True
 
 
+def test_custom_domains_default_to_disabled(monkeypatch):
+    monkeypatch.delenv("BUZZ_CUSTOM_DOMAINS_ENABLED", raising=False)
+    assert ENVIRONMENT_BY_NAME["BUZZ_CUSTOM_DOMAINS_ENABLED"].read() is False
+
+
+def test_custom_domain_routing_defaults_to_disabled(monkeypatch):
+    monkeypatch.delenv("BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED", raising=False)
+    assert ENVIRONMENT_BY_NAME["BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED"].read() is False
+
+
 def test_sensitive_settings_are_marked():
     sensitive = {
         variable.name for variable in ENVIRONMENT_VARIABLES if variable.sensitive
@@ -83,5 +104,7 @@ def test_sensitive_settings_are_marked():
         "GITHUB_CLIENT_SECRET",
         "BUZZ_ANALYTICS_SECRET",
         "BUZZ_GSC_CREDENTIALS",
+        "BUZZ_TRAEFIK_CONTROL_TOKEN",
+        "BUZZ_TRAEFIK_API_AUTHORIZATION",
         "CF_API_TOKEN",
     }

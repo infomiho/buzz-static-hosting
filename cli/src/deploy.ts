@@ -7,6 +7,11 @@ interface UploadResult {
   subdomain: string;
 }
 
+interface DeploymentResponse {
+  name: string;
+  url: string;
+}
+
 export function resolveSubdomain(
   cwd: string,
   directory: string,
@@ -72,9 +77,11 @@ export async function uploadSite(
   }
 
   if (response.ok) {
-    const data = await response.json();
-    const deployedSubdomain = new URL(data.url).hostname.split(".")[0];
-    return { url: data.url, subdomain: deployedSubdomain };
+    const data = (await response.json()) as DeploymentResponse;
+    if (typeof data.name !== "string" || typeof data.url !== "string") {
+      throw new CliError("Server returned an invalid deployment response");
+    }
+    return { url: data.url, subdomain: data.name };
   }
 
   if (response.status === 401) {

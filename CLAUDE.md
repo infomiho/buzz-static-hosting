@@ -53,6 +53,8 @@ Coolify proxy config must be saved through **Servers > Proxy**. Direct edits to 
 
 For wildcard certificates, Coolify's Traefik proxy should use Cloudflare DNS-01 and a single `wildcard-certs` router for `BUZZ_DOMAIN` and `*.BUZZ_DOMAIN`. Buzz app labels should set `tls=true` without `tls.certresolver`; otherwise Traefik creates duplicate ACME challenges for the same `_acme-challenge` record.
 
+Custom domains are an optional operator capability and default to disabled through `BUZZ_CUSTOM_DOMAINS_ENABLED`. Disabled or unhealthy custom-domain infrastructure must not affect canonical Buzz hosting. Once custom-domain routers exist, disablement requires acknowledged router withdrawal before removing the Traefik provider integration.
+
 ## Releasing
 
 Release Please versions only the CLI (`buzz-cli` npm package); server changes ship via the Coolify auto-deploy and produce no release PR. Use conventional commits on `main`: `fix:` patch, `feat:` minor, `feat!:` major. Merging the bot's release PR publishes to npm via OIDC trusted publishing.

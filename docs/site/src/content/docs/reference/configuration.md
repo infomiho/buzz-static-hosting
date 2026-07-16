@@ -28,6 +28,17 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_GSC_PROPERTY` | Google Search Console property. Defaults to `sc-domain:<BUZZ_DOMAIN>`. | Buzz server | Not set | Optional |
 | `BUZZ_ALLOW_REGISTRATION` | Whether new GitHub users can sign up. Existing users keep access when disabled. | Buzz server | `true` | Optional |
 | `BUZZ_ALLOWED_GITHUB_USERS` | Comma-separated GitHub usernames allowed to sign in. When set, unlisted users are denied on every request and listed users may sign up even when registration is disabled. | Buzz server | Not set | Optional |
+| `BUZZ_CUSTOM_DOMAINS_ENABLED` | Whether this Buzz server enables the optional custom-domain control plane. | Buzz server | `false` | Optional |
+| `BUZZ_TRAEFIK_CONTROL_TOKEN` | Bearer token used by Traefik to read Buzz custom-domain configuration when custom domains are enabled. | Buzz server | Not set | Optional |
+| `BUZZ_TRAEFIK_CONTROL_PORT` | Private port used by the Traefik custom-domain control listener. | Buzz server | `8081` | Optional |
+| `BUZZ_TRAEFIK_API_URL` | Internal URL of Traefik's protected runtime API for custom-domain readiness checks. | Buzz server | Not set | Optional |
+| `BUZZ_TRAEFIK_API_AUTHORIZATION` | Authorization header sent to Traefik's protected runtime API. | Buzz server | Not set | Optional |
+| `BUZZ_TRAEFIK_HTTPS_ENTRYPOINT` | Traefik HTTPS entrypoint expected by custom-domain routers. | Buzz server | `https` | Optional |
+| `BUZZ_TRAEFIK_SERVICE` | Provider-qualified Traefik service used by custom-domain routers. | Buzz server | `buzz@docker` | Optional |
+| `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED` | Whether verified custom domains are published to Traefik. This staging-only switch defaults to disabled. | Buzz server | `false` | Optional |
+| `BUZZ_TRAEFIK_CERT_RESOLVER` | Traefik certificate resolver selected by custom-domain routers. | Buzz server | `buzz-custom` | Optional |
+| `BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS` | Interval between custom-domain router reconciliation attempts. | Buzz server | `5` | Optional |
+| `BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER` | ACME directory used by the standalone custom-domain resolver. Keep the staging default until production routing is enabled. | Standalone deployment | `https://acme-staging-v02.api.letsencrypt.org/directory` | Optional |
 | `CF_API_TOKEN` | Cloudflare API token used by Traefik for DNS-01 validation. | Standalone deployment | Not set | Required by the standalone Docker Compose deployment. |
 | `ACME_EMAIL` | Email address used for Let's Encrypt certificate notifications. | Standalone deployment | Not set | Required by the standalone Docker Compose deployment. |
 
@@ -35,4 +46,4 @@ Command-line options take precedence where noted. Values used only by the bundle
 
 The CLI reads `BUZZ_SERVER` and `BUZZ_TOKEN`. The root `--server` and `--token` options take precedence, followed by environment variables, then saved configuration.
 
-Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.
+Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.

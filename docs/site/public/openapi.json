@@ -26,6 +26,19 @@
         "title": "ApiUser",
         "type": "object"
       },
+      "CreateDomainClaimRequest": {
+        "properties": {
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname"
+        ],
+        "title": "CreateDomainClaimRequest",
+        "type": "object"
+      },
       "CreateTokenRequest": {
         "properties": {
           "name": {
@@ -75,12 +88,17 @@
       },
       "DeploymentResponse": {
         "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
           "url": {
             "title": "Url",
             "type": "string"
           }
         },
         "required": [
+          "name",
           "url"
         ],
         "title": "DeploymentResponse",
@@ -233,6 +251,174 @@
           "device_code"
         ],
         "title": "DevicePollRequest",
+        "type": "object"
+      },
+      "DomainClaimResponse": {
+        "properties": {
+          "challenge_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Challenge Path"
+          },
+          "challenge_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Challenge Seen At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "route_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Error"
+          },
+          "route_generation": {
+            "title": "Route Generation",
+            "type": "integer"
+          },
+          "route_status": {
+            "enum": [
+              "not_routed",
+              "publishing",
+              "routed",
+              "removing",
+              "removed"
+            ],
+            "title": "Route Status",
+            "type": "string"
+          },
+          "site_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Name"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "verified",
+              "expired",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/DomainVerificationRecord"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "site_name",
+          "status",
+          "verification",
+          "created_at",
+          "expires_at",
+          "verified_at",
+          "last_checked_at",
+          "last_error",
+          "route_status",
+          "route_generation",
+          "route_error",
+          "challenge_path",
+          "challenge_seen_at"
+        ],
+        "title": "DomainClaimResponse",
+        "type": "object"
+      },
+      "DomainVerificationRecord": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "const": "TXT",
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "value"
+        ],
+        "title": "DomainVerificationRecord",
         "type": "object"
       },
       "ErrorResponse": {
@@ -843,6 +1029,397 @@
         ]
       }
     },
+    "/sites/{site_name}/domains": {
+      "get": {
+        "operationId": "listDomainClaims",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DomainClaimResponse"
+                  },
+                  "title": "Response Listdomainclaims",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List custom domain claims",
+        "tags": [
+          "Custom Domains"
+        ]
+      },
+      "post": {
+        "operationId": "createDomainClaim",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDomainClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create a custom domain claim",
+        "tags": [
+          "Custom Domains"
+        ]
+      }
+    },
+    "/sites/{site_name}/domains/{claim_id}": {
+      "delete": {
+        "operationId": "cancelDomainClaim",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel a custom domain claim",
+        "tags": [
+          "Custom Domains"
+        ]
+      }
+    },
+    "/sites/{site_name}/domains/{claim_id}/check": {
+      "post": {
+        "operationId": "checkDomainClaim",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Check custom domain ownership",
+        "tags": [
+          "Custom Domains"
+        ]
+      }
+    },
     "/tokens": {
       "get": {
         "operationId": "listDeploymentTokens",
@@ -1057,6 +1634,10 @@
     {
       "description": "Site deployment and ownership.",
       "name": "Sites"
+    },
+    {
+      "description": "Custom hostname ownership claims.",
+      "name": "Custom Domains"
     },
     {
       "description": "Site-scoped credentials for automated deployment.",

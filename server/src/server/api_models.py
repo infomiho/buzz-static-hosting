@@ -44,6 +44,7 @@ class LogoutResponse(BaseModel):
 
 
 class DeploymentResponse(BaseModel):
+    name: str
     url: str
 
 
@@ -52,6 +53,34 @@ class SiteResponse(BaseModel):
     created: str
     size_bytes: int | None
     total_views: int
+
+
+class CreateDomainClaimRequest(BaseModel):
+    hostname: str
+
+
+class DomainVerificationRecord(BaseModel):
+    type: Literal["TXT"]
+    name: str
+    value: str
+
+
+class DomainClaimResponse(BaseModel):
+    id: int
+    hostname: str
+    site_name: str | None
+    status: Literal["pending", "verified", "expired", "cancelled"]
+    verification: DomainVerificationRecord
+    created_at: str
+    expires_at: str
+    verified_at: str | None
+    last_checked_at: str | None
+    last_error: str | None
+    route_status: Literal["not_routed", "publishing", "routed", "removing", "removed"]
+    route_generation: int
+    route_error: str | None
+    challenge_path: str | None
+    challenge_seen_at: str | None
 
 
 class CreateTokenRequest(BaseModel):
