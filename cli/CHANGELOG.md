@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.7.0...buzz-cli-v0.8.0) (2026-07-16)
+
+
+### Features
+
+* add staged custom domain routing ([6be6984](https://github.com/infomiho/buzz-static-hosting/commit/6be698496c8d8bd780e94913f8f57b6e2e08239d))
+* manage custom domains from the CLI ([6bb3735](https://github.com/infomiho/buzz-static-hosting/commit/6bb37357d6f74662d226cf0514746bf82f99f594))
+
 ## [0.7.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.6.1...buzz-cli-v0.7.0) (2026-07-10)
 
 
