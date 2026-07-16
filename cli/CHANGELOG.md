@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.8.0...buzz-cli-v0.9.0) (2026-07-16)
+
+
+### Features
+
+* diagnose Cloudflare proxy domains ([1b67e0e](https://github.com/infomiho/buzz-static-hosting/commit/1b67e0e45ae582493802c7d5138464ed7313c17a))
+
 ## [0.8.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.7.0...buzz-cli-v0.8.0) (2026-07-16)
 
 
