@@ -235,6 +235,8 @@ class TestCustomDomains:
         assert "_buzz.www.example.com" in response.text
         assert "buzz-domain-verification=bdv_test" in response.text
         assert "Waiting for DNS verification" in response.text
+        assert '<details class="border-2 border-ink" data-domain-claim="1">' in response.text
+        assert '<details class="border-2 border-ink" data-domain-claim="1" open>' not in response.text
         assert response.text.index("Analytics") < response.text.index("Custom domains")
         assert response.text.index("Files") < response.text.index("Custom domains")
         assert 'id="remove-domain-dialog"' in response.text

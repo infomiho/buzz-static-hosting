@@ -141,30 +141,36 @@
         <section>
             {% if domain_claims %}
                 {% for claim in domain_claims %}
-                <article class="border-2 border-ink p-4" data-domain-claim="{{ claim.id }}">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                            <h3 class="font-mono text-lg font-bold">{{ claim.hostname }}</h3>
-                            {% if claim.status == 'verified' %}
-                            <p class="mt-1 font-bold text-success">Ownership verified</p>
-                                {% if claim.route_status == 'publishing' %}
-                                <p class="mt-1 text-rule">Publishing the staging route and waiting for Traefik acknowledgement.</p>
-                                {% elif claim.route_status == 'routed' %}
-                                    {% if claim.challenge_seen_at %}
-                                    <p class="mt-1 text-rule">Challenge request reached Buzz. Only the verification path is available in staging.</p>
+                <details class="border-2 border-ink" data-domain-claim="{{ claim.id }}">
+                    <summary class="flex cursor-pointer flex-wrap items-baseline gap-3 px-4 py-3">
+                        <span class="font-mono text-lg font-bold underline decoration-2 underline-offset-4">{{ claim.hostname }}</span>
+                        {% if claim.status == 'verified' %}
+                        <span class="font-bold text-success">Ownership verified</span>
+                        {% else %}
+                        <span class="font-bold">Waiting for DNS verification</span>
+                        {% endif %}
+                    </summary>
+                    <div class="border-t-2 border-ink p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                {% if claim.status == 'verified' %}
+                                    {% if claim.route_status == 'publishing' %}
+                                    <p class="text-rule">Publishing the staging route and waiting for Traefik acknowledgement.</p>
+                                    {% elif claim.route_status == 'routed' %}
+                                        {% if claim.challenge_seen_at %}
+                                        <p class="text-rule">Challenge request reached Buzz. Only the verification path is available in staging.</p>
+                                        {% else %}
+                                        <p class="text-rule">Router acknowledged. Open the staging verification URL to prove the public route.</p>
+                                        {% endif %}
+                                    {% elif claim.route_status == 'removing' %}
+                                    <p class="text-rule">Removing the staging route. The domain remains reserved until Traefik confirms withdrawal.</p>
                                     {% else %}
-                                    <p class="mt-1 text-rule">Router acknowledged. Open the staging verification URL to prove the public route.</p>
+                                    <p class="text-rule">Ready for staging routing when the operator enables it.</p>
                                     {% endif %}
-                                {% elif claim.route_status == 'removing' %}
-                                <p class="mt-1 text-rule">Removing the staging route. The domain remains reserved until Traefik confirms withdrawal.</p>
                                 {% else %}
-                                <p class="mt-1 text-rule">Ready for staging routing when the operator enables it.</p>
+                                <p class="text-rule">The claim expires {{ claim.expires_at[:16].replace('T', ' ') }} UTC.</p>
                                 {% endif %}
-                            {% else %}
-                            <p class="mt-1 font-bold">Waiting for DNS verification</p>
-                            <p class="mt-1 text-rule">The claim expires {{ claim.expires_at[:16].replace('T', ' ') }} UTC.</p>
-                            {% endif %}
-                        </div>
+                            </div>
                         <div class="flex flex-wrap gap-3">
                             {% if claim.status == 'pending' and custom_domains_available %}
                             <button class="btn-sm-outline check-domain" data-claim-id="{{ claim.id }}">Check now</button>
@@ -198,7 +204,8 @@
                         <p class="mt-2 overflow-x-auto font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>
                     </div>
                     {% endif %}
-                </article>
+                    </div>
+                </details>
                 {% endfor %}
             {% elif not custom_domains_available %}
             <h3 class="text-xl font-bold">Not available</h3>
