@@ -22,6 +22,11 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz tokens list`](#buzz-tokens-list): List your deployment tokens
 - [`buzz tokens create`](#buzz-tokens-create): Create a deployment token for a site
 - [`buzz tokens delete`](#buzz-tokens-delete): Delete a deployment token
+- [`buzz domains`](#buzz-domains): Manage custom domains
+- [`buzz domains list`](#buzz-domains-list): List custom domains and lifecycle status
+- [`buzz domains add`](#buzz-domains-add): Attach a direct custom domain to a site
+- [`buzz domains check`](#buzz-domains-check): Check custom-domain ownership and activation
+- [`buzz domains remove`](#buzz-domains-remove): Remove a custom domain without changing DNS records
 
 ## buzz
 
@@ -46,6 +51,7 @@ Commands:
   logout                        Sign out and clear the stored session
   whoami                        Show the current signed-in user
   tokens                        Manage deployment tokens
+  domains                       Manage custom domains
   help [command]                display help for command
 ```
 
@@ -187,5 +193,69 @@ Usage: buzz tokens delete [options] <token-id>
 Delete a deployment token
 
 Options:
+  -h, --help  display help for command
+```
+
+## buzz domains
+
+```text
+Usage: buzz domains [options] [command]
+
+Manage custom domains
+
+Options:
+  -h, --help                        display help for command
+
+Commands:
+  list [site]                       List custom domains and lifecycle status
+  add <site> <domain>               Attach a direct custom domain to a site
+  check <site> <domain>             Check custom-domain ownership and activation
+  remove [options] <site> <domain>  Remove a custom domain without changing DNS
+                                    records
+  help [command]                    display help for command
+```
+
+## buzz domains list
+
+```text
+Usage: buzz domains list [options] [site]
+
+List custom domains and lifecycle status
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz domains add
+
+```text
+Usage: buzz domains add [options] <site> <domain>
+
+Attach a direct custom domain to a site
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz domains check
+
+```text
+Usage: buzz domains check [options] <site> <domain>
+
+Check custom-domain ownership and activation
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz domains remove
+
+```text
+Usage: buzz domains remove [options] <site> <domain>
+
+Remove a custom domain without changing DNS records
+
+Options:
+  -y, --yes   Skip confirmation prompt
   -h, --help  display help for command
 ```

@@ -84,6 +84,23 @@ class DomainClaimResponse(BaseModel):
     activated_at: str | None
     activation_checked_at: str | None
     activation_error: str | None
+    removal_requested_at: str | None
+    withdrawn_at: str | None
+
+
+class CustomDomainRoutingTarget(BaseModel):
+    type: Literal["A", "AAAA"]
+    value: str
+
+
+class CustomDomainCapabilityResponse(BaseModel):
+    status: Literal["disabled", "unready", "ready"]
+    detail: str | None
+    enabled: bool
+    control_ready: bool
+    admission_enabled: bool
+    routing_enabled: bool
+    routing_targets: list[CustomDomainRoutingTarget]
 
 
 class CreateTokenRequest(BaseModel):

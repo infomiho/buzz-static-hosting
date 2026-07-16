@@ -88,6 +88,79 @@ def test_domain_claim_lifecycle(domain_api):
     assert client.get("/sites/my-site/domains").json()[0]["status"] == "cancelled"
 
 
+def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch):
+    client, _ = domain_api
+    monkeypatch.setattr(
+        config,
+        "CUSTOM_DOMAIN_INGRESS_IPS",
+        frozenset({"2001:4860:4860::8888", "8.8.8.8"}),
+    )
+
+    response = client.get("/capabilities/custom-domains")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "detail": None,
+        "enabled": True,
+        "control_ready": True,
+        "admission_enabled": True,
+        "routing_enabled": True,
+        "routing_targets": [
+            {"type": "A", "value": "8.8.8.8"},
+            {"type": "AAAA", "value": "2001:4860:4860::8888"},
+        ],
+    }
+
+
+def test_custom_domain_capability_distinguishes_disabled_and_unready(
+    domain_api, monkeypatch
+):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", False)
+    disabled = client.get("/capabilities/custom-domains").json()
+    monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", True)
+    client.app.state.traefik_control = UnreadyControlPlane()
+    unready = client.get("/capabilities/custom-domains").json()
+
+    assert disabled["status"] == "disabled"
+    assert disabled["detail"] == "Custom domains are not enabled on this Buzz server"
+    assert unready["status"] == "unready"
+    assert unready["detail"] == "Custom domain control plane is not ready"
+
+
+def test_custom_domain_capability_reports_closed_admission(domain_api, monkeypatch):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CUSTOM_DOMAIN_ADMISSION_ENABLED", False)
+
+    response = client.get("/capabilities/custom-domains")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "unready"
+    assert response.json()["detail"] == (
+        "New custom domain claims are not enabled on this Buzz server"
+    )
+
+
+def test_custom_domain_capability_rejects_deployment_tokens(domain_api):
+    client, _ = domain_api
+    identity = Identity(
+        user=User(id=1, github_login="dev", github_name="Dev"),
+        token_type="deploy",
+        site_name="my-site",
+    )
+    client.app.dependency_overrides[get_identity] = lambda: identity
+    config.DEV_MODE = False
+    try:
+        response = client.get("/capabilities/custom-domains")
+    finally:
+        client.app.dependency_overrides.clear()
+        config.DEV_MODE = True
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Deploy tokens cannot perform this operation"
+
+
 def test_failed_txt_check_returns_actionable_state(domain_api):
     client, _ = domain_api
     created = client.post(

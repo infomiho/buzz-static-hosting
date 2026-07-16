@@ -355,6 +355,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
     app.include_router(dashboard.router)
     app.include_router(sites.router, tags=["Sites"])
+    app.include_router(domains.capabilities_router, tags=["Custom Domains"])
     app.include_router(domains.router, tags=["Custom Domains"])
     app.include_router(tokens.router, prefix="/tokens", tags=["Deployment Tokens"])
 

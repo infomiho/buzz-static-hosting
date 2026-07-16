@@ -86,6 +86,86 @@
         "title": "CreatedDeploymentTokenResponse",
         "type": "object"
       },
+      "CustomDomainCapabilityResponse": {
+        "properties": {
+          "admission_enabled": {
+            "title": "Admission Enabled",
+            "type": "boolean"
+          },
+          "control_ready": {
+            "title": "Control Ready",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "routing_enabled": {
+            "title": "Routing Enabled",
+            "type": "boolean"
+          },
+          "routing_targets": {
+            "items": {
+              "$ref": "#/components/schemas/CustomDomainRoutingTarget"
+            },
+            "title": "Routing Targets",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "disabled",
+              "unready",
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "detail",
+          "enabled",
+          "control_ready",
+          "admission_enabled",
+          "routing_enabled",
+          "routing_targets"
+        ],
+        "title": "CustomDomainCapabilityResponse",
+        "type": "object"
+      },
+      "CustomDomainRoutingTarget": {
+        "properties": {
+          "type": {
+            "enum": [
+              "A",
+              "AAAA"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ],
+        "title": "CustomDomainRoutingTarget",
+        "type": "object"
+      },
       "DeploymentResponse": {
         "properties": {
           "name": {
@@ -348,6 +428,17 @@
             ],
             "title": "Last Error"
           },
+          "removal_requested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removal Requested At"
+          },
           "route_error": {
             "anyOf": [
               {
@@ -408,6 +499,17 @@
               }
             ],
             "title": "Verified At"
+          },
+          "withdrawn_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawn At"
           }
         },
         "required": [
@@ -428,7 +530,9 @@
           "challenge_seen_at",
           "activated_at",
           "activation_checked_at",
-          "activation_error"
+          "activation_error",
+          "removal_requested_at",
+          "withdrawn_at"
         ],
         "title": "DomainClaimResponse",
         "type": "object"
@@ -797,6 +901,62 @@
         ]
       }
     },
+    "/capabilities/custom-domains": {
+      "get": {
+        "operationId": "getCustomDomainCapability",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomDomainCapabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Check custom-domain capability",
+        "tags": [
+          "Custom Domains"
+        ]
+      }
+    },
     "/deploy": {
       "post": {
         "description": "Upload a ZIP archive to create or replace a site. A deployment token may deploy only to its assigned site and must send that name in X-Subdomain.",
@@ -1133,16 +1293,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           }
         },
         "security": [
@@ -1337,16 +1487,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           }
         },
         "security": [

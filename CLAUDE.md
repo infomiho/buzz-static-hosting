@@ -41,7 +41,7 @@ npm test
 
 `npm link` installs it globally for development.
 
-Commands: `deploy`, `list`, `delete`, `url`, `config`, `login`, `logout`, `whoami`, `tokens`. Config lives at `~/.buzz.config.json`; the per-project subdomain in a `CNAME` file.
+Commands: `deploy`, `list`, `delete`, `url`, `config`, `login`, `logout`, `whoami`, `tokens`, `domains`. Config lives at `~/.buzz.config.json`; the per-project subdomain in a `CNAME` file. Custom domains do not change the canonical deployment identity or local `CNAME`.
 
 ## Deployment
 

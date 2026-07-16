@@ -1,10 +1,16 @@
+import ipaddress
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from .. import config
-from ..api_models import CreateDomainClaimRequest, DomainClaimResponse, ErrorResponse
+from ..api_models import (
+    CreateDomainClaimRequest,
+    CustomDomainCapabilityResponse,
+    DomainClaimResponse,
+    ErrorResponse,
+)
 from ..custom_domains import (
     DnsTxtResolver,
     DomainCheckUnavailable,
@@ -26,6 +32,7 @@ from ..exceptions import BadRequest, Conflict
 from ..site_store import SiteStore
 
 router = APIRouter(prefix="/sites/{site_name}/domains")
+capabilities_router = APIRouter(prefix="/capabilities")
 
 
 def domain_limits() -> DomainClaimLimits:
@@ -60,6 +67,72 @@ def domain_response(claim: DomainClaim) -> dict:
         "activated_at": claim.activated_at,
         "activation_checked_at": claim.activation_checked_at,
         "activation_error": claim.activation_error,
+        "removal_requested_at": claim.removal_requested_at,
+        "withdrawn_at": claim.withdrawn_at,
+    }
+
+
+@capabilities_router.get(
+    "/custom-domains",
+    response_model=CustomDomainCapabilityResponse,
+    operation_id="getCustomDomainCapability",
+    summary="Check custom-domain capability",
+    responses={
+        401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+    },
+)
+async def custom_domain_capability(
+    request: Request,
+    _identity: Annotated[Identity, Depends(require_user)],
+):
+    control = getattr(request.app.state, "traefik_control", None)
+    runtime_ready = bool(control and control.is_ready())
+    control_ready = bool(
+        config.CUSTOM_DOMAINS_ENABLED
+        and config.TRAEFIK_CONTROL_TOKEN
+        and runtime_ready
+    )
+    routing_ready = bool(
+        config.CUSTOM_DOMAIN_ROUTING_ENABLED
+        and config.CUSTOM_DOMAIN_INGRESS_IPS
+    )
+    if not config.CUSTOM_DOMAINS_ENABLED:
+        status = "disabled"
+        detail = "Custom domains are not enabled on this Buzz server"
+    elif not config.TRAEFIK_CONTROL_TOKEN or control is None:
+        status = "unready"
+        detail = "Custom domains are enabled but the control plane is not configured"
+    elif not runtime_ready:
+        status = "unready"
+        detail = "Custom domain control plane is not ready"
+    elif not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
+        status = "unready"
+        detail = "New custom domain claims are not enabled on this Buzz server"
+    elif not routing_ready:
+        status = "unready"
+        detail = "Custom domain production routing is not configured"
+    else:
+        status = "ready"
+        detail = None
+    targets = [
+        {
+            "type": "A" if ipaddress.ip_address(address).version == 4 else "AAAA",
+            "value": address,
+        }
+        for address in sorted(
+            config.CUSTOM_DOMAIN_INGRESS_IPS,
+            key=lambda value: (ipaddress.ip_address(value).version, value),
+        )
+    ]
+    return {
+        "status": status,
+        "detail": detail,
+        "enabled": config.CUSTOM_DOMAINS_ENABLED,
+        "control_ready": control_ready,
+        "admission_enabled": config.CUSTOM_DOMAIN_ADMISSION_ENABLED,
+        "routing_enabled": routing_ready,
+        "routing_targets": targets,
     }
 
 
@@ -76,7 +149,6 @@ def require_owned_site(site_name: str, owner_id: int) -> None:
     responses={
         401: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
     },
 )
 async def list_domain_claims(
@@ -192,7 +264,6 @@ async def check_domain_claim(
         401: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
-        503: {"model": ErrorResponse},
     },
 )
 async def cancel_domain_claim(

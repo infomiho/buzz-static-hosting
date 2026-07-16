@@ -1,20 +1,6 @@
-import { createInterface } from "readline";
 import { Command } from "commander";
 import { apiRequest, CliError, errorMessage, type CliOptions } from "../lib.js";
-
-function confirm(message: string): Promise<boolean> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(`${message} [y/N] `, (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase() === "y");
-    });
-  });
-}
+import { confirm } from "../prompts.js";
 
 export async function deleteSite(
   subdomain: string,

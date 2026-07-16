@@ -6,6 +6,7 @@ import { registerConfigCommand } from "./config.js";
 import { registerUrlCommand } from "./url.js";
 import { registerAuthCommands } from "./auth.js";
 import { registerTokensCommand } from "./tokens.js";
+import { registerDomainsCommand } from "./domains.js";
 
 export function registerCommands(program: Command) {
   registerDeployCommand(program);
@@ -15,4 +16,5 @@ export function registerCommands(program: Command) {
   registerUrlCommand(program);
   registerAuthCommands(program);
   registerTokensCommand(program);
+  registerDomainsCommand(program);
 }

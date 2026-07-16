@@ -33,6 +33,11 @@ describe("createProgram", () => {
       "tokens list",
       "tokens create",
       "tokens delete",
+      "domains",
+      "domains list",
+      "domains add",
+      "domains check",
+      "domains remove",
     ]);
   });
 
