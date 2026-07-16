@@ -40,6 +40,16 @@ Users and operators receive specific readiness failures for proxied domains inst
 - A controlled Cloudflare zone verifies credential-free diagnostics and HTTP-01 forwarding under the documented Full (strict), redirect, cache, and WAF settings.
 - Direct-domain behavior remains unchanged.
 
+## Operational Verification
+
+On 2026-07-16, `cfdiag.miho.dev` was created as a fresh proxied claim against the `code-screenshot` site:
+
+- TXT ownership, Cloudflare-only DNS answers, and the exact router were verified.
+- The initial `526` and origin TLS failure cleared after `buzz-production` issued a fresh Let's Encrypt certificate through HTTP-01.
+- Edge TLS, the HTTPS generation challenge, and origin validation became healthy without Cloudflare credentials.
+- Site content remained blocked with `421`.
+- Router withdrawal was acknowledged before the claim and its DNS records were removed.
+
 ## Acceptance Criteria
 
 - Cloudflare mode cannot activate.
