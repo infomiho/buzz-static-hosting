@@ -132,9 +132,9 @@
         <header class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <h2>Custom domains</h2>
-                <p class="mt-1 text-rule">Prove ownership of a hostname before Buzz prepares routing.</p>
+                <p class="mt-1 text-rule">Attach independently managed hostnames without changing your permanent Buzz URL.</p>
             </div>
-            {% if custom_domains_available and custom_domain_admission_enabled and not domain_claims %}
+            {% if custom_domain_can_add %}
             <button class="btn-sm-outline" id="open-domain-dialog">Add custom domain</button>
             {% endif %}
         </header>
@@ -221,8 +221,13 @@
             <h3 class="text-xl font-bold">Not available</h3>
             <p class="mt-2 text-rule">The custom-domain control plane is disabled or not ready. Existing claims remain visible for safe removal.</p>
             {% else %}
-            <h3 class="text-xl font-bold">No custom domain claim</h3>
+            <h3 class="text-xl font-bold">No custom domains</h3>
             <p class="mt-2 text-rule">Your site remains available at its permanent Buzz URL.</p>
+            {% endif %}
+            {% if custom_domain_quota.error %}
+            <p class="mt-4 border-l-4 border-ink pl-3 text-rule">{{ custom_domain_quota.error }}</p>
+            {% else %}
+            <p class="mt-4 text-rule">{{ custom_domain_quota.site_usage }} of {{ custom_domain_quota.limits.per_site }} aliases used for this site.</p>
             {% endif %}
             <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark" id="domain-action-error" role="alert"></p>
         </section>
@@ -231,7 +236,7 @@
 
 {% include "_deploy_modal.html" %}
 
-{% if custom_domains_available and custom_domain_admission_enabled and not domain_claims %}
+{% if custom_domain_can_add %}
 <dialog id="add-domain-dialog" class="dialog">
     <div>
         <header>
@@ -275,6 +280,9 @@
         <header>
             <h2>Delete site</h2>
             <p>Are you sure you want to delete <strong>{{ site.name }}</strong>? This will remove all deployed files and cannot be undone.</p>
+            {% if domain_claims %}
+            <p class="mt-3 border-l-4 border-danger pl-3 text-danger-dark">Remove all {{ domain_claims | length }} custom domain aliases and wait for route withdrawal before deleting this site.</p>
+            {% endif %}
             <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="delete-site-error" role="alert"></p>
         </header>
         <footer>

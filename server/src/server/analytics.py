@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import logging
 import secrets
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from sqlite3 import Connection
@@ -302,6 +302,7 @@ def build_analytics_event(
     status_code: int,
     bytes_sent: int,
     content_type: str,
+    internal_hosts: Collection[str] = (),
 ) -> AnalyticsEvent | None:
     if request.method != "GET":
         return None
@@ -329,7 +330,7 @@ def build_analytics_event(
         is_pageview=is_pageview,
         is_not_found=is_not_found,
         visitor_hash=_visitor_hash(site_name, day, _client_ip(request), user_agent),
-        referrer=_referrer_host(request),
+        referrer=_referrer_host(request, internal_hosts),
         campaign=_campaign(request),
         country=_country(request),
     )
@@ -387,17 +388,20 @@ def _visitor_hash(site_name: str, day: str, ip: str, user_agent: str) -> str | N
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _referrer_host(request: Any) -> str | None:
+def _normalized_host(host: str) -> str:
+    return host.lower().rstrip(".")
+
+
+def _referrer_host(request: Any, internal_hosts: Collection[str]) -> str | None:
     referrer = request.headers.get("referer") or request.headers.get("referrer")
     if not referrer:
         return None
-    host = (urlparse(referrer).hostname or "").lower()
-    if host.startswith("www."):
-        host = host[4:]
-    current_host = (request.headers.get("host") or "").split(":", 1)[0].lower()
-    if host == current_host or not host:
+    host = _normalized_host(urlparse(referrer).hostname or "")
+    current_host = _normalized_host((request.headers.get("host") or "").split(":", 1)[0])
+    site_hosts = {_normalized_host(value) for value in internal_hosts}
+    if host == current_host or host in site_hosts or not host:
         return None
-    return host
+    return host[4:] if host.startswith("www.") else host
 
 
 def _campaign(request: Any) -> str | None:

@@ -83,6 +83,48 @@ def test_snapshot_contains_deterministic_exact_router(routing_db):
     }
 
 
+def test_snapshot_is_deterministic_with_multiple_aliases(routing_db):
+    with routing_db() as conn:
+        store = DomainClaimStore(conn)
+        for hostname in ("two.example.com", "three.example.com"):
+            claim = store.create("my-site", hostname)
+            store.record_check(claim.id, "my-site", (claim.verification_value,))
+        claims = store.prepare_routes(True)
+
+    first = build_traefik_snapshot("https", "buzz@docker", "buzz-custom")
+    second = build_traefik_snapshot("https", "buzz@docker", "buzz-custom")
+    routers = json.loads(first)["http"]["routers"]
+
+    assert first == second
+    assert set(routers) == {claim.route_name for claim in claims}
+    assert {router["rule"] for router in routers.values()} == {
+        "Host(`www.example.com`)",
+        "Host(`two.example.com`)",
+        "Host(`three.example.com`)",
+    }
+
+
+def test_reconciler_isolates_alias_failures(routing_db):
+    with routing_db() as conn:
+        store = DomainClaimStore(conn)
+        second = store.create("my-site", "two.example.com")
+        store.record_check(second.id, "my-site", (second.verification_value,))
+
+    def router(name):
+        if name.startswith("buzz-domain-1-"):
+            raise RuntimeError("unexpected failure")
+        return expected_router("two.example.com")
+
+    reconciler(FakeRuntimeClient(router)).run_once()
+
+    with routing_db() as conn:
+        claims = DomainClaimStore(conn).list_for_site("my-site")
+    assert {claim.hostname: claim.route_status for claim in claims} == {
+        "two.example.com": "routed",
+        "www.example.com": "publishing",
+    }
+
+
 def test_reconciler_acknowledges_matching_runtime_router(routing_db):
     runtime = FakeRuntimeClient(expected_router())
 

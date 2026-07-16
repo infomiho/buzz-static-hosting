@@ -101,11 +101,18 @@ def _custom_domain_activation(conn: sqlite3.Connection) -> None:
         ADD COLUMN activation_error TEXT""")
 
 
+def _multiple_custom_domains(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP INDEX custom_domain_claims_active_site")
+    conn.execute("""CREATE INDEX custom_domain_claims_site_status
+        ON custom_domain_claims(site_name, status)""")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _base_schema,
     _custom_domain_claims,
     _custom_domain_routing,
     _custom_domain_activation,
+    _multiple_custom_domains,
 )
 
 

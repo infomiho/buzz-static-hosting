@@ -22,7 +22,7 @@ from ..auth_service import (
 )
 from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
-from ..custom_domains import DomainClaimStore
+from ..custom_domains import DomainClaimLimits, DomainClaimStore
 from ..db import db
 from ..dependencies import get_auth_service, require_user
 from ..search_console import SearchConsoleError
@@ -90,11 +90,28 @@ async def site_detail(
         store = SiteStore(conn, SITES_DIR)
         site = store.get_by_name(name, identity.user.id)
         files = store.list_files(name, identity.user.id)
+        claim_store = DomainClaimStore(conn)
         domain_claims = [
             claim
-            for claim in DomainClaimStore(conn).list_for_site(name)
+            for claim in claim_store.list_for_site(name)
             if claim.status in {"pending", "verified"}
         ]
+        domain_quota = claim_store.quota(
+            name,
+            DomainClaimLimits(
+                per_site=config.MAX_CUSTOM_DOMAINS_PER_SITE,
+                per_user=config.MAX_CUSTOM_DOMAINS_PER_USER,
+                server_wide=config.MAX_CUSTOM_DOMAINS_SERVER_WIDE,
+            ),
+        )
+
+    custom_domain_can_add = bool(
+        custom_domains_available
+        and config.CUSTOM_DOMAIN_ADMISSION_ENABLED
+        and config.CUSTOM_DOMAIN_ROUTING_ENABLED
+        and config.CUSTOM_DOMAIN_INGRESS_IPS
+        and not domain_quota.error
+    )
 
     if domain and domain != "localhost:8080":
         site_url = f"https://{name}.{domain}"
@@ -108,7 +125,8 @@ async def site_detail(
         "files": files,
         "domain": domain,
         "custom_domains_available": custom_domains_available,
-        "custom_domain_admission_enabled": config.CUSTOM_DOMAIN_ADMISSION_ENABLED,
+        "custom_domain_can_add": custom_domain_can_add,
+        "custom_domain_quota": domain_quota,
         "domain_claims": domain_claims,
     })
 

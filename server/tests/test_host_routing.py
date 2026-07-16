@@ -182,6 +182,38 @@ def test_activated_custom_domain_serves_canonical_site_identity(tmp_path, monkey
     assert client.get("/", headers=headers).status_code == 421
 
 
+def test_multiple_aliases_serve_independently(tmp_path, monkeypatch):
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
+    db_module.init_db()
+    site_dir = tmp_path / "my-site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text("shared content")
+    with db_module.db() as conn:
+        conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
+        store = DomainClaimStore(conn)
+        claims = []
+        for hostname in ("one.example.com", "two.example.com"):
+            claim = store.create("my-site", hostname)
+            store.record_check(claim.id, "my-site", (claim.verification_value,))
+            claims.append(claim)
+        for claim in store.prepare_routes(True):
+            store.mark_routed(claim.id, claim.route_generation)
+            store.mark_activated(claim.id, claim.route_generation)
+    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.app.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
+    client = make_client(tmp_path, monkeypatch)
+
+    assert client.get("/", headers={"host": "one.example.com"}).text == "shared content"
+    assert client.get("/", headers={"host": "two.example.com"}).text == "shared content"
+
+    with db_module.db() as conn:
+        DomainClaimStore(conn).cancel(claims[0].id, "my-site")
+
+    assert client.get("/", headers={"host": "one.example.com"}).status_code == 421
+    assert client.get("/", headers={"host": "two.example.com"}).status_code == 200
+    assert client.get("/", headers={"host": "my-site.localhost:8080"}).status_code == 200
+
+
 def test_cookie_authenticated_mutations_reject_tenant_origin(tmp_path, monkeypatch):
     client = make_client(tmp_path, monkeypatch)
     headers = {

@@ -228,7 +228,13 @@ class TestCustomDomains:
         monkeypatch.setattr("server.routes.dashboard.db", db)
         monkeypatch.setattr("server.routes.dashboard.SITES_DIR", tmp_path)
         monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
+        monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ADMISSION_ENABLED", True)
+        monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
+        monkeypatch.setattr("server.config.CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
         monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured")
+        client.app.state.traefik_control = type(
+            "ReadyControlPlane", (), {"is_ready": lambda self: True}
+        )()
         client.cookies.set(COOKIE_NAME, token)
 
         response = client.get("/dashboard/sites/my-site")
@@ -244,6 +250,8 @@ class TestCustomDomains:
         assert response.text.index("Files") < response.text.index("Custom domains")
         assert 'id="remove-domain-dialog"' in response.text
         assert "Buzz will stop tracking its ownership" in response.text
+        assert "Add custom domain" in response.text
+        assert "1 of 5 aliases used for this site" in response.text
 
 
 class TestLoginFlow:

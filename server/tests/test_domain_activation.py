@@ -86,6 +86,34 @@ def test_activation_records_probe_failure(activation_db):
     assert claim.activation_checked_at is not None
 
 
+def test_activation_isolates_alias_failures(activation_db):
+    with activation_db() as conn:
+        store = DomainClaimStore(conn)
+        second = store.create("my-site", "two.example.com")
+        store.record_check(second.id, "my-site", (second.verification_value,))
+        second = [
+            claim for claim in store.prepare_routes(True) if claim.id == second.id
+        ][0]
+        store.mark_routed(second.id, second.route_generation)
+
+    def resolve(hostname):
+        if hostname == "www.example.com":
+            raise RuntimeError("unexpected failure")
+        return ("8.8.8.8",)
+
+    activator(resolve).run_once()
+
+    with activation_db() as conn:
+        claims = DomainClaimStore(conn).list_for_site("my-site")
+    assert {claim.hostname: claim.activated_at is not None for claim in claims} == {
+        "two.example.com": True,
+        "www.example.com": False,
+    }
+    failed = next(claim for claim in claims if claim.hostname == "www.example.com")
+    assert failed.activation_error == "activation_check_failed"
+    assert failed.activation_checked_at is not None
+
+
 def test_removal_race_prevents_activation(activation_db):
     def remove_during_probe(_origin, claim):
         with activation_db() as conn:

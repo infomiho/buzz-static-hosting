@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from server import db as db_module
+from server.custom_domains import DomainClaimStore
 from server.exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
 from server.site_store import DeploymentLimits, SiteStore
 
@@ -351,7 +353,7 @@ class TestDelete:
         )
         conn.commit()
 
-        with pytest.raises(Conflict, match="Remove the site's custom domain"):
+        with pytest.raises(Conflict, match="Remove all of the site's custom domains"):
             store.delete("my-site", owner_id=1)
 
         assert (tmp_path / "my-site" / "index.html").read_text() == "content"
@@ -371,6 +373,51 @@ class TestDelete:
 
         assert not (tmp_path / "my-site").exists()
         assert conn.execute("SELECT name FROM sites WHERE name = 'my-site'").fetchone() is None
+
+    def test_every_alias_must_complete_withdrawal_before_delete(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
+        db_module.init_db()
+        with db_module.db() as conn:
+            SiteStore(conn, tmp_path).deploy(
+                "my-site", archive({"index.html": "content"}), owner_id=1
+            )
+        with db_module.db() as conn:
+            domain_store = DomainClaimStore(conn)
+            claims = []
+            for hostname in ("one.example.com", "two.example.com"):
+                claim = domain_store.create("my-site", hostname)
+                domain_store.record_check(
+                    claim.id, "my-site", (claim.verification_value,)
+                )
+                claims.append(claim)
+            routed = domain_store.prepare_routes(True)
+            for claim in routed:
+                domain_store.mark_routed(claim.id, claim.route_generation)
+
+            domain_store.cancel(claims[0].id, "my-site")
+
+        with db_module.db() as conn:
+            with pytest.raises(Conflict):
+                SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
+        with db_module.db() as conn:
+            domain_store = DomainClaimStore(conn)
+            first = domain_store.get(claims[0].id, "my-site")
+            domain_store.finish_withdrawal(first.id, first.route_generation)
+        with db_module.db() as conn:
+            with pytest.raises(Conflict):
+                SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
+
+        with db_module.db() as conn:
+            domain_store = DomainClaimStore(conn)
+            domain_store.cancel(claims[1].id, "my-site")
+            second = domain_store.get(claims[1].id, "my-site")
+            domain_store.finish_withdrawal(second.id, second.route_generation)
+        with db_module.db() as conn:
+            SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
+
+        assert not (tmp_path / "my-site").exists()
 
     def test_removes_directory_and_db_row(self, tmp_path):
         conn = make_db()

@@ -19,6 +19,8 @@ When the optional custom-domain control plane is enabled, Buzz trims surrounding
 
 Claims reject URLs, ports, paths, wildcards, IP addresses, single-label and local names, and the configured Buzz domain or any of its subdomains. TXT verification and routing always use the normalized ASCII hostname.
 
+A site can have multiple independently verified custom hostnames. Every alias serves the same deployment and analytics identity as the permanent Buzz hostname. Removing one alias does not affect the others or change the site's deployment name.
+
 ## File Lookup Order
 
 Buzz decodes the URL path, rejects paths that escape the site directory, and checks candidates in this order:

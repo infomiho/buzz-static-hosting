@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 
@@ -6,7 +8,9 @@ from server import db as db_module
 from server.custom_domains import (
     DnsTxtResolver,
     DomainCheckUnavailable,
+    DomainClaimLimits,
     DomainClaimStore,
+    DomainQuotaExceeded,
     InvalidHostname,
     normalize_hostname,
 )
@@ -80,12 +84,75 @@ def test_pending_claims_do_not_reserve_hostname_globally(claim_db):
     assert first.id != second.id
 
 
-def test_only_one_active_claim_is_allowed_per_site(claim_db):
+def test_multiple_active_claims_are_allowed_per_site(claim_db):
+    with claim_db() as conn:
+        store = DomainClaimStore(conn)
+        first = store.create("site-one", "one.example.com")
+        second = store.create("site-one", "two.example.com")
+
+    assert first.id != second.id
+    assert {first.hostname, second.hostname} == {
+        "one.example.com",
+        "two.example.com",
+    }
+
+
+def test_duplicate_active_hostname_is_rejected_for_same_site(claim_db):
     with claim_db() as conn:
         store = DomainClaimStore(conn)
         store.create("site-one", "one.example.com")
-        with pytest.raises(Conflict, match="already has"):
-            store.create("site-one", "two.example.com")
+        with pytest.raises(Conflict, match="already attached"):
+            store.create("site-one", "one.example.com")
+
+
+@pytest.mark.parametrize(
+    ("limits", "site_name", "message"),
+    [
+        (DomainClaimLimits(per_site=1, per_user=10, server_wide=10), "site-one", "site"),
+        (DomainClaimLimits(per_site=10, per_user=1, server_wide=10), "site-three", "You"),
+        (DomainClaimLimits(per_site=10, per_user=10, server_wide=1), "site-two", "server"),
+    ],
+)
+def test_claim_quotas_are_enforced_by_scope(claim_db, limits, site_name, message):
+    with claim_db() as conn:
+        store = DomainClaimStore(conn)
+        store.create("site-one", "one.example.com", limits=limits)
+        with pytest.raises(DomainQuotaExceeded, match=message):
+            store.create(site_name, "two.example.com", limits=limits)
+
+
+def test_cancelled_claim_releases_quota_independently(claim_db):
+    limits = DomainClaimLimits(per_site=1, per_user=10, server_wide=10)
+    with claim_db() as conn:
+        store = DomainClaimStore(conn)
+        first = store.create("site-one", "one.example.com", limits=limits)
+        store.cancel(first.id, "site-one")
+        second = store.create("site-one", "two.example.com", limits=limits)
+
+    assert second.status == "pending"
+
+
+def test_concurrent_claims_cannot_exceed_site_quota(claim_db):
+    limits = DomainClaimLimits(per_site=1, per_user=10, server_wide=10)
+    barrier = Barrier(2)
+
+    def create(hostname):
+        barrier.wait()
+        try:
+            with claim_db() as conn:
+                DomainClaimStore(conn).create(
+                    "site-one", hostname, limits=limits
+                )
+            return "created"
+        except DomainQuotaExceeded:
+            return "limited"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(
+            executor.map(create, ("one.example.com", "two.example.com"))
+        )
+
+    assert sorted(outcomes) == ["created", "limited"]
 
 
 def test_verification_acquires_global_hostname_claim(claim_db):

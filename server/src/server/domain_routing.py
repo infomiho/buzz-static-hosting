@@ -57,10 +57,13 @@ class DomainRouteReconciler:
         with db() as conn:
             claims = DomainClaimStore(conn).prepare_routes(self._routing_enabled())
         for claim in claims:
-            if claim.route_status == "publishing":
-                self._reconcile_publication(claim)
-            elif claim.route_status == "removing":
-                self._reconcile_withdrawal(claim)
+            try:
+                if claim.route_status == "publishing":
+                    self._reconcile_publication(claim)
+                elif claim.route_status == "removing":
+                    self._reconcile_withdrawal(claim)
+            except Exception:
+                logger.exception("Custom domain router %s reconciliation failed", claim.route_name)
 
     def _reconcile_publication(self, claim: DomainClaim) -> None:
         try:

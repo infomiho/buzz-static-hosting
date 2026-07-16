@@ -29,6 +29,44 @@ class DomainCheckUnavailable(Exception):
     pass
 
 
+class DomainQuotaExceeded(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class DomainClaimLimits:
+    per_site: int
+    per_user: int
+    server_wide: int
+
+
+@dataclass(frozen=True)
+class DomainClaimQuota:
+    site_usage: int
+    user_usage: int
+    server_usage: int
+    limits: DomainClaimLimits
+
+    @property
+    def error(self) -> str | None:
+        if self.site_usage >= self.limits.per_site:
+            return (
+                f"This site has reached its custom-domain limit of {self.limits.per_site}. "
+                "Remove an alias before adding another."
+            )
+        if self.user_usage >= self.limits.per_user:
+            return (
+                f"You have reached your custom-domain limit of {self.limits.per_user}. "
+                "Remove an alias before adding another."
+            )
+        if self.server_usage >= self.limits.server_wide:
+            return (
+                f"This Buzz server has reached its custom-domain limit of "
+                f"{self.limits.server_wide}. Contact the server operator."
+            )
+        return None
+
+
 class TxtResolver(Protocol):
     def lookup(self, name: str) -> tuple[str, ...]: ...
 
@@ -140,9 +178,24 @@ class DomainClaimStore:
         site_name: str,
         hostname: str,
         now: datetime | None = None,
+        limits: DomainClaimLimits | None = None,
     ) -> DomainClaim:
         now = now or datetime.now(timezone.utc)
+        if not self._conn.in_transaction:
+            self._conn.execute("BEGIN IMMEDIATE")
         self.expire_pending(now)
+        duplicate = self._conn.execute(
+            """SELECT 1 FROM custom_domain_claims
+            WHERE site_name = ? AND hostname = ?
+              AND status IN ('pending', 'verified') LIMIT 1""",
+            (site_name, hostname),
+        ).fetchone()
+        if duplicate:
+            raise Conflict("This hostname is already attached to this site")
+        if limits:
+            quota = self.quota(site_name, limits)
+            if quota.error:
+                raise DomainQuotaExceeded(quota.error)
         token = f"bdv_{secrets.token_urlsafe(32)}"
         try:
             cursor = self._conn.execute(
@@ -152,8 +205,31 @@ class DomainClaimStore:
                 (hostname, site_name, token, now.isoformat(), (now + CLAIM_TTL).isoformat()),
             )
         except sqlite3.IntegrityError as exc:
-            raise Conflict("This site already has a pending or verified custom domain") from exc
+            raise Conflict("Could not create this custom domain claim") from exc
         return self.get(cursor.lastrowid, site_name)
+
+    def quota(self, site_name: str, limits: DomainClaimLimits) -> DomainClaimQuota:
+        owner = self._conn.execute(
+            "SELECT owner_id FROM sites WHERE name = ?", (site_name,)
+        ).fetchone()
+        if not owner:
+            raise NotFound("Site not found")
+        site_usage = self._conn.execute(
+            """SELECT COUNT(*) FROM custom_domain_claims
+            WHERE site_name = ? AND status IN ('pending', 'verified')""",
+            (site_name,),
+        ).fetchone()[0]
+        user_usage = self._conn.execute(
+            """SELECT COUNT(*) FROM custom_domain_claims AS claims
+            JOIN sites ON sites.name = claims.site_name
+            WHERE sites.owner_id = ? AND claims.status IN ('pending', 'verified')""",
+            (owner["owner_id"],),
+        ).fetchone()[0]
+        server_usage = self._conn.execute(
+            """SELECT COUNT(*) FROM custom_domain_claims
+            WHERE status IN ('pending', 'verified')"""
+        ).fetchone()[0]
+        return DomainClaimQuota(site_usage, user_usage, server_usage, limits)
 
     def list_for_site(self, site_name: str) -> list[DomainClaim]:
         self.expire_pending()
@@ -395,6 +471,15 @@ class DomainClaimStore:
         ).fetchone()
         return self._from_row(row) if row else None
 
+    def activated_hostnames_for_site(self, site_name: str) -> frozenset[str]:
+        rows = self._conn.execute(
+            """SELECT hostname FROM custom_domain_claims
+            WHERE site_name = ? AND status = 'verified' AND route_status = 'routed'
+              AND activated_at IS NOT NULL""",
+            (site_name,),
+        ).fetchall()
+        return frozenset(row["hostname"] for row in rows)
+
     def mark_routed(
         self,
         claim_id: int,
@@ -418,7 +503,8 @@ class DomainClaimStore:
         cursor = self._conn.execute(
             """UPDATE custom_domain_claims
             SET route_error = ?
-            WHERE id = ? AND route_generation = ? AND route_error IS NOT ?""",
+            WHERE id = ? AND route_generation = ?
+              AND route_status IN ('publishing', 'removing') AND route_error IS NOT ?""",
             (error, claim_id, generation, error),
         )
         return cursor.rowcount > 0

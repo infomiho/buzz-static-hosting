@@ -84,6 +84,34 @@ class TestBuildAnalyticsEvent:
         assert event.campaign == "newsletter / email / launch"
         assert event.country == "HR"
 
+    def test_same_site_alias_referrer_is_internal(self):
+        event = build_analytics_event(
+            request(headers={"referer": "https://two.example.com/page"}),
+            "my-site",
+            "/",
+            200,
+            12,
+            "text/html",
+            {"one.example.com", "two.example.com", "my-site.buzz.example.com"},
+        )
+
+        assert event is not None
+        assert event.referrer is None
+
+    def test_www_alias_is_not_equivalent_to_exact_apex_alias(self):
+        event = build_analytics_event(
+            request(headers={"referer": "https://www.example.com/page"}),
+            "my-site",
+            "/",
+            200,
+            12,
+            "text/html",
+            {"example.com"},
+        )
+
+        assert event is not None
+        assert event.referrer == "example.com"
+
     def test_skips_bot_user_agents(self):
         event = build_analytics_event(
             request(headers={"user-agent": "Googlebot"}),
@@ -233,6 +261,41 @@ class TestAnalyticsIntegration:
             ("/", True, False),
             ("/missing", False, True),
         ]
+
+    def test_alias_lookup_failure_does_not_break_static_serving(
+        self, tmp_path, monkeypatch
+    ):
+        site = tmp_path / "my-site"
+        site.mkdir()
+        (site / "index.html").write_text("hello")
+        monkeypatch.setattr("server.app.SITES_DIR", tmp_path)
+        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "app.db")
+        db_module.init_db()
+        app = create_app()
+        capture = CaptureAnalytics()
+        app.state.analytics = capture
+
+        @contextmanager
+        def failed_db():
+            raise sqlite3.OperationalError("database unavailable")
+            yield
+
+        with TestClient(app) as client:
+            monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
+            monkeypatch.setattr("server.app.db", failed_db)
+            response = client.get(
+                "/",
+                headers={
+                    "host": "my-site.localhost:8080",
+                    "accept": "text/html",
+                    "user-agent": "Mozilla/5.0",
+                    "referer": "https://external.example/page",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.text == "hello"
+        assert capture.events[0].referrer == "external.example"
 
     def test_site_analytics_route_requires_site_ownership(self, tmp_path, monkeypatch):
         conn = make_db()

@@ -19,6 +19,8 @@ The dashboard shows:
 
 Country data appears only when the request includes a supported country header from the hosting proxy. Campaigns combine available `utm_source`, `utm_medium`, and `utm_campaign` values.
 
+Analytics remain attached to the canonical site when it has custom-domain aliases. Navigation between the permanent Buzz hostname and any alias of the same site is treated as internal traffic rather than an external referrer.
+
 ## Understand What Buzz Counts
 
 Buzz records a view for a successful `GET` request served as HTML. It records a 404 when a request that appears to expect a page returns HTTP status `404`. Buzz uses request headers and the path suffix to distinguish these requests from assets.

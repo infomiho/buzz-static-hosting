@@ -105,6 +105,12 @@ def render_env_example() -> str:
 {setting('BUZZ_TRAEFIK_HTTPS_ENTRYPOINT', commented=True)}
 {setting('BUZZ_TRAEFIK_SERVICE', commented=True)}
 {setting('BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED', commented=True)}
+{setting('BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED', commented=True)}
+{setting('BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE', commented=True)}
+{setting('BUZZ_MAX_CUSTOM_DOMAINS_PER_USER', commented=True)}
+{setting('BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE', commented=True)}
+{setting('BUZZ_CUSTOM_DOMAIN_INGRESS_IPS', commented=True)}
+{setting('BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST', commented=True)}
 {setting('BUZZ_TRAEFIK_CERT_RESOLVER', commented=True)}
 {setting('BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS', commented=True)}
 

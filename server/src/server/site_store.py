@@ -645,4 +645,4 @@ class SiteStore:
             (name,),
         ).fetchone()
         if claim:
-            raise Conflict("Remove the site's custom domain before deleting the site")
+            raise Conflict("Remove all of the site's custom domains before deleting the site")

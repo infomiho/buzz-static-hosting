@@ -179,13 +179,16 @@ Complete the staging publication, challenge, withdrawal, reuse, and proxy-restar
    BUZZ_CUSTOM_DOMAIN_INGRESS_IPS=your-public-ingress-ip
    BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST=coolify-proxy
    BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=true
+   BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE=5
+   BUZZ_MAX_CUSTOM_DOMAINS_PER_USER=20
+   BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE=1000
    ```
 
    Replace the example ingress address with every public IPv4 or IPv6 address that reaches this proxy. Every DNS answer for a direct custom hostname must be public and present in this allowlist. Keep staging and production resolvers in separate ACME storage files; an existing staging certificate in Traefik's global TLS store can suppress production issuance for the same hostname.
 
-3. Keep `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=false` during controlled rollout. Set it to `true` only when site owners should be able to create new claims.
+3. Keep `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=false` during controlled rollout. Set it to `true` only when site owners should be able to create new claims. The three positive quota settings limit pending and verified aliases per site, per user, and across the server. An alias awaiting acknowledged withdrawal continues to consume quota.
 
-Buzz marks a routed hostname active only after its DNS answers match the ingress allowlist and a trusted TLS request through `coolify-proxy:443` returns the exact generation challenge. Custom-host requests then resolve files and analytics through the canonical Buzz site identity. Cloudflare-proxied hostnames remain unsupported.
+Buzz marks each routed hostname active only after its DNS answers match the ingress allowlist and a trusted TLS request through `coolify-proxy:443` returns the exact generation challenge. Multiple aliases can serve one deployment, but each retains independent ownership, routing, TLS, diagnostics, and removal state. Custom-host requests and same-site alias referrers resolve through the canonical Buzz site identity. Cloudflare-proxied hostnames remain unsupported.
 
 If the proxy fails to restart, Buzz has no valid certificate, or another application loses TLS, paste the complete saved configuration back into **Servers > Proxy**, save it, and restart the proxy. Do not keep retrying certificate issuance against the production Let's Encrypt endpoint while the same error persists.
 

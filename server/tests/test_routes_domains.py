@@ -39,6 +39,9 @@ def domain_api(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_ADMISSION_ENABLED", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
+    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_SITE", 5)
+    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_USER", 20)
+    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_SERVER_WIDE", 1000)
     monkeypatch.setattr(config, "TRAEFIK_CONTROL_TOKEN", "configured")
     monkeypatch.setattr(config, "DOMAIN", "buzz.example.com")
     db_module.init_db()
@@ -101,6 +104,41 @@ def test_failed_txt_check_returns_actionable_state(domain_api):
     repeated = client.post(f"/sites/my-site/domains/{created['id']}/check")
     assert repeated.status_code == 429
     assert int(repeated.headers["Retry-After"]) > 0
+
+
+def test_multiple_aliases_can_be_created_and_removed_independently(domain_api):
+    client, _ = domain_api
+    first = client.post(
+        "/sites/my-site/domains", json={"hostname": "one.example.com"}
+    ).json()
+    second = client.post(
+        "/sites/my-site/domains", json={"hostname": "two.example.com"}
+    ).json()
+
+    removed = client.delete(f"/sites/my-site/domains/{first['id']}")
+    claims = client.get("/sites/my-site/domains").json()
+
+    assert removed.status_code == 204
+    assert {claim["id"]: claim["status"] for claim in claims} == {
+        second["id"]: "pending",
+        first["id"]: "cancelled",
+    }
+
+
+def test_domain_quota_returns_actionable_response(domain_api, monkeypatch):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_SITE", 1)
+    client.post("/sites/my-site/domains", json={"hostname": "one.example.com"})
+
+    response = client.post(
+        "/sites/my-site/domains", json={"hostname": "two.example.com"}
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == (
+        "This site has reached its custom-domain limit of 1. "
+        "Remove an alias before adding another."
+    )
 
 
 def test_domain_admission_requires_live_control_plane_readiness(domain_api):

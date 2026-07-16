@@ -5,6 +5,7 @@ from server.environment import (
     ENVIRONMENT_VARIABLES,
     parse_bool,
     parse_github_logins,
+    parse_positive_int,
     parse_public_ips,
 )
 
@@ -39,6 +40,9 @@ def test_environment_registry_covers_server_and_deployment_settings():
         "BUZZ_TRAEFIK_SERVICE",
         "BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED",
         "BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED",
+        "BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE",
+        "BUZZ_MAX_CUSTOM_DOMAINS_PER_USER",
+        "BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE",
         "BUZZ_CUSTOM_DOMAIN_INGRESS_IPS",
         "BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST",
         "BUZZ_TRAEFIK_CERT_RESOLVER",
@@ -73,6 +77,14 @@ def test_parse_bool_falsy(value):
 def test_parse_bool_rejects_unknown_value():
     with pytest.raises(ValueError):
         parse_bool("maybe")
+
+
+def test_parse_positive_int_rejects_zero_and_negative_values():
+    assert parse_positive_int("5") == 5
+    with pytest.raises(ValueError, match="positive integer"):
+        parse_positive_int("0")
+    with pytest.raises(ValueError, match="positive integer"):
+        parse_positive_int("-1")
 
 
 def test_parse_github_logins_normalizes_and_skips_blanks():

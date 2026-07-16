@@ -155,6 +155,10 @@ async def list_sites(identity: Annotated[Identity, Depends(require_user)]):
             "description": "A session token and site ownership are required.",
         },
         404: {"model": ErrorResponse, "description": "The site does not exist."},
+        409: {
+            "model": ErrorResponse,
+            "description": "Every custom domain must complete removal before deleting the site.",
+        },
     },
 )
 async def delete_site(name: str, identity: Annotated[Identity, Depends(require_user)]):

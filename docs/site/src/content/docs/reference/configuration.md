@@ -37,6 +37,9 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_TRAEFIK_SERVICE` | Provider-qualified Traefik service used by custom-domain routers. | Buzz server | `buzz@docker` | Optional |
 | `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED` | Whether verified custom domains are published to Traefik. | Buzz server | `false` | Optional |
 | `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED` | Whether site owners can create new custom-domain claims. | Buzz server | `false` | Optional |
+| `BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE` | Maximum pending and verified custom domains for one site. | Buzz server | `5` | Optional |
+| `BUZZ_MAX_CUSTOM_DOMAINS_PER_USER` | Maximum pending and verified custom domains owned by one user. | Buzz server | `20` | Optional |
+| `BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE` | Maximum pending and verified custom domains across this Buzz server. | Buzz server | `1000` | Optional |
 | `BUZZ_CUSTOM_DOMAIN_INGRESS_IPS` | Comma-separated public ingress IP addresses allowed for direct custom domains. | Buzz server | Not set | Optional |
 | `BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST` | Internal Traefik hostname used to validate custom-domain TLS and routing. | Buzz server | `coolify-proxy` | Optional |
 | `BUZZ_TRAEFIK_CERT_RESOLVER` | Traefik certificate resolver selected by custom-domain routers. | Buzz server | `buzz-custom` | Optional |

@@ -99,6 +99,9 @@ Add these values to `.env`:
 ```text
 BUZZ_CUSTOM_DOMAINS_ENABLED=true
 BUZZ_TRAEFIK_CONTROL_TOKEN=replace-with-the-generated-token
+BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE=5
+BUZZ_MAX_CUSTOM_DOMAINS_PER_USER=20
+BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE=1000
 ```
 
 Recreate the services:
@@ -112,6 +115,8 @@ The bundled Compose configuration then enables Traefik's HTTP provider, which po
 - The `buzz-custom` ACME resolver using HTTP-01 on entrypoint `web`.
 - A protected Traefik runtime API on the private `buzz-admin` entrypoint.
 - Runtime checks for entrypoint `websecure` and service `buzz@docker`.
+
+The quota settings limit pending and verified aliases per site, per user, and across the server. Each alias is reconciled and removed independently; aliases awaiting acknowledged withdrawal continue to consume quota.
 
 Check the private readiness response:
 

@@ -86,12 +86,27 @@ class DomainActivator:
             except ActivationFailed as exc:
                 self._record_error(claim, exc.code)
                 continue
-            with db() as conn:
-                activated = DomainClaimStore(conn).mark_activated(
-                    claim.id, claim.route_generation
+            except Exception:
+                self._record_error(claim, "activation_check_failed")
+                logger.exception(
+                    "Custom domain %d generation %d validation failed unexpectedly",
+                    claim.id,
+                    claim.route_generation,
                 )
-            if activated:
-                logger.info("Custom domain %d generation %d activated", claim.id, claim.route_generation)
+                continue
+            try:
+                with db() as conn:
+                    activated = DomainClaimStore(conn).mark_activated(
+                        claim.id, claim.route_generation
+                    )
+                if activated:
+                    logger.info("Custom domain %d generation %d activated", claim.id, claim.route_generation)
+            except Exception:
+                logger.exception(
+                    "Custom domain %d generation %d activation failed unexpectedly",
+                    claim.id,
+                    claim.route_generation,
+                )
 
     def _validate_dns(self, hostname: str) -> None:
         addresses = self._resolver(hostname)

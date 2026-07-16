@@ -451,5 +451,35 @@ def record_analytics(
     bytes_sent: int,
     content_type: str,
 ) -> None:
-    event = build_analytics_event(request, subdomain, path, status_code, bytes_sent, content_type)
+    internal_hosts = {f"{subdomain}.{DOMAIN.split(':', 1)[0]}"} if DOMAIN else set()
+    event = build_analytics_event(
+        request,
+        subdomain,
+        path,
+        status_code,
+        bytes_sent,
+        content_type,
+        internal_hosts,
+    )
+    if not event:
+        return
+    if CUSTOM_DOMAINS_ENABLED and event.referrer:
+        try:
+            with db() as conn:
+                internal_hosts.update(
+                    DomainClaimStore(conn).activated_hostnames_for_site(subdomain)
+                )
+            event = build_analytics_event(
+                request,
+                subdomain,
+                path,
+                status_code,
+                bytes_sent,
+                content_type,
+                internal_hosts,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to resolve internal custom-domain referrers", exc_info=True
+            )
     request.app.state.analytics.record(event)

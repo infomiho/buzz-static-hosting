@@ -36,6 +36,13 @@ def parse_bool(value: str) -> bool:
     raise ValueError(f"Expected a boolean value, got {value!r}")
 
 
+def parse_positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise ValueError(f"Expected a positive integer, got {value!r}")
+    return parsed
+
+
 def parse_github_logins(value: str) -> frozenset[str]:
     return frozenset(login.strip().lower() for login in value.split(",") if login.strip())
 
@@ -201,6 +208,27 @@ ENVIRONMENT_VARIABLES = (
         default=False,
         example="true",
         parser=parse_bool,
+    ),
+    EnvironmentVariable(
+        "BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE",
+        "Maximum pending and verified custom domains for one site.",
+        default=5,
+        example="5",
+        parser=parse_positive_int,
+    ),
+    EnvironmentVariable(
+        "BUZZ_MAX_CUSTOM_DOMAINS_PER_USER",
+        "Maximum pending and verified custom domains owned by one user.",
+        default=20,
+        example="20",
+        parser=parse_positive_int,
+    ),
+    EnvironmentVariable(
+        "BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE",
+        "Maximum pending and verified custom domains across this Buzz server.",
+        default=1000,
+        example="1000",
+        parser=parse_positive_int,
     ),
     EnvironmentVariable(
         "BUZZ_CUSTOM_DOMAIN_INGRESS_IPS",

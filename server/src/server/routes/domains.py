@@ -9,7 +9,9 @@ from ..custom_domains import (
     DnsTxtResolver,
     DomainCheckUnavailable,
     DomainClaim,
+    DomainClaimLimits,
     DomainClaimStore,
+    DomainQuotaExceeded,
     InvalidHostname,
     normalize_hostname,
 )
@@ -24,6 +26,14 @@ from ..exceptions import BadRequest, Conflict
 from ..site_store import SiteStore
 
 router = APIRouter(prefix="/sites/{site_name}/domains")
+
+
+def domain_limits() -> DomainClaimLimits:
+    return DomainClaimLimits(
+        per_site=config.MAX_CUSTOM_DOMAINS_PER_SITE,
+        per_user=config.MAX_CUSTOM_DOMAINS_PER_USER,
+        server_wide=config.MAX_CUSTOM_DOMAINS_SERVER_WIDE,
+    )
 
 
 def domain_response(claim: DomainClaim) -> dict:
@@ -108,7 +118,13 @@ async def create_domain_claim(
     except InvalidHostname as exc:
         raise BadRequest(str(exc))
     with db() as conn:
-        return domain_response(DomainClaimStore(conn).create(site_name, hostname))
+        try:
+            claim = DomainClaimStore(conn).create(
+                site_name, hostname, limits=domain_limits()
+            )
+        except DomainQuotaExceeded as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        return domain_response(claim)
 
 
 @router.post(

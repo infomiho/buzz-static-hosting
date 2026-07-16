@@ -1043,6 +1043,16 @@
             },
             "description": "The site does not exist."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Every custom domain must complete removal before deleting the site."
+          },
           "422": {
             "content": {
               "application/json": {
