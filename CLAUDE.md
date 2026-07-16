@@ -55,6 +55,8 @@ For wildcard certificates, Coolify's Traefik proxy should use Cloudflare DNS-01 
 
 Custom domains are an optional operator capability and default to disabled through `BUZZ_CUSTOM_DOMAINS_ENABLED`. Disabled or unhealthy custom-domain infrastructure must not affect canonical Buzz hosting. Once custom-domain routers exist, disablement requires acknowledged router withdrawal before removing the Traefik provider integration.
 
+Staging and production custom-domain ACME resolvers need separate storage files. A valid staging certificate loaded in Traefik's global TLS store can suppress production issuance for the same hostname; remove only that staging certificate entry before the production cutover.
+
 ## Releasing
 
 Release Please versions only the CLI (`buzz-cli` npm package); server changes ship via the Coolify auto-deploy and produce no release PR. Use conventional commits on `main`: `fix:` patch, `feat:` minor, `feat!:` major. Merging the bot's release PR publishes to npm via OIDC trusted publishing.

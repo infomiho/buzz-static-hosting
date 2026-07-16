@@ -168,7 +168,7 @@ Complete the staging publication, challenge, withdrawal, reuse, and proxy-restar
 
    ```text
    --certificatesresolvers.buzz-production.acme.email=admin@example.com
-   --certificatesresolvers.buzz-production.acme.storage=/traefik/acme.json
+   --certificatesresolvers.buzz-production.acme.storage=/traefik/acme-production.json
    --certificatesresolvers.buzz-production.acme.httpchallenge.entrypoint=http
    ```
 
@@ -181,7 +181,7 @@ Complete the staging publication, challenge, withdrawal, reuse, and proxy-restar
    BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=true
    ```
 
-   Replace the example ingress address with every public IPv4 or IPv6 address that reaches this proxy. Every DNS answer for a direct custom hostname must be public and present in this allowlist.
+   Replace the example ingress address with every public IPv4 or IPv6 address that reaches this proxy. Every DNS answer for a direct custom hostname must be public and present in this allowlist. Keep staging and production resolvers in separate ACME storage files; an existing staging certificate in Traefik's global TLS store can suppress production issuance for the same hostname.
 
 3. Keep `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=false` during controlled rollout. Set it to `true` only when site owners should be able to create new claims.
 
