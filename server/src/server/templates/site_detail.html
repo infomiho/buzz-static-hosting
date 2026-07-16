@@ -151,7 +151,7 @@
                         {% endif %}
                     </summary>
                     <div class="border-t-2 border-ink p-4">
-                        <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="flex flex-wrap items-center justify-between gap-4">
                             <div>
                                 {% if claim.status == 'verified' %}
                                     {% if claim.route_status == 'publishing' %}
@@ -181,7 +181,7 @@
                         </div>
                     </div>
                     {% if claim.status == 'pending' %}
-                    <div class="mt-5 border-t-2 border-ink pt-4">
+                    <div class="mt-4 border-t-2 border-ink pt-4">
                         <p class="font-bold">Add this DNS record</p>
                         <dl class="mt-3 grid gap-3 sm:grid-cols-[8rem_1fr]">
                             <dt class="font-bold">Type</dt>
@@ -199,7 +199,7 @@
                     </div>
                     {% endif %}
                     {% if claim.challenge_path and claim.route_status in ('publishing', 'routed') %}
-                    <div class="mt-5 border-t-2 border-ink pt-4">
+                    <div class="mt-4 border-t-2 border-ink pt-4">
                         <p class="font-bold">Staging verification URL</p>
                         <p class="mt-2 overflow-x-auto font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>
                     </div>

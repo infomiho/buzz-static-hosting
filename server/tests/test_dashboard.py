@@ -214,7 +214,10 @@ class TestCustomDomains:
             route_updated_at TEXT,
             removal_requested_at TEXT,
             withdrawn_at TEXT,
-            challenge_seen_at TEXT
+            challenge_seen_at TEXT,
+            activated_at TEXT,
+            activation_checked_at TEXT,
+            activation_error TEXT
         )""")
         conn.execute("""INSERT INTO custom_domain_claims
             (id, hostname, site_name, verification_token, status, created_at, expires_at)
