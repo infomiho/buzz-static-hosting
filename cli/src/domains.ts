@@ -36,6 +36,30 @@ export interface DomainClaim {
   activation_error: string | null;
   removal_requested_at: string | null;
   withdrawn_at: string | null;
+  mode: "direct" | "cloudflare";
+  cloudflare_diagnostics: CloudflareDiagnostic | null;
+}
+
+interface DiagnosticComponent {
+  status: string;
+  error: string | null;
+}
+
+export interface CloudflareDiagnostic {
+  generation: number;
+  checked_at: string;
+  ranges_version: string | null;
+  dns: DiagnosticComponent;
+  edge_tls: DiagnosticComponent;
+  edge_http: DiagnosticComponent & {
+    status_code: number | null;
+    address: string | null;
+    cf_ray: string | null;
+    cf_cache_status: string | null;
+    redirect_location: string | null;
+  };
+  http_forwarding: DiagnosticComponent & { status_code: number | null };
+  origin: DiagnosticComponent;
 }
 
 export interface DomainCapability {
@@ -46,6 +70,11 @@ export interface DomainCapability {
   admission_enabled: boolean;
   routing_enabled: boolean;
   routing_targets: { type: "A" | "AAAA"; value: string }[];
+  cloudflare: {
+    admission_enabled: boolean;
+    ready: boolean;
+    detail: string | null;
+  };
 }
 
 async function domainRequest(
@@ -85,7 +114,45 @@ function isCapability(value: unknown): value is DomainCapability {
         target &&
         ["A", "AAAA"].includes(target.type) &&
         typeof target.value === "string"
-    )
+    ) &&
+    (!capability.cloudflare ||
+      (typeof capability.cloudflare.admission_enabled === "boolean" &&
+        typeof capability.cloudflare.ready === "boolean" &&
+        (capability.cloudflare.detail === null ||
+          typeof capability.cloudflare.detail === "string")))
+  );
+}
+
+function isDiagnosticComponent(value: unknown): value is DiagnosticComponent {
+  if (!value || typeof value !== "object") return false;
+  const component = value as Partial<DiagnosticComponent>;
+  return (
+    typeof component.status === "string" &&
+    (component.error === null || typeof component.error === "string")
+  );
+}
+
+function isCloudflareDiagnostic(value: unknown): value is CloudflareDiagnostic {
+  if (!value || typeof value !== "object") return false;
+  const diagnostic = value as Partial<CloudflareDiagnostic>;
+  const nullableString = (field: unknown) => field === null || typeof field === "string";
+  return (
+    Number.isInteger(diagnostic.generation) &&
+    typeof diagnostic.checked_at === "string" &&
+    nullableString(diagnostic.ranges_version) &&
+    isDiagnosticComponent(diagnostic.dns) &&
+    isDiagnosticComponent(diagnostic.edge_tls) &&
+    isDiagnosticComponent(diagnostic.edge_http) &&
+    (diagnostic.edge_http?.status_code === null ||
+      Number.isInteger(diagnostic.edge_http?.status_code)) &&
+    nullableString(diagnostic.edge_http?.address) &&
+    nullableString(diagnostic.edge_http?.cf_ray) &&
+    nullableString(diagnostic.edge_http?.cf_cache_status) &&
+    nullableString(diagnostic.edge_http?.redirect_location) &&
+    isDiagnosticComponent(diagnostic.http_forwarding) &&
+    (diagnostic.http_forwarding?.status_code === null ||
+      Number.isInteger(diagnostic.http_forwarding?.status_code)) &&
+    isDiagnosticComponent(diagnostic.origin)
   );
 }
 
@@ -118,8 +185,21 @@ function isClaim(value: unknown): value is DomainClaim {
     nullableString(claim.activation_checked_at) &&
     nullableString(claim.activation_error) &&
     nullableString(claim.removal_requested_at) &&
-    nullableString(claim.withdrawn_at)
+    nullableString(claim.withdrawn_at) &&
+    ["direct", "cloudflare"].includes(claim.mode ?? "") &&
+    (claim.cloudflare_diagnostics === null ||
+      isCloudflareDiagnostic(claim.cloudflare_diagnostics))
   );
+}
+
+function normalizeClaim(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const claim = value as Partial<DomainClaim>;
+  return {
+    ...claim,
+    mode: claim.mode ?? "direct",
+    cloudflare_diagnostics: claim.cloudflare_diagnostics ?? null,
+  };
 }
 
 export async function getDomainCapability(
@@ -135,11 +215,18 @@ export async function getDomainCapability(
   if (!response.ok) {
     throw new CliError(await errorMessage(response, "Could not check custom-domain capability"));
   }
-  const capability: unknown = await response.json();
-  if (!isCapability(capability)) {
+  const rawCapability: unknown = await response.json();
+  if (!isCapability(rawCapability)) {
     throw new CliError("Server returned an invalid custom-domain capability response");
   }
-  return capability;
+  return {
+    ...rawCapability,
+    cloudflare: rawCapability.cloudflare ?? {
+      admission_enabled: false,
+      ready: false,
+      detail: "This Buzz server does not support Cloudflare proxy diagnostics",
+    },
+  };
 }
 
 export async function getDomainClaims(
@@ -155,7 +242,8 @@ export async function getDomainClaims(
   if (!response.ok) {
     throw new CliError(await errorMessage(response, "Could not list custom domains"));
   }
-  const claims: unknown = await response.json();
+  const values: unknown = await response.json();
+  const claims = Array.isArray(values) ? values.map(normalizeClaim) : values;
   if (!Array.isArray(claims) || !claims.every(isClaim)) {
     throw new CliError("Server returned an invalid custom-domain response");
   }
@@ -206,23 +294,24 @@ export function resolveDomainClaim(
 }
 
 export async function createDomainClaim(
-  siteName: string,
-  hostname: string,
-  cliOptions: CliOptions = {}
+    siteName: string,
+    hostname: string,
+    mode: "direct" | "cloudflare" = "direct",
+    cliOptions: CliOptions = {}
 ): Promise<DomainClaim> {
   const response = await domainRequest(
     `/sites/${encodeURIComponent(siteName)}/domains`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hostname }),
+      body: JSON.stringify({ hostname, mode }),
     },
     cliOptions
   );
   if (!response.ok) {
     throw new CliError(await errorMessage(response, "Could not add custom domain"));
   }
-  const claim: unknown = await response.json();
+  const claim = normalizeClaim(await response.json());
   if (!isClaim(claim)) {
     throw new CliError("Server returned an invalid custom-domain response");
   }
@@ -246,7 +335,7 @@ export async function checkDomainClaim(
       retryAfter ? `Retry in ${retryAfter} seconds` : undefined
     );
   }
-  const claim: unknown = await response.json();
+  const claim = normalizeClaim(await response.json());
   if (!isClaim(claim)) {
     throw new CliError("Server returned an invalid custom-domain response");
   }
@@ -345,6 +434,7 @@ function originTls(claim: DomainClaim): string {
 }
 
 export function formatDomainClaim(claim: DomainClaim): string {
+  if (claim.mode === "cloudflare") return formatCloudflareClaim(claim);
   const active = isActive(claim);
   const removal =
     claim.route_status === "removing" && claim.removal_requested_at
@@ -373,6 +463,50 @@ export function formatDomainClaim(claim: DomainClaim): string {
     );
   }
   if (claim.challenge_path && !claim.activated_at) {
+    lines.push(
+      `  Public challenge: ${claim.challenge_seen_at ? "Observed" : "Waiting"}`,
+      `    https://${claim.hostname}${claim.challenge_path}`
+    );
+  }
+  return lines.join("\n");
+}
+
+function diagnosticValue(component: DiagnosticComponent | undefined): string {
+  if (!component) return "Waiting for router acknowledgement";
+  return component.error ?? component.status;
+}
+
+function formatCloudflareClaim(claim: DomainClaim): string {
+  const diagnostic = claim.cloudflare_diagnostics;
+  const removal =
+    claim.route_status === "removing" && claim.removal_requested_at
+      ? "In progress"
+      : claim.status === "cancelled" || claim.route_status === "removed"
+        ? "Complete"
+        : "Not requested";
+  const lines = [
+    claim.hostname,
+    `  Site:            ${claim.site_name ?? "Deleted site"}`,
+    "  Mode:            Cloudflare diagnostics only",
+    `  Ownership:       ${ownership(claim)}`,
+    `  Router:          ${routerStatus(claim)}`,
+    `  Cloudflare DNS:  ${diagnosticValue(diagnostic?.dns)}`,
+    `  Edge TLS:        ${diagnosticValue(diagnostic?.edge_tls)}`,
+    `  Edge challenge:  ${diagnosticValue(diagnostic?.edge_http)}`,
+    `  HTTP forwarding: ${diagnosticValue(diagnostic?.http_forwarding)}`,
+    `  Origin:          ${diagnosticValue(diagnostic?.origin)}`,
+    "  Activation:      Disabled for Cloudflare mode",
+    `  Removal:         ${removal}`,
+  ];
+  if (claim.status === "pending") {
+    lines.push(
+      "  Ownership record:",
+      `    Type:  ${claim.verification.type}`,
+      `    Name:  ${claim.verification.name}`,
+      `    Value: ${claim.verification.value}`
+    );
+  }
+  if (claim.challenge_path) {
     lines.push(
       `  Public challenge: ${claim.challenge_seen_at ? "Observed" : "Waiting"}`,
       `    https://${claim.hostname}${claim.challenge_path}`

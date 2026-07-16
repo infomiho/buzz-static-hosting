@@ -29,7 +29,6 @@ Users retain Cloudflare's proxy, caching, DDoS protection, and visitor-facing TL
 - Add a Cloudflare-specific activation predicate.
 - Keep edge and origin evidence and errors separate.
 - Add Cloudflare-specific retry and backoff rules.
-- Require successful controlled-zone soak testing before production admission.
 - Extend dashboard, CLI, troubleshooting, and operator documentation.
 
 ## Verification
@@ -46,14 +45,12 @@ Users retain Cloudflare's proxy, caching, DDoS protection, and visitor-facing TL
 
 - Active status requires ownership, router acknowledgement, public challenge, origin TLS, and edge TLS.
 - Cloudflare failures never fall back to direct-mode security rules.
-- Operator disablement closes new admission and follows acknowledged withdrawal; it never removes the provider while active routers remain.
+- Closing admission prevents new claims. Withdraw existing routers before disabling the global capability or removing the provider.
 - Removal stops Buzz serving before the hostname claim is released.
 
 ## Rollback
 
-Close Cloudflare admission and withdraw affected routers through acknowledged removal. Buzz does not change customer DNS or Cloudflare settings.
-
-Only after Cloudflare and direct routers are confirmed absent may the operator set `BUZZ_CUSTOM_DOMAINS_ENABLED=false` and remove the Traefik provider integration.
+Close admission, then withdraw Cloudflare and direct routers before disabling the global capability or removing the Traefik provider. Buzz does not change customer DNS or Cloudflare settings.
 
 ## Dependencies
 

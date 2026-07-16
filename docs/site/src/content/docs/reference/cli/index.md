@@ -24,7 +24,7 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz tokens delete`](#buzz-tokens-delete): Delete a deployment token
 - [`buzz domains`](#buzz-domains): Manage custom domains
 - [`buzz domains list`](#buzz-domains-list): List custom domains and lifecycle status
-- [`buzz domains add`](#buzz-domains-add): Attach a direct custom domain to a site
+- [`buzz domains add`](#buzz-domains-add): Attach a custom domain to a site
 - [`buzz domains check`](#buzz-domains-check): Check custom-domain ownership and activation
 - [`buzz domains remove`](#buzz-domains-remove): Remove a custom domain without changing DNS records
 
@@ -208,7 +208,7 @@ Options:
 
 Commands:
   list [site]                       List custom domains and lifecycle status
-  add <site> <domain>               Attach a direct custom domain to a site
+  add [options] <site> <domain>     Attach a custom domain to a site
   check <site> <domain>             Check custom-domain ownership and activation
   remove [options] <site> <domain>  Remove a custom domain without changing DNS
                                     records
@@ -231,10 +231,11 @@ Options:
 ```text
 Usage: buzz domains add [options] <site> <domain>
 
-Attach a direct custom domain to a site
+Attach a custom domain to a site
 
 Options:
-  -h, --help  display help for command
+  --mode <mode>  Routing mode: direct or cloudflare (default: "direct")
+  -h, --help     display help for command
 ```
 
 ## buzz domains check

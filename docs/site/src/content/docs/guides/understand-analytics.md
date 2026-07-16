@@ -38,6 +38,6 @@ Buzz excludes requests when:
 
 Buzz estimates daily visitors from a hash of the site name, date, client IP address, and user agent. The hash uses the server's analytics secret. Buzz does not store the source IP address in analytics tables.
 
-Visitor hashes become eligible for pruning after two days. Pruning occurs when Buzz writes a later analytics batch, so an inactive server can retain old hashes until another batch is written. Daily aggregate counts remain. The all-time **Visitors** value adds the daily visitor counts, so one person visiting on two dates can contribute two visitors.
+Visitor hashes are eligible for pruning after two days and are removed during a later analytics write, so inactive servers may retain them longer. Daily aggregates remain, and the all-time **Visitors** value sums daily counts.
 
 Deleting a site also deletes its analytics records.

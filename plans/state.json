@@ -29,7 +29,7 @@
   },
   {
     "name": "08-cloudflare-proxy-diagnostics",
-    "status": "pending"
+    "status": "in_progress"
   },
   {
     "name": "09-cloudflare-proxy-activation",

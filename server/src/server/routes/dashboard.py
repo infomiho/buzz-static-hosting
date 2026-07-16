@@ -23,6 +23,11 @@ from ..auth_service import (
 from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
 from ..custom_domains import DomainClaimLimits, DomainClaimStore
+from ..cloudflare_diagnostics import (
+    CloudflareDiagnosticStore,
+    CloudflareRangeError,
+    load_cloudflare_ranges,
+)
 from ..db import db
 from ..dependencies import get_auth_service, require_user
 from ..search_console import SearchConsoleError
@@ -96,6 +101,12 @@ async def site_detail(
             for claim in claim_store.list_for_site(name)
             if claim.status in {"pending", "verified"}
         ]
+        diagnostic_store = CloudflareDiagnosticStore(conn)
+        cloudflare_diagnostics = {
+            claim.id: diagnostic_store.get(claim.id, claim.route_generation)
+            for claim in domain_claims
+            if claim.claim_mode == "cloudflare"
+        }
         domain_quota = claim_store.quota(
             name,
             DomainClaimLimits(
@@ -105,13 +116,28 @@ async def site_detail(
             ),
         )
 
-    custom_domain_can_add = bool(
+    direct_domains_available = bool(
         custom_domains_available
         and config.CUSTOM_DOMAIN_ADMISSION_ENABLED
         and config.CUSTOM_DOMAIN_ROUTING_ENABLED
         and config.CUSTOM_DOMAIN_INGRESS_IPS
         and not domain_quota.error
     )
+    try:
+        load_cloudflare_ranges()
+        ranges_ready = True
+    except CloudflareRangeError:
+        ranges_ready = False
+    cloudflare_diagnostics_available = bool(
+        custom_domains_available
+        and getattr(request.app.state, "custom_domain_runtime_ready", False)
+        and config.CUSTOM_DOMAIN_ADMISSION_ENABLED
+        and config.CUSTOM_DOMAIN_ROUTING_ENABLED
+        and config.CLOUDFLARE_DIAGNOSTICS_ENABLED
+        and ranges_ready
+        and not domain_quota.error
+    )
+    custom_domain_can_add = direct_domains_available or cloudflare_diagnostics_available
 
     if domain and domain != "localhost:8080":
         site_url = f"https://{name}.{domain}"
@@ -126,8 +152,11 @@ async def site_detail(
         "domain": domain,
         "custom_domains_available": custom_domains_available,
         "custom_domain_can_add": custom_domain_can_add,
+        "direct_domains_available": direct_domains_available,
+        "cloudflare_diagnostics_available": cloudflare_diagnostics_available,
         "custom_domain_quota": domain_quota,
         "domain_claims": domain_claims,
+        "cloudflare_diagnostics": cloudflare_diagnostics,
     })
 
 

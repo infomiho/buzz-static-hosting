@@ -108,6 +108,7 @@ class DomainClaim:
     activated_at: str | None
     activation_checked_at: str | None
     activation_error: str | None
+    claim_mode: str
 
     @property
     def verification_name(self) -> str:
@@ -179,6 +180,7 @@ class DomainClaimStore:
         hostname: str,
         now: datetime | None = None,
         limits: DomainClaimLimits | None = None,
+        claim_mode: str = "direct",
     ) -> DomainClaim:
         now = now or datetime.now(timezone.utc)
         if not self._conn.in_transaction:
@@ -197,12 +199,22 @@ class DomainClaimStore:
             if quota.error:
                 raise DomainQuotaExceeded(quota.error)
         token = f"bdv_{secrets.token_urlsafe(32)}"
+        if claim_mode not in {"direct", "cloudflare"}:
+            raise BadRequest("Unsupported custom-domain mode")
         try:
             cursor = self._conn.execute(
                 """INSERT INTO custom_domain_claims
-                (hostname, site_name, verification_token, status, created_at, expires_at)
-                VALUES (?, ?, ?, 'pending', ?, ?)""",
-                (hostname, site_name, token, now.isoformat(), (now + CLAIM_TTL).isoformat()),
+                (hostname, site_name, verification_token, status, created_at, expires_at,
+                 claim_mode)
+                VALUES (?, ?, ?, 'pending', ?, ?, ?)""",
+                (
+                    hostname,
+                    site_name,
+                    token,
+                    now.isoformat(),
+                    (now + CLAIM_TTL).isoformat(),
+                    claim_mode,
+                ),
             )
         except sqlite3.IntegrityError as exc:
             raise Conflict("Could not create this custom domain claim") from exc
@@ -416,7 +428,7 @@ class DomainClaimStore:
         rows = self._conn.execute(
             """SELECT * FROM custom_domain_claims
             WHERE status = 'verified' AND route_status = 'routed'
-              AND activated_at IS NULL
+              AND activated_at IS NULL AND claim_mode = 'direct'
             ORDER BY activation_checked_at IS NOT NULL, activation_checked_at, id"""
         ).fetchall()
         return [self._from_row(row) for row in rows]
@@ -432,7 +444,8 @@ class DomainClaimStore:
             """UPDATE custom_domain_claims
             SET activated_at = ?, activation_checked_at = ?, activation_error = NULL
             WHERE id = ? AND route_generation = ? AND status = 'verified'
-              AND route_status = 'routed' AND activated_at IS NULL""",
+              AND route_status = 'routed' AND activated_at IS NULL
+              AND claim_mode = 'direct'""",
             (now.isoformat(), now.isoformat(), claim_id, generation),
         )
         return cursor.rowcount > 0
@@ -466,7 +479,8 @@ class DomainClaimStore:
         row = self._conn.execute(
             """SELECT * FROM custom_domain_claims
             WHERE hostname = ? AND status = 'verified' AND route_status = 'routed'
-              AND activated_at IS NOT NULL AND site_name IS NOT NULL""",
+              AND activated_at IS NOT NULL AND site_name IS NOT NULL
+              AND claim_mode = 'direct'""",
             (hostname,),
         ).fetchone()
         return self._from_row(row) if row else None
@@ -475,7 +489,7 @@ class DomainClaimStore:
         rows = self._conn.execute(
             """SELECT hostname FROM custom_domain_claims
             WHERE site_name = ? AND status = 'verified' AND route_status = 'routed'
-              AND activated_at IS NOT NULL""",
+              AND activated_at IS NOT NULL AND claim_mode = 'direct'""",
             (site_name,),
         ).fetchall()
         return frozenset(row["hostname"] for row in rows)
@@ -597,4 +611,5 @@ class DomainClaimStore:
             activated_at=row["activated_at"],
             activation_checked_at=row["activation_checked_at"],
             activation_error=row["activation_error"],
+            claim_mode=row["claim_mode"],
         )

@@ -37,6 +37,7 @@ def domain_api(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DEV_MODE", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_ADMISSION_ENABLED", True)
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", False)
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
     monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_SITE", 5)
@@ -54,6 +55,7 @@ def domain_api(tmp_path, monkeypatch):
         )
     app = create_app()
     app.state.traefik_control = ReadyControlPlane()
+    app.state.custom_domain_runtime_ready = True
     resolver = FakeTxtResolver()
     app.state.domain_txt_resolver = resolver
     return TestClient(app), resolver
@@ -110,6 +112,11 @@ def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch)
             {"type": "A", "value": "8.8.8.8"},
             {"type": "AAAA", "value": "2001:4860:4860::8888"},
         ],
+        "cloudflare": {
+            "admission_enabled": False,
+            "ready": False,
+            "detail": "Cloudflare proxy diagnostics admission is not enabled",
+        },
     }
 
 
@@ -139,6 +146,70 @@ def test_custom_domain_capability_reports_closed_admission(domain_api, monkeypat
     assert response.json()["status"] == "unready"
     assert response.json()["detail"] == (
         "New custom domain claims are not enabled on this Buzz server"
+    )
+
+
+def test_cloudflare_diagnostic_claim_requires_explicit_operator_admission(
+    domain_api, monkeypatch
+):
+    client, _ = domain_api
+
+    disabled = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
+    )
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    enabled = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
+    )
+
+    assert disabled.status_code == 503
+    assert disabled.json()["detail"] == (
+        "Cloudflare proxy diagnostics admission is not enabled"
+    )
+    assert enabled.status_code == 201
+    assert enabled.json()["mode"] == "cloudflare"
+    assert enabled.json()["cloudflare_diagnostics"] is None
+
+
+def test_cloudflare_capability_is_independent_of_direct_ingress(
+    domain_api, monkeypatch
+):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset())
+
+    capability = client.get("/capabilities/custom-domains").json()
+
+    assert capability["status"] == "unready"
+    assert capability["cloudflare"] == {
+        "admission_enabled": True,
+        "ready": True,
+        "detail": None,
+    }
+
+
+def test_cloudflare_capability_requires_diagnostic_runtime(domain_api, monkeypatch):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    client.app.state.custom_domain_runtime_ready = False
+
+    capability = client.get("/capabilities/custom-domains").json()
+
+    assert capability["cloudflare"] == {
+        "admission_enabled": True,
+        "ready": False,
+        "detail": "Cloudflare diagnostic runtime is not configured",
+    }
+
+    response = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Cloudflare diagnostic runtime is not configured"
     )
 
 

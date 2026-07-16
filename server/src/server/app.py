@@ -36,6 +36,7 @@ from .config import (
     TRAEFIK_SERVICE,
 )
 from .cookies import COOKIE_NAME
+from .cloudflare_diagnostics import CloudflareDiagnostician
 from .custom_domains import DnsTxtResolver, DomainClaimStore
 from .domain_activation import DomainActivator
 from .domain_routing import DomainRouteReconciler, build_traefik_snapshot
@@ -158,9 +159,13 @@ def create_app() -> FastAPI:
                 app.state.traefik_control = control_server
                 control_server.start()
                 if runtime_client:
+                    app.state.custom_domain_runtime_ready = True
                     activator = DomainActivator(
                         CUSTOM_DOMAIN_INGRESS_IPS,
                         CUSTOM_DOMAIN_ORIGIN_HOST,
+                    )
+                    cloudflare_diagnostician = CloudflareDiagnostician(
+                        CUSTOM_DOMAIN_ORIGIN_HOST
                     )
                     reconciler = DomainRouteReconciler(
                         runtime_client,
@@ -179,6 +184,7 @@ def create_app() -> FastAPI:
                                 await asyncio.to_thread(control_server.refresh_readiness)
                                 await asyncio.to_thread(reconciler.run_once)
                                 await asyncio.to_thread(activator.run_once)
+                                await asyncio.to_thread(cloudflare_diagnostician.run_once)
                             except Exception:
                                 logger.exception("Custom domain reconciliation failed")
                             try:
@@ -211,6 +217,7 @@ def create_app() -> FastAPI:
                     control_server.stop()
                 finally:
                     app.state.traefik_control = None
+                    app.state.custom_domain_runtime_ready = False
 
     app = FastAPI(
         title="Buzz",
@@ -250,6 +257,7 @@ def create_app() -> FastAPI:
     app.state.search_console = create_search_console_client()
     app.state.domain_txt_resolver = DnsTxtResolver()
     app.state.traefik_control = None
+    app.state.custom_domain_runtime_ready = False
 
     @app.exception_handler(BadRequest)
     async def bad_request_handler(request: Request, exc: BadRequest):

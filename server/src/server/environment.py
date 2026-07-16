@@ -210,6 +210,13 @@ ENVIRONMENT_VARIABLES = (
         parser=parse_bool,
     ),
     EnvironmentVariable(
+        "BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED",
+        "Whether site owners can create diagnostic-only Cloudflare proxy claims.",
+        default=False,
+        example="true",
+        parser=parse_bool,
+    ),
+    EnvironmentVariable(
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE",
         "Maximum pending and verified custom domains for one site.",
         default=5,

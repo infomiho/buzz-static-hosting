@@ -21,6 +21,12 @@ from ..custom_domains import (
     InvalidHostname,
     normalize_hostname,
 )
+from ..cloudflare_diagnostics import (
+    CloudflareDiagnostic,
+    CloudflareDiagnosticStore,
+    CloudflareRangeError,
+    load_cloudflare_ranges,
+)
 from ..db import db
 from ..dependencies import (
     Identity,
@@ -43,7 +49,42 @@ def domain_limits() -> DomainClaimLimits:
     )
 
 
-def domain_response(claim: DomainClaim) -> dict:
+def cloudflare_diagnostic_response(diagnostic: CloudflareDiagnostic | None) -> dict | None:
+    if not diagnostic:
+        return None
+    return {
+        "generation": diagnostic.route_generation,
+        "checked_at": diagnostic.checked_at,
+        "ranges_version": diagnostic.ranges_version,
+        "dns": {"status": diagnostic.dns_status, "error": diagnostic.dns_error},
+        "edge_tls": {
+            "status": diagnostic.edge_tls_status,
+            "error": diagnostic.edge_tls_error,
+        },
+        "edge_http": {
+            "status": diagnostic.edge_http_status,
+            "error": diagnostic.edge_http_error,
+            "status_code": diagnostic.edge_http_status_code,
+            "address": diagnostic.edge_address,
+            "cf_ray": diagnostic.cf_ray,
+            "cf_cache_status": diagnostic.cf_cache_status,
+            "redirect_location": diagnostic.redirect_location,
+        },
+        "http_forwarding": {
+            "status": diagnostic.http_forward_status,
+            "error": diagnostic.http_forward_error,
+            "status_code": diagnostic.http_forward_status_code,
+        },
+        "origin": {
+            "status": diagnostic.origin_status,
+            "error": diagnostic.origin_error,
+        },
+    }
+
+
+def domain_response(
+    claim: DomainClaim, diagnostic: CloudflareDiagnostic | None = None
+) -> dict:
     return {
         "id": claim.id,
         "hostname": claim.hostname,
@@ -69,6 +110,8 @@ def domain_response(claim: DomainClaim) -> dict:
         "activation_error": claim.activation_error,
         "removal_requested_at": claim.removal_requested_at,
         "withdrawn_at": claim.withdrawn_at,
+        "mode": claim.claim_mode,
+        "cloudflare_diagnostics": cloudflare_diagnostic_response(diagnostic),
     }
 
 
@@ -88,6 +131,9 @@ async def custom_domain_capability(
 ):
     control = getattr(request.app.state, "traefik_control", None)
     runtime_ready = bool(control and control.is_ready())
+    diagnostic_runtime_ready = bool(
+        getattr(request.app.state, "custom_domain_runtime_ready", False)
+    )
     control_ready = bool(
         config.CUSTOM_DOMAINS_ENABLED
         and config.TRAEFIK_CONTROL_TOKEN
@@ -125,6 +171,25 @@ async def custom_domain_capability(
             key=lambda value: (ipaddress.ip_address(value).version, value),
         )
     ]
+    cloudflare_detail = None
+    try:
+        load_cloudflare_ranges()
+    except CloudflareRangeError as exc:
+        cloudflare_detail = {
+            "range_data_missing": "Cloudflare IP range data is missing",
+            "range_data_invalid": "Cloudflare IP range data is invalid",
+            "range_data_stale": "Cloudflare IP range data is stale",
+        }[exc.code]
+    if not config.CLOUDFLARE_DIAGNOSTICS_ENABLED:
+        cloudflare_detail = "Cloudflare proxy diagnostics admission is not enabled"
+    elif not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
+        cloudflare_detail = "New custom domain claims are not enabled on this Buzz server"
+    elif not config.CUSTOM_DOMAIN_ROUTING_ENABLED:
+        cloudflare_detail = "Custom domain routing is not configured"
+    elif not control_ready:
+        cloudflare_detail = detail
+    elif not diagnostic_runtime_ready:
+        cloudflare_detail = "Cloudflare diagnostic runtime is not configured"
     return {
         "status": status,
         "detail": detail,
@@ -133,6 +198,11 @@ async def custom_domain_capability(
         "admission_enabled": config.CUSTOM_DOMAIN_ADMISSION_ENABLED,
         "routing_enabled": routing_ready,
         "routing_targets": targets,
+        "cloudflare": {
+            "admission_enabled": config.CLOUDFLARE_DIAGNOSTICS_ENABLED,
+            "ready": cloudflare_detail is None,
+            "detail": cloudflare_detail,
+        },
     }
 
 
@@ -157,7 +227,17 @@ async def list_domain_claims(
 ):
     require_owned_site(site_name, identity.user.id)
     with db() as conn:
-        return [domain_response(claim) for claim in DomainClaimStore(conn).list_for_site(site_name)]
+        claims = DomainClaimStore(conn).list_for_site(site_name)
+        diagnostic_store = CloudflareDiagnosticStore(conn)
+        return [
+            domain_response(
+                claim,
+                diagnostic_store.get(claim.id, claim.route_generation)
+                if claim.claim_mode == "cloudflare"
+                else None,
+            )
+            for claim in claims
+        ]
 
 
 @router.post(
@@ -176,10 +256,10 @@ async def list_domain_claims(
     },
     dependencies=[
         Depends(require_custom_domain_control_ready),
-        Depends(require_custom_domain_admission_enabled),
     ],
 )
 async def create_domain_claim(
+    request: Request,
     site_name: str,
     data: CreateDomainClaimRequest,
     identity: Annotated[Identity, Depends(require_user)],
@@ -189,10 +269,43 @@ async def create_domain_claim(
         hostname = normalize_hostname(data.hostname, config.DOMAIN)
     except InvalidHostname as exc:
         raise BadRequest(str(exc))
+    if data.mode == "direct":
+        require_custom_domain_admission_enabled()
+    else:
+        if not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
+            raise HTTPException(
+                status_code=503,
+                detail="New custom domain claims are not enabled on this Buzz server",
+            )
+        if not config.CLOUDFLARE_DIAGNOSTICS_ENABLED:
+            raise HTTPException(
+                status_code=503,
+                detail="Cloudflare proxy diagnostics admission is not enabled",
+            )
+        if not getattr(request.app.state, "custom_domain_runtime_ready", False):
+            raise HTTPException(
+                status_code=503,
+                detail="Cloudflare diagnostic runtime is not configured",
+            )
+        if not config.CUSTOM_DOMAIN_ROUTING_ENABLED:
+            raise HTTPException(
+                status_code=503,
+                detail="Custom domain routing is not configured",
+            )
+        try:
+            load_cloudflare_ranges()
+        except CloudflareRangeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Cloudflare diagnostics unavailable: {exc.code}",
+            ) from exc
     with db() as conn:
         try:
             claim = DomainClaimStore(conn).create(
-                site_name, hostname, limits=domain_limits()
+                site_name,
+                hostname,
+                limits=domain_limits(),
+                claim_mode=data.mode,
             )
         except DomainQuotaExceeded as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc

@@ -107,12 +107,42 @@ def _multiple_custom_domains(conn: sqlite3.Connection) -> None:
         ON custom_domain_claims(site_name, status)""")
 
 
+def _cloudflare_diagnostics(conn: sqlite3.Connection) -> None:
+    conn.execute("""ALTER TABLE custom_domain_claims
+        ADD COLUMN claim_mode TEXT NOT NULL DEFAULT 'direct'
+        CHECK (claim_mode IN ('direct', 'cloudflare'))""")
+    conn.execute("""CREATE TABLE custom_domain_cloudflare_diagnostics (
+        claim_id INTEGER NOT NULL,
+        route_generation INTEGER NOT NULL,
+        checked_at TEXT NOT NULL,
+        ranges_version TEXT,
+        dns_status TEXT NOT NULL,
+        dns_error TEXT,
+        edge_tls_status TEXT NOT NULL,
+        edge_tls_error TEXT,
+        edge_http_status TEXT NOT NULL,
+        edge_http_error TEXT,
+        edge_http_status_code INTEGER,
+        edge_address TEXT,
+        cf_ray TEXT,
+        cf_cache_status TEXT,
+        redirect_location TEXT,
+        http_forward_status TEXT NOT NULL,
+        http_forward_error TEXT,
+        http_forward_status_code INTEGER,
+        origin_status TEXT NOT NULL,
+        origin_error TEXT,
+        PRIMARY KEY (claim_id, route_generation),
+        FOREIGN KEY (claim_id) REFERENCES custom_domain_claims(id) ON DELETE CASCADE)""")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _base_schema,
     _custom_domain_claims,
     _custom_domain_routing,
     _custom_domain_activation,
     _multiple_custom_domains,
+    _cloudflare_diagnostics,
 )
 
 

@@ -38,7 +38,7 @@ You need Node.js 22 or later, npm, a GitHub account, access to a running Buzz se
    buzz deploy ./dist --subdomain my-site
    ```
 
-Buzz prints the site URL and writes `my-site` to a `CNAME` file in your current working directory. A later deployment from that directory reuses the site name unless you pass `--subdomain` again.
+Buzz prints the URL and stores `my-site` in the current directory's `CNAME`. Later deployments reuse it unless `--subdomain` is supplied.
 
 ## Documentation
 

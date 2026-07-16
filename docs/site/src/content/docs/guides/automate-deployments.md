@@ -87,7 +87,7 @@ jobs:
           BUZZ_SITE_URL: ${{ vars.BUZZ_SITE_URL }}
 ```
 
-This workflow pins the current CLI version from `cli/package.json` so a future release cannot change deployment behavior without a reviewed workflow update. Change the build commands if your project does not use npm, but keep the `./dist/index.html` assertion, explicit `--subdomain my-site` target, and HTTP verification.
+The workflow pins the CLI version so upgrades require review. Adapt the build commands as needed, but retain the `./dist/index.html` check, explicit site target, and HTTP verification.
 
 Push a commit to `main`, inspect the **Deploy** workflow run, and open the verified site URL. The deployment step should print `Deployed to https://my-site.buzz.example.com`.
 

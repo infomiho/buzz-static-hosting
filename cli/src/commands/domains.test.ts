@@ -21,6 +21,11 @@ function capability(status: "disabled" | "unready" | "ready" = "ready") {
     admission_enabled: status === "ready",
     routing_enabled: status === "ready",
     routing_targets: [{ type: "A", value: "203.0.113.10" }],
+    cloudflare: {
+      admission_enabled: false,
+      ready: false,
+      detail: "Cloudflare proxy diagnostics admission is not enabled",
+    },
   };
 }
 
@@ -50,6 +55,8 @@ function claim(overrides: Partial<DomainClaim> = {}): DomainClaim {
     activation_error: null,
     removal_requested_at: null,
     withdrawn_at: null,
+    mode: "direct",
+    cloudflare_diagnostics: null,
     ...overrides,
   };
 }
@@ -98,7 +105,7 @@ describe("domain commands", () => {
   it("does not add a domain when the capability is unready", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(capability("unready")));
 
-    await expect(addDomain("my-site", "www.example.com", cliOptions)).rejects.toThrow(
+    await expect(addDomain("my-site", "www.example.com", {}, cliOptions)).rejects.toThrow(
       "Custom domain control plane is not ready"
     );
 
@@ -123,17 +130,37 @@ describe("domain commands", () => {
     );
   });
 
+  it("keeps direct management compatible with pre-Cloudflare servers", async () => {
+    const { cloudflare: _cloudflare, ...legacyCapability } = capability();
+    const {
+      mode: _mode,
+      cloudflare_diagnostics: _diagnostics,
+      ...legacyClaim
+    } = claim();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(legacyCapability))
+      .mockResolvedValueOnce(jsonResponse([legacyClaim]));
+
+    await listDomains("my-site", cliOptions);
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("www.example.com")
+    );
+  });
+
   it("adds a domain and prints exact DNS instructions", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(capability()))
       .mockResolvedValueOnce(jsonResponse(claim(), 201));
 
-    await addDomain("my-site", "WWW.Example.COM", cliOptions);
+    await addDomain("my-site", "WWW.Example.COM", {}, cliOptions);
 
     const [url, init] = fetchMock.mock.calls[1];
     expect(url).toBe("https://buzz.example.com/sites/my-site/domains");
     expect(init?.method).toBe("POST");
-    expect(init?.body).toBe(JSON.stringify({ hostname: "WWW.Example.COM" }));
+    expect(init?.body).toBe(
+      JSON.stringify({ hostname: "WWW.Example.COM", mode: "direct" })
+    );
     expect(console.log).toHaveBeenCalledWith("  Name:  _buzz.www.example.com");
     expect(console.log).toHaveBeenCalledWith(
       "  A     www.example.com -> 203.0.113.10"
@@ -149,9 +176,40 @@ describe("domain commands", () => {
       .mockResolvedValueOnce(jsonResponse(capability()))
       .mockResolvedValueOnce(jsonResponse(claim(), 201));
 
-    await addDomain("my-site", "www.example.com", cliOptions);
+    await addDomain("my-site", "www.example.com", {}, cliOptions);
 
     expect(readFileSync(cname, "utf8")).toBe("my-site\n");
+  });
+
+  it("adds an explicit diagnostic-only Cloudflare claim", async () => {
+    const cloudflareCapability = {
+      ...capability("unready"),
+      cloudflare: { admission_enabled: true, ready: true, detail: null },
+    };
+    const cloudflareClaim = claim({ mode: "cloudflare" });
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(cloudflareCapability))
+      .mockResolvedValueOnce(jsonResponse(cloudflareClaim, 201));
+
+    await addDomain(
+      "my-site",
+      "www.example.com",
+      { mode: "cloudflare" },
+      cliOptions
+    );
+
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({ hostname: "www.example.com", mode: "cloudflare" })
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      "Keep Cloudflare proxying enabled and set SSL/TLS to Full (strict)."
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      "Diagnostics cannot activate or serve this hostname."
+    );
+    expect(console.log).not.toHaveBeenCalledWith(
+      expect.stringContaining("www.example.com ->")
+    );
   });
 
   it("checks the active claim selected by normalized hostname", async () => {
@@ -347,6 +405,45 @@ describe("domain presentation", () => {
         claim({ status: "verified", route_status: "removing" })
       )
     ).toContain("Removal:     Not requested (router withdrawal in progress)");
+  });
+
+  it("formats Cloudflare edge and origin diagnostics separately", () => {
+    const output = formatDomainClaim(
+      claim({
+        mode: "cloudflare",
+        status: "verified",
+        route_status: "routed",
+        cloudflare_diagnostics: {
+          generation: 1,
+          checked_at: "2026-07-16T00:00:00+00:00",
+          ranges_version: "2026-07-16",
+          dns: { status: "healthy", error: null },
+          edge_tls: { status: "healthy", error: null },
+          edge_http: {
+            status: "failed",
+            error: "cloudflare_526",
+            status_code: 526,
+            address: "104.16.0.1",
+            cf_ray: "ray",
+            cf_cache_status: null,
+            redirect_location: null,
+          },
+          http_forwarding: {
+            status: "failed",
+            error: "http_forward_redirect",
+            status_code: 301,
+          },
+          origin: { status: "failed", error: "origin_tls_invalid" },
+        },
+      })
+    );
+
+    expect(output).toContain("Mode:            Cloudflare diagnostics only");
+    expect(output).toContain("Cloudflare DNS:  healthy");
+    expect(output).toContain("Edge challenge:  cloudflare_526");
+    expect(output).toContain("HTTP forwarding: http_forward_redirect");
+    expect(output).toContain("Origin:          origin_tls_invalid");
+    expect(output).toContain("Activation:      Disabled for Cloudflare mode");
   });
 
   it.each([

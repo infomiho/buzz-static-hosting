@@ -37,6 +37,7 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_TRAEFIK_SERVICE` | Provider-qualified Traefik service used by custom-domain routers. | Buzz server | `buzz@docker` | Optional |
 | `BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED` | Whether verified custom domains are published to Traefik. | Buzz server | `false` | Optional |
 | `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED` | Whether site owners can create new custom-domain claims. | Buzz server | `false` | Optional |
+| `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED` | Whether site owners can create diagnostic-only Cloudflare proxy claims. | Buzz server | `false` | Optional |
 | `BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE` | Maximum pending and verified custom domains for one site. | Buzz server | `5` | Optional |
 | `BUZZ_MAX_CUSTOM_DOMAINS_PER_USER` | Maximum pending and verified custom domains owned by one user. | Buzz server | `20` | Optional |
 | `BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE` | Maximum pending and verified custom domains across this Buzz server. | Buzz server | `1000` | Optional |

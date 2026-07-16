@@ -149,11 +149,25 @@
                         {% else %}
                         <span class="font-bold">Waiting for DNS verification</span>
                         {% endif %}
+                        {% if claim.claim_mode == 'cloudflare' %}
+                        <span class="font-bold">Cloudflare diagnostics</span>
+                        {% endif %}
                     </summary>
                     <div class="border-t-2 border-ink p-4">
                         <div class="flex flex-wrap items-center justify-between gap-4">
                             <div>
                                 {% if claim.status == 'verified' %}
+                                    {% if claim.claim_mode == 'cloudflare' %}
+                                        {% if claim.route_status == 'publishing' %}
+                                        <p class="text-rule">Publishing the diagnostic route and waiting for Traefik acknowledgement.</p>
+                                        {% elif claim.route_status == 'routed' %}
+                                        <p class="font-bold">Diagnostic-only mode. Buzz will not activate or serve this hostname.</p>
+                                        {% elif claim.route_status == 'removing' %}
+                                        <p class="text-rule">Removing the diagnostic route. The hostname remains reserved until withdrawal is acknowledged.</p>
+                                        {% else %}
+                                        <p class="text-rule">Ready for diagnostic routing when the operator enables it.</p>
+                                        {% endif %}
+                                    {% else %}
                                     {% if claim.route_status == 'routed' and claim.activated_at %}
                                     <p class="font-bold text-success">Active at <a class="underline decoration-2 underline-offset-4" href="https://{{ claim.hostname }}">https://{{ claim.hostname }}</a></p>
                                     {% elif claim.route_status == 'publishing' %}
@@ -176,6 +190,7 @@
                                     <p class="text-rule">Removing the route. The domain remains reserved until Traefik confirms withdrawal.</p>
                                     {% else %}
                                     <p class="text-rule">Ready for staging routing when the operator enables it.</p>
+                                    {% endif %}
                                     {% endif %}
                                 {% else %}
                                 <p class="text-rule">The claim expires {{ claim.expires_at[:16].replace('T', ' ') }} UTC.</p>
@@ -205,6 +220,29 @@
                         <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">Buzz did not find the expected TXT value. DNS changes can take time to propagate.</p>
                         {% elif claim.last_error == 'dns_unavailable' %}
                         <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">Buzz could not complete the DNS lookup. Try again shortly.</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if claim.claim_mode == 'cloudflare' %}
+                    {% set diagnostic = cloudflare_diagnostics.get(claim.id) %}
+                    <div class="mt-4 border-t-2 border-ink pt-4">
+                        <p class="font-bold">Cloudflare proxy diagnostics</p>
+                        <p class="mt-2 text-rule">Keep orange-cloud proxying enabled, use Full (strict), and bypass cache, redirects, WAF, Workers, Access, and challenges for the displayed verification path.</p>
+                        {% if diagnostic %}
+                        <dl class="mt-3 grid gap-3 sm:grid-cols-[10rem_1fr]">
+                            <dt class="font-bold">Cloudflare DNS</dt>
+                            <dd class="font-mono">{{ diagnostic.dns_error or diagnostic.dns_status }}</dd>
+                            <dt class="font-bold">Edge TLS</dt>
+                            <dd class="font-mono">{{ diagnostic.edge_tls_error or diagnostic.edge_tls_status }}</dd>
+                            <dt class="font-bold">Edge challenge</dt>
+                            <dd class="font-mono">{{ diagnostic.edge_http_error or diagnostic.edge_http_status }}</dd>
+                            <dt class="font-bold">HTTP forwarding</dt>
+                            <dd class="font-mono">{{ diagnostic.http_forward_error or diagnostic.http_forward_status }}</dd>
+                            <dt class="font-bold">Origin</dt>
+                            <dd class="font-mono">{{ diagnostic.origin_error or diagnostic.origin_status }}</dd>
+                        </dl>
+                        {% else %}
+                        <p class="mt-2 text-rule">Diagnostics begin after ownership and router acknowledgement.</p>
                         {% endif %}
                     </div>
                     {% endif %}
@@ -248,6 +286,14 @@
                 <label for="domain-hostname" class="font-bold">Domain</label>
                 <input id="domain-hostname" name="hostname" class="input mt-1" placeholder="www.example.com" autocomplete="off" spellcheck="false" required />
                 <p class="mt-2 text-rule">Enter the hostname only, without <span class="font-mono">https://</span>, a port, or a path.</p>
+                {% if cloudflare_diagnostics_available %}
+                <label for="domain-mode" class="mt-4 block font-bold">Routing mode</label>
+                <select id="domain-mode" name="mode" class="input mt-1">
+                    {% if direct_domains_available %}<option value="direct">Direct to Buzz</option>{% endif %}
+                    <option value="cloudflare">Cloudflare proxy diagnostics</option>
+                </select>
+                <p class="mt-2 text-rule">Cloudflare mode diagnoses proxied DNS and TLS but cannot serve the hostname.</p>
+                {% endif %}
                 <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="add-domain-error" role="alert"></p>
             </form>
         </section>
@@ -347,7 +393,10 @@ function initCustomDomains() {
                 await domainRequest('', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hostname: form.elements.hostname.value }),
+                    body: JSON.stringify({
+                        hostname: form.elements.hostname.value,
+                        mode: form.elements.mode ? form.elements.mode.value : 'direct',
+                    }),
                 });
                 location.reload();
             } catch (requestError) {

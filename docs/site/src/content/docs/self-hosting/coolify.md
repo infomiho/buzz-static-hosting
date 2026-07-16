@@ -188,7 +188,25 @@ Complete the staging publication, challenge, withdrawal, reuse, and proxy-restar
 
 3. Keep `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=false` during controlled rollout. Set it to `true` only when site owners should be able to create new claims. The three positive quota settings limit pending and verified aliases per site, per user, and across the server. An alias awaiting acknowledged withdrawal continues to consume quota.
 
-Buzz marks each routed hostname active only after its DNS answers match the ingress allowlist and a trusted TLS request through `coolify-proxy:443` returns the exact generation challenge. Multiple aliases can serve one deployment, but each retains independent ownership, routing, TLS, diagnostics, and removal state. Custom-host requests and same-site alias referrers resolve through the canonical Buzz site identity. Cloudflare-proxied hostnames remain unsupported.
+Buzz marks each direct routed hostname active only after its DNS answers match the ingress allowlist and a trusted TLS request through `coolify-proxy:443` returns the exact generation challenge. Multiple aliases can serve one deployment, but each retains independent ownership, routing, TLS, diagnostics, and removal state. Custom-host requests and same-site alias referrers resolve through the canonical Buzz site identity.
+
+### Enable Cloudflare Proxy Diagnostics
+
+Cloudflare proxy diagnostics are disabled by default and cannot activate or serve a hostname. To admit explicit Cloudflare claims, add and redeploy:
+
+```text
+BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED=true
+```
+
+Keep general custom-domain admission and routing enabled. Users must retain the TXT ownership record, enable orange-cloud proxying, and select Cloudflare **Full (strict)**. Bypass cache, redirects, WAF, Workers, Access, and managed challenges for `/.well-known/buzz-domain-check/*` and `/.well-known/acme-challenge/*`.
+
+Buzz uses no customer Cloudflare credentials. It validates resolved addresses against bundled Cloudflare ranges and pins probes to a validated address. Mixed Cloudflare and non-Cloudflare answers fail before connection. Edge TLS, edge challenge, origin, and errors 1014, 525, and 526 remain separate diagnostics. Other CDNs are unsupported.
+
+The port-80 check sends Buzz's generation challenge without following redirects. It does not validate Traefik ACME HTTP-01. Cloudflare activation requires a controlled zone to prove a fresh `/.well-known/acme-challenge/*` request in Traefik and origin logs.
+
+The bundled range snapshot fails closed after 180 days. Update it from Cloudflare's official `ips-v4` and `ips-v6` endpoints with `uv run python scripts/update_cloudflare_ranges.py`, review the diff, run the diagnostic tests, and deploy a new server build. Do not fetch range policy dynamically at runtime.
+
+Setting `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED=false` blocks new claims but preserves existing routes for acknowledged withdrawal.
 
 If the proxy fails to restart, Buzz has no valid certificate, or another application loses TLS, paste the complete saved configuration back into **Servers > Proxy**, save it, and restart the proxy. Do not keep retrying certificate issuance against the production Let's Encrypt endpoint while the same error persists.
 

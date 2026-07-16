@@ -217,7 +217,8 @@ class TestCustomDomains:
             challenge_seen_at TEXT,
             activated_at TEXT,
             activation_checked_at TEXT,
-            activation_error TEXT
+            activation_error TEXT,
+            claim_mode TEXT NOT NULL DEFAULT 'direct'
         )""")
         conn.execute("""INSERT INTO custom_domain_claims
             (id, hostname, site_name, verification_token, status, created_at, expires_at)

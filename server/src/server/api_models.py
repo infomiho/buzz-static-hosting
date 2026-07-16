@@ -57,6 +57,7 @@ class SiteResponse(BaseModel):
 
 class CreateDomainClaimRequest(BaseModel):
     hostname: str
+    mode: Literal["direct", "cloudflare"] = "direct"
 
 
 class DomainVerificationRecord(BaseModel):
@@ -86,6 +87,36 @@ class DomainClaimResponse(BaseModel):
     activation_error: str | None
     removal_requested_at: str | None
     withdrawn_at: str | None
+    mode: Literal["direct", "cloudflare"]
+    cloudflare_diagnostics: "CloudflareDiagnosticResponse | None"
+
+
+class CloudflareDiagnosticComponent(BaseModel):
+    status: str
+    error: str | None
+
+
+class CloudflareEdgeHttpDiagnostic(CloudflareDiagnosticComponent):
+    status_code: int | None
+    address: str | None
+    cf_ray: str | None
+    cf_cache_status: str | None
+    redirect_location: str | None
+
+
+class CloudflareHttpForwardDiagnostic(CloudflareDiagnosticComponent):
+    status_code: int | None
+
+
+class CloudflareDiagnosticResponse(BaseModel):
+    generation: int
+    checked_at: str
+    ranges_version: str | None
+    dns: CloudflareDiagnosticComponent
+    edge_tls: CloudflareDiagnosticComponent
+    edge_http: CloudflareEdgeHttpDiagnostic
+    http_forwarding: CloudflareHttpForwardDiagnostic
+    origin: CloudflareDiagnosticComponent
 
 
 class CustomDomainRoutingTarget(BaseModel):
@@ -101,6 +132,13 @@ class CustomDomainCapabilityResponse(BaseModel):
     admission_enabled: bool
     routing_enabled: bool
     routing_targets: list[CustomDomainRoutingTarget]
+    cloudflare: "CloudflareCapability"
+
+
+class CloudflareCapability(BaseModel):
+    admission_enabled: bool
+    ready: bool
+    detail: str | None
 
 
 class CreateTokenRequest(BaseModel):

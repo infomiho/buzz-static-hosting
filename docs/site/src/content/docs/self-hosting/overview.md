@@ -9,7 +9,7 @@ Run Buzz on infrastructure you control with Docker Compose or Coolify. This sect
 
 ## Decide Who May Reach Buzz
 
-Make this decision before creating public DNS records or deploying Buzz. Buzz has no GitHub user or organization allowlist, no built-in rate limiting, and no total or per-user storage quota. Any GitHub user who can reach the server can attempt to sign in, create sites, and consume storage.
+Before exposing Buzz, decide who may sign in. By default, any reachable GitHub user can create sites and consume storage. Use `BUZZ_ALLOWED_GITHUB_USERS` for a username allowlist. Buzz has no built-in rate limiting or total or per-user storage quota.
 
 If Buzz is for a closed group, configure and verify access controls and rate limits at an upstream proxy, virtual private network, or firewall before deployment. [Review Buzz's security boundaries](../security/) for the controls the upstream layer must provide.
 

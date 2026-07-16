@@ -69,7 +69,24 @@ Inspect Traefik logs for ACME and Cloudflare errors. Then check:
 - The authoritative DNS zone is hosted by Cloudflare.
 - Coolify has one proxy-level wildcard certificate router, while Buzz's routers use `tls=true` without `tls.certresolver`.
 - The documented Coolify resolver change is used only on a proxy dedicated to Cloudflare-managed domains. Restore the saved proxy configuration if another application's TLS fails.
-- The `buzz.example.com` and `*.buzz.example.com` records are **DNS only** for the documented setup.
+- The `buzz.example.com` and `*.buzz.example.com` records are **DNS only** for the documented base-host setup.
+
+## Cloudflare Proxy Diagnostics
+
+Cloudflare claims are diagnostic-only. They continue returning `421` for site content even when every diagnostic passes.
+
+- `edge_tls_invalid`: wait for Universal SSL or correct the hostname's edge certificate.
+- `cloudflare_525`: Cloudflare could not complete the TLS handshake with the origin.
+- `cloudflare_526`: Full (strict) rejected the origin certificate.
+- `cloudflare_1014`: the hostname uses a cross-account Cloudflare CNAME that requires Cloudflare for SaaS or a different DNS arrangement.
+- `edge_redirect`: remove redirect rules from the Buzz verification path.
+- `edge_cached_challenge`: bypass cache for the current generation's verification path.
+- `edge_waf_denied` or `edge_challenge_present`: bypass WAF, bot, Access, or managed challenge rules.
+- `http_forward_blocked` or `http_forward_cached_challenge`: remove port-80 forwarding interference. `http_forward_redirect` records the observed redirect but does not prove that Traefik's intercepted ACME path fails.
+- `dns_mixed_cloudflare_addresses`: every A and AAAA answer must be Cloudflare-owned in explicit Cloudflare mode.
+- `range_data_stale`, `range_data_invalid`, or `range_data_missing`: update and redeploy the bundled Cloudflare range snapshot; Buzz will not dial public addresses until policy is valid.
+
+Buzz does not infer Cloudflare mode, change DNS, follow redirects, or request customer Cloudflare credentials.
 
 Let's Encrypt issuance can also fail because of external availability or certificate rate limits. Do not repeatedly restart Traefik while the same ACME error persists.
 

@@ -21,7 +21,6 @@ Users and operators receive specific readiness failures for proxied domains inst
   - HTTP-01 forwarding failures.
   - Redirect, cache, and WAF interference.
   - Cloudflare errors 1014, 525, and 526.
-- Keep activation disabled.
 
 ## Exclusions
 
@@ -29,7 +28,6 @@ Users and operators receive specific readiness failures for proxied domains inst
 
 ## Implementation
 
-- Add an explicit mode to claims rather than silently changing security policy.
 - Bundle a versioned Cloudflare range list with a documented update process.
 - Fail closed when range data is missing, malformed, or stale beyond policy.
 - Pin public connections to validated Cloudflare addresses.
@@ -39,8 +37,7 @@ Users and operators receive specific readiness failures for proxied domains inst
 ## Verification
 
 - Tests cover stale ranges, mixed Cloudflare/non-Cloudflare answers, malformed data, redirects, cached wrong tokens, WAF denial, and representative Cloudflare errors.
-- A controlled Cloudflare zone demonstrates diagnostics without customer API credentials.
-- The controlled zone proves whether Cloudflare forwards Traefik's HTTP-01 challenge under the documented Full (strict), redirect, cache, and WAF settings.
+- A controlled Cloudflare zone verifies credential-free diagnostics and HTTP-01 forwarding under the documented Full (strict), redirect, cache, and WAF settings.
 - Direct-domain behavior remains unchanged.
 
 ## Acceptance Criteria
@@ -49,13 +46,12 @@ Users and operators receive specific readiness failures for proxied domains inst
 - Cloudflare diagnostics require both the global custom-domain opt-in and an explicit per-claim Cloudflare mode.
 - Every dialed public address is validated as Cloudflare-owned.
 - Diagnostics distinguish edge TLS, origin TLS, routing, and challenge failures.
-- No compatibility claim is made for arbitrary CDNs.
 
 ## Rollback
 
 Disable Cloudflare-mode admission. Direct domains and their lifecycle remain unaffected.
 
-Disabling the global custom-domain capability still requires acknowledged withdrawal of any direct domains from earlier stages.
+Disabling the global custom-domain capability still requires acknowledged withdrawal of all custom-domain routers.
 
 ## Dependencies
 

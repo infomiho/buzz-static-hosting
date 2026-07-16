@@ -22,7 +22,12 @@ def test_fresh_database_runs_all_migrations(tmp_path, monkeypatch):
         columns = {
             row[1] for row in conn.execute("PRAGMA table_info(custom_domain_claims)")
         }
-        assert {"activated_at", "activation_checked_at", "activation_error"} <= columns
+        assert {
+            "activated_at",
+            "activation_checked_at",
+            "activation_error",
+            "claim_mode",
+        } <= columns
         indexes = {
             row[1]: row[2]
             for row in conn.execute("PRAGMA index_list(custom_domain_claims)")
@@ -74,6 +79,12 @@ def test_version_four_database_upgrades_to_multiple_aliases(tmp_path, monkeypatc
         assert conn.execute(
             "SELECT COUNT(*) FROM custom_domain_claims WHERE site_name = 'existing-site'"
         ).fetchone()[0] == 2
+        assert {
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT claim_mode FROM custom_domain_claims"
+            )
+        } == {"direct"}
 
 
 def test_migrations_are_idempotent(tmp_path, monkeypatch):

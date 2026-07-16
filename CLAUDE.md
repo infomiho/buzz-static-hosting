@@ -47,13 +47,15 @@ Commands: `deploy`, `list`, `delete`, `url`, `config`, `login`, `logout`, `whoam
 
 Docker Compose with Traefik v3 (wildcard SSL via Cloudflare DNS challenge). Required `.env` vars: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `CF_API_TOKEN`, `ACME_EMAIL`.
 
-Coolify production uses `docker-compose.coolify.yml`: enable Raw Docker Compose Deployment, leave the app FQDN empty, and set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` on the app. Pushes to `main` auto-deploy via GitHub webhook. Env var changes in Coolify reach the container only on the next restart or redeploy; a push-triggered deploy uses env values as of deploy start.
+Coolify production uses `docker-compose.coolify.yml`. Enable Raw Docker Compose Deployment, leave the app FQDN empty, and set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET`. Pushes to `main` auto-deploy. Environment changes take effect on restart or redeployment.
 
 Coolify proxy config must be saved through **Servers > Proxy**. Direct edits to `/data/coolify/proxy/docker-compose.yml` are not durable; Coolify stores proxy config in its DB and rewrites the file during proxy actions or upgrades.
 
 For wildcard certificates, Coolify's Traefik proxy should use Cloudflare DNS-01 and a single `wildcard-certs` router for `BUZZ_DOMAIN` and `*.BUZZ_DOMAIN`. Buzz app labels should set `tls=true` without `tls.certresolver`; otherwise Traefik creates duplicate ACME challenges for the same `_acme-challenge` record.
 
 Custom domains are an optional operator capability and default to disabled through `BUZZ_CUSTOM_DOMAINS_ENABLED`. Disabled or unhealthy custom-domain infrastructure must not affect canonical Buzz hosting. Once custom-domain routers exist, disablement requires acknowledged router withdrawal before removing the Traefik provider integration.
+
+Cloudflare claims require explicit diagnostic mode and `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED`. They validate bundled Cloudflare ranges, edge forwarding, and origin health but cannot activate. The bundled range snapshot fails closed after 180 days.
 
 Staging and production custom-domain ACME resolvers need separate storage files. A valid staging certificate loaded in Traefik's global TLS store can suppress production issuance for the same hostname; remove only that staging certificate entry before the production cutover.
 

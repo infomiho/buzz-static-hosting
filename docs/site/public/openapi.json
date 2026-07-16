@@ -26,10 +26,246 @@
         "title": "ApiUser",
         "type": "object"
       },
+      "CloudflareCapability": {
+        "properties": {
+          "admission_enabled": {
+            "title": "Admission Enabled",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "admission_enabled",
+          "ready",
+          "detail"
+        ],
+        "title": "CloudflareCapability",
+        "type": "object"
+      },
+      "CloudflareDiagnosticComponent": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "error"
+        ],
+        "title": "CloudflareDiagnosticComponent",
+        "type": "object"
+      },
+      "CloudflareDiagnosticResponse": {
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "dns": {
+            "$ref": "#/components/schemas/CloudflareDiagnosticComponent"
+          },
+          "edge_http": {
+            "$ref": "#/components/schemas/CloudflareEdgeHttpDiagnostic"
+          },
+          "edge_tls": {
+            "$ref": "#/components/schemas/CloudflareDiagnosticComponent"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "integer"
+          },
+          "http_forwarding": {
+            "$ref": "#/components/schemas/CloudflareHttpForwardDiagnostic"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/CloudflareDiagnosticComponent"
+          },
+          "ranges_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ranges Version"
+          }
+        },
+        "required": [
+          "generation",
+          "checked_at",
+          "ranges_version",
+          "dns",
+          "edge_tls",
+          "edge_http",
+          "http_forwarding",
+          "origin"
+        ],
+        "title": "CloudflareDiagnosticResponse",
+        "type": "object"
+      },
+      "CloudflareEdgeHttpDiagnostic": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "cf_cache_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cf Cache Status"
+          },
+          "cf_ray": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cf Ray"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "redirect_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Location"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "status",
+          "error",
+          "status_code",
+          "address",
+          "cf_ray",
+          "cf_cache_status",
+          "redirect_location"
+        ],
+        "title": "CloudflareEdgeHttpDiagnostic",
+        "type": "object"
+      },
+      "CloudflareHttpForwardDiagnostic": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "status",
+          "error",
+          "status_code"
+        ],
+        "title": "CloudflareHttpForwardDiagnostic",
+        "type": "object"
+      },
       "CreateDomainClaimRequest": {
         "properties": {
           "hostname": {
             "title": "Hostname",
+            "type": "string"
+          },
+          "mode": {
+            "default": "direct",
+            "enum": [
+              "direct",
+              "cloudflare"
+            ],
+            "title": "Mode",
             "type": "string"
           }
         },
@@ -92,6 +328,9 @@
             "title": "Admission Enabled",
             "type": "boolean"
           },
+          "cloudflare": {
+            "$ref": "#/components/schemas/CloudflareCapability"
+          },
           "control_ready": {
             "title": "Control Ready",
             "type": "boolean"
@@ -139,7 +378,8 @@
           "control_ready",
           "admission_enabled",
           "routing_enabled",
-          "routing_targets"
+          "routing_targets",
+          "cloudflare"
         ],
         "title": "CustomDomainCapabilityResponse",
         "type": "object"
@@ -390,6 +630,16 @@
             ],
             "title": "Challenge Seen At"
           },
+          "cloudflare_diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloudflareDiagnosticResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -427,6 +677,14 @@
               }
             ],
             "title": "Last Error"
+          },
+          "mode": {
+            "enum": [
+              "direct",
+              "cloudflare"
+            ],
+            "title": "Mode",
+            "type": "string"
           },
           "removal_requested_at": {
             "anyOf": [
@@ -532,7 +790,9 @@
           "activation_checked_at",
           "activation_error",
           "removal_requested_at",
-          "withdrawn_at"
+          "withdrawn_at",
+          "mode",
+          "cloudflare_diagnostics"
         ],
         "title": "DomainClaimResponse",
         "type": "object"

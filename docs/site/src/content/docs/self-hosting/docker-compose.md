@@ -118,6 +118,8 @@ The bundled Compose configuration then enables Traefik's HTTP provider, which po
 
 The quota settings limit pending and verified aliases per site, per user, and across the server. Each alias is reconciled and removed independently; aliases awaiting acknowledged withdrawal continue to consume quota.
 
+Set `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED=true` to enable credential-free Cloudflare proxy diagnostics. This mode checks Cloudflare addresses, edge TLS, challenge forwarding, and Full (strict) origin behavior, but cannot activate or serve the hostname. Bypass redirects, caching, WAF, Workers, Access, and challenges on Buzz and ACME verification paths.
+
 Check the private readiness response:
 
 ```bash

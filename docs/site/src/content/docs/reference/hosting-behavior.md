@@ -21,6 +21,8 @@ Claims reject URLs, ports, paths, wildcards, IP addresses, single-label and loca
 
 A site can have multiple independently verified custom hostnames. Every alias serves the same deployment and analytics identity as the permanent Buzz hostname. Removing one alias does not affect the others or change the site's deployment name.
 
+Each claim has an explicit routing mode. `direct` claims can activate after DNS and origin validation. `cloudflare` claims run credential-free diagnostics but cannot activate or serve content. DNS answers never change the selected mode.
+
 ## File Lookup Order
 
 Buzz decodes the URL path, rejects paths that escape the site directory, and checks candidates in this order:

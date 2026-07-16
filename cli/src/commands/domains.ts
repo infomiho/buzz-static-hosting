@@ -53,19 +53,38 @@ export async function listDomains(
 export async function addDomain(
   siteName: string,
   hostname: string,
+  options: { mode?: string } = {},
   cliOptions: CliOptions = {}
 ): Promise<void> {
   const capability = await getDomainCapability(cliOptions);
-  requireReady(capability);
-  const claim = await createDomainClaim(siteName, hostname, cliOptions);
+  const mode = options.mode ?? "direct";
+  if (mode !== "direct" && mode !== "cloudflare") {
+    throw new CliError("Mode must be 'direct' or 'cloudflare'");
+  }
+  if (mode === "direct") {
+    requireReady(capability);
+  } else if (!capability.cloudflare.ready) {
+    throw new CliError(
+      capability.cloudflare.detail ?? "Cloudflare proxy diagnostics are not ready"
+    );
+  }
+  const claim = await createDomainClaim(siteName, hostname, mode, cliOptions);
   console.log(`Added custom domain ${claim.hostname} to site '${siteName}'.\n`);
   console.log("Prove ownership by adding this DNS record:");
   console.log(`  Type:  ${claim.verification.type}`);
   console.log(`  Name:  ${claim.verification.name}`);
   console.log(`  Value: ${claim.verification.value}\n`);
-  console.log("Route the domain directly to this Buzz server:");
-  for (const target of capability.routing_targets) {
-    console.log(`  ${target.type.padEnd(5)} ${claim.hostname} -> ${target.value}`);
+  if (mode === "cloudflare") {
+    console.log("Keep Cloudflare proxying enabled and set SSL/TLS to Full (strict).");
+    console.log(
+      "Bypass cache, redirects, WAF, Workers, Access, and challenges for the Buzz verification path."
+    );
+    console.log("Diagnostics cannot activate or serve this hostname.");
+  } else {
+    console.log("Route the domain directly to this Buzz server:");
+    for (const target of capability.routing_targets) {
+      console.log(`  ${target.type.padEnd(5)} ${claim.hostname} -> ${target.value}`);
+    }
   }
   console.log("\nBuzz does not change your DNS records.");
   console.log(`After the records propagate, run:\n  buzz domains check ${siteName} ${claim.hostname}`);
@@ -136,8 +155,11 @@ export function registerDomainsCommand(program: Command): void {
     .action((site?: string) => listDomains(site, program.opts()));
   domains
     .command("add <site> <domain>")
-    .description("Attach a direct custom domain to a site")
-    .action((site: string, domain: string) => addDomain(site, domain, program.opts()));
+    .description("Attach a custom domain to a site")
+    .option("--mode <mode>", "Routing mode: direct or cloudflare", "direct")
+    .action((site: string, domain: string, options: { mode?: string }) =>
+      addDomain(site, domain, options, program.opts())
+    );
   domains
     .command("check <site> <domain>")
     .description("Check custom-domain ownership and activation")

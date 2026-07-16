@@ -97,6 +97,29 @@ def test_multiple_active_claims_are_allowed_per_site(claim_db):
     }
 
 
+def test_cloudflare_claims_cannot_enter_direct_activation(claim_db):
+    with claim_db() as conn:
+        store = DomainClaimStore(conn)
+        direct = store.create("site-one", "direct.example.com")
+        cloudflare = store.create(
+            "site-one", "proxy.example.com", claim_mode="cloudflare"
+        )
+        for claim in (direct, cloudflare):
+            store.record_check(claim.id, "site-one", (claim.verification_value,))
+        routed = store.prepare_routes(True)
+        for claim in routed:
+            store.mark_routed(claim.id, claim.route_generation)
+        candidates = store.activation_candidates()
+        cloudflare = store.get(cloudflare.id, "site-one")
+
+        activated = store.mark_activated(
+            cloudflare.id, cloudflare.route_generation
+        )
+
+    assert [claim.hostname for claim in candidates] == ["direct.example.com"]
+    assert activated is False
+
+
 def test_duplicate_active_hostname_is_rejected_for_same_site(claim_db):
     with claim_db() as conn:
         store = DomainClaimStore(conn)

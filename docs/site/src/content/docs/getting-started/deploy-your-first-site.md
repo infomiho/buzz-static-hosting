@@ -82,7 +82,7 @@ You need:
    curl --fail --show-error https://my-site.buzz.example.com/
    ```
 
-If Buzz reports that another user owns the site, choose another unique name and deploy again. If you previously created the site with a different GitHub account, run `buzz logout`, run `buzz login` with the owning account, verify it with `buzz whoami`, and retry the deployment.
+If another user owns the site, choose a different name. If you own it through another GitHub account, sign out, sign in with that account, confirm it with `buzz whoami`, and retry.
 
 ## Redeploy The Site
 
