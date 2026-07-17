@@ -53,6 +53,7 @@ class DomainModeTransition:
     error: str | None
     lease_owner: str | None
     lease_expires_at: str | None
+    automatic_retarget: bool
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,7 @@ class DomainClaimStateMachine:
         values.setdefault("max_target_ttl", values.get("observed_ttl") or 0)
         values.setdefault("confirmed_fingerprint", None)
         values.setdefault("confirmed_at", None)
+        values["automatic_retarget"] = bool(values["automatic_retarget"])
         return DomainModeTransition(**values)
 
     def managed_candidates(self) -> list[DomainClaim]:
@@ -189,6 +191,7 @@ class DomainClaimStateMachine:
         route_generation: int,
         target_mode: str,
         now: datetime | None = None,
+        automatic_retarget: bool = False,
     ) -> DomainModeTransition:
         if target_mode not in {"direct", "cloudflare"}:
             raise Conflict("Unsupported transition target")
@@ -219,11 +222,12 @@ class DomainClaimStateMachine:
         self._conn.execute(
             """INSERT INTO custom_domain_mode_transitions
             (claim_id, mode_generation, probe_generation, source_mode, target_mode,
-             state, started_at, deadline_at)
-            VALUES (?, ?, 0, ?, ?, 'observing', ?, ?)
+             state, started_at, deadline_at, automatic_retarget)
+            VALUES (?, ?, 0, ?, ?, 'observing', ?, ?, ?)
             ON CONFLICT(claim_id) DO UPDATE SET
               mode_generation=excluded.mode_generation, probe_generation=0,
               source_mode=excluded.source_mode, target_mode=excluded.target_mode,
+              automatic_retarget=excluded.automatic_retarget,
               state='observing', started_at=excluded.started_at,
                deadline_at=excluded.deadline_at, checked_at=NULL, completed_at=NULL,
                 answer_fingerprint=NULL, confirmed_fingerprint=NULL, confirmed_at=NULL,
@@ -238,6 +242,7 @@ class DomainClaimStateMachine:
                 target_mode,
                 now.isoformat(),
                 deadline.isoformat() if deadline else None,
+                automatic_retarget,
             ),
         )
         return self.get(claim_id)  # type: ignore[return-value]
@@ -324,7 +329,16 @@ class DomainClaimStateMachine:
         if not transition:
             return False
         target_observed = observed_mode == transition.target_mode and fingerprint is not None
-        same_answer = target_observed and fingerprint == transition.answer_fingerprint
+        tracked_observation = target_observed or bool(
+            transition.automatic_retarget
+            and observed_mode in {"direct", "cloudflare"}
+            and fingerprint is not None
+        )
+        same_answer = bool(
+            tracked_observation
+            and observed_mode == transition.observed_mode
+            and fingerprint == transition.answer_fingerprint
+        )
         database_now = self._conn.execute(
             "SELECT strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
         ).fetchone()[0]
@@ -337,7 +351,7 @@ class DomainClaimStateMachine:
                 seconds=max(60, ttl, transition.max_target_ttl)
             )
         stable_increment = same_answer and separated
-        accepted_target_sample = target_observed and (
+        accepted_target_sample = tracked_observation and (
             not same_answer or stable_increment
         )
         state = "validating" if target_observed else "observing"
@@ -369,21 +383,21 @@ class DomainClaimStateMachine:
                 database_now,
                 observed_mode,
                 ttl,
-                target_observed,
+                tracked_observation,
                 fingerprint,
-                target_observed,
+                tracked_observation,
                 same_answer,
                 ttl,
-                target_observed,
+                tracked_observation,
                 ttl,
                 error,
                 state,
                 stable_increment,
-                target_observed,
-                target_observed,
+                tracked_observation,
+                tracked_observation,
                 same_answer,
                 database_now,
-                target_observed,
+                tracked_observation,
                 database_now,
                 accepted_target_sample,
                 database_now,
@@ -1050,6 +1064,121 @@ class DomainClaimStateMachine:
         ).fetchone()
         return row["activated_at"] is None
 
+    def preserve_reserved_target_after_source_failure(
+        self, claim: DomainClaim, reservation: ProbeReservation
+    ) -> bool:
+        new_generation = reservation.mode_generation + 1
+        cursor = self._conn.execute(
+            """UPDATE custom_domain_claims SET mode_generation = ?
+            WHERE id = ? AND route_generation = ? AND mode_generation = ?
+              AND activated_at IS NULL AND status = 'verified'
+              AND route_status = 'routed' AND removal_requested_at IS NULL
+              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
+                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
+                  AND source_mode = ? AND lease_owner = ?
+                  AND lease_expires_at > datetime('now')
+                  AND state IN
+                    ('observing', 'validating', 'action_needed', 'deadline_evaluation'))""",
+            (
+                new_generation,
+                claim.id,
+                claim.route_generation,
+                reservation.mode_generation,
+                claim.id,
+                reservation.mode_generation,
+                reservation.probe_generation,
+                reservation.source_mode,
+                reservation.owner,
+            ),
+        )
+        if not cursor.rowcount:
+            return False
+        cursor = self._conn.execute(
+            """UPDATE custom_domain_mode_transitions
+            SET mode_generation = ?, probe_generation = probe_generation + 1,
+                source_mode = NULL, state = 'observing', deadline_at = NULL,
+                automatic_retarget = 0,
+                checked_at = NULL, completed_at = NULL, answer_fingerprint = NULL,
+                confirmed_fingerprint = NULL, confirmed_at = NULL,
+                stable_observation_count = 0, first_target_observed_at = NULL,
+                last_target_observed_at = NULL, observed_mode = NULL,
+                observed_ttl = NULL, max_target_ttl = 0, error = NULL,
+                lease_owner = NULL, lease_expires_at = NULL
+            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
+              AND source_mode = ? AND lease_owner = ?""",
+            (
+                new_generation,
+                claim.id,
+                reservation.mode_generation,
+                reservation.probe_generation,
+                reservation.source_mode,
+                reservation.owner,
+            ),
+        )
+        return cursor.rowcount > 0
+
+    def retarget_reserved_automatic_onboarding(
+        self,
+        claim: DomainClaim,
+        reservation: ProbeReservation,
+        target_mode: str,
+    ) -> bool:
+        if target_mode not in {"direct", "cloudflare"}:
+            return False
+        new_generation = reservation.mode_generation + 1
+        cursor = self._conn.execute(
+            """UPDATE custom_domain_claims SET mode_generation = ?
+            WHERE id = ? AND route_generation = ? AND mode_generation = ?
+              AND automatic_mode = 1 AND activated_at IS NULL
+              AND status = 'verified' AND route_status = 'routed'
+              AND removal_requested_at IS NULL
+              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
+                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
+                  AND source_mode IS NULL AND target_mode <> ?
+                  AND automatic_retarget = 1 AND observed_mode = ?
+                  AND answer_fingerprint IS NOT NULL
+                  AND stable_observation_count >= 2 AND lease_owner = ?
+                  AND lease_expires_at > datetime('now')
+                  AND state IN ('observing', 'validating', 'action_needed'))""",
+            (
+                new_generation,
+                claim.id,
+                claim.route_generation,
+                reservation.mode_generation,
+                claim.id,
+                reservation.mode_generation,
+                reservation.probe_generation,
+                target_mode,
+                target_mode,
+                reservation.owner,
+            ),
+        )
+        if not cursor.rowcount:
+            return False
+        cursor = self._conn.execute(
+            """UPDATE custom_domain_mode_transitions
+            SET mode_generation = ?, probe_generation = probe_generation + 1,
+                target_mode = ?, state = 'observing', checked_at = NULL,
+                completed_at = NULL, answer_fingerprint = NULL,
+                confirmed_fingerprint = NULL, confirmed_at = NULL,
+                stable_observation_count = 0, first_target_observed_at = NULL,
+                last_target_observed_at = NULL, observed_mode = NULL,
+                observed_ttl = NULL, max_target_ttl = 0, error = NULL,
+                lease_owner = NULL, lease_expires_at = NULL
+            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
+              AND source_mode IS NULL AND automatic_retarget = 1
+              AND lease_owner = ?""",
+            (
+                new_generation,
+                target_mode,
+                claim.id,
+                reservation.mode_generation,
+                reservation.probe_generation,
+                reservation.owner,
+            ),
+        )
+        return cursor.rowcount > 0
+
     def retry(
         self,
         claim_id: int,
@@ -1327,7 +1456,12 @@ class DomainTransitionCoordinator:
             if not target_mode:
                 self._apply_stable_health(claim, evidence)
                 return
-            transitions.start(claim.id, claim.route_generation, target_mode)
+            transitions.start(
+                claim.id,
+                claim.route_generation,
+                target_mode,
+                automatic_retarget=not claim.activated_at,
+            )
 
     def _process_transition(
         self, claim: DomainClaim, transition: DomainModeTransition, deadline: float
@@ -1397,8 +1531,8 @@ class DomainTransitionCoordinator:
                 if deactivated is None:
                     return
                 if deactivated:
-                    transitions.fail_reserved(
-                        claim, reservation, source_error or "source_check_failed"
+                    transitions.preserve_reserved_target_after_source_failure(
+                        claim, reservation
                     )
                     return
                 if source_error:
@@ -1444,6 +1578,20 @@ class DomainTransitionCoordinator:
             ):
                 return
             recorded = transitions.get(claim.id)
+            if (
+                recorded
+                and recorded.source_mode is None
+                and observation.mode != recorded.target_mode
+                and recorded.stable_observation_count >= 2
+                and (
+                    observation.mode != "cloudflare"
+                    or self._cloudflare_target_enabled()
+                )
+                and transitions.retarget_reserved_automatic_onboarding(
+                    claim, reservation, observation.mode
+                )
+            ):
+                return
         if recorded:
             with self._database() as conn:
                 if not DomainClaimStateMachine(conn).renew_reservation(reservation):

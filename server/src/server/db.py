@@ -298,6 +298,20 @@ def _domain_path_evidence(conn: sqlite3.Connection) -> None:
             claim_id, route_generation, mode_generation, probe_generation, id DESC)""")
 
 
+def _automatic_transition_retarget(conn: sqlite3.Connection) -> None:
+    conn.execute("""ALTER TABLE custom_domain_mode_transitions
+        ADD COLUMN automatic_retarget INTEGER NOT NULL DEFAULT 0
+        CHECK (automatic_retarget IN (0, 1))""")
+    conn.execute("""UPDATE custom_domain_mode_transitions AS transitions
+        SET automatic_retarget = 1
+        WHERE source_mode IS NULL
+          AND state IN ('observing', 'validating', 'action_needed')
+          AND EXISTS (SELECT 1 FROM custom_domain_claims AS claims
+            WHERE claims.id = transitions.claim_id
+              AND claims.automatic_mode = 1 AND claims.activated_at IS NULL
+              AND claims.mode_generation = transitions.mode_generation)""")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _base_schema,
     _custom_domain_claims,
@@ -309,6 +323,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _automatic_domain_transitions,
     _transition_target_ttl,
     _domain_path_evidence,
+    _automatic_transition_retarget,
 )
 
 

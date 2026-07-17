@@ -603,7 +603,7 @@ def test_active_transition_completes_in_both_directions(
         "cloudflare_526",
     ],
 )
-def test_active_cloudflare_source_immediate_failure_deactivates_on_first_proof(
+def test_active_cloudflare_source_immediate_failure_preserves_target_on_first_proof(
     transition_db, error
 ):
     claim = start_cloudflare_to_direct_handoff(transition_db)
@@ -621,11 +621,13 @@ def test_active_cloudflare_source_immediate_failure_deactivates_on_first_proof(
         transition = DomainClaimStateMachine(conn).get(claim.id)
     assert failed.activated_at is None
     assert failed.activation_error == error
-    assert transition.state == "failed"
+    assert transition.source_mode is None
+    assert transition.target_mode == "direct"
+    assert transition.state == "observing"
 
 
 @pytest.mark.parametrize("error", ["edge_unavailable", "origin_unavailable", "cloudflare_525"])
-def test_active_cloudflare_source_transient_failure_deactivates_on_third_attempt(
+def test_active_cloudflare_source_transient_failure_preserves_target_on_third_attempt(
     transition_db, error
 ):
     claim = start_cloudflare_to_direct_handoff(transition_db)
@@ -649,7 +651,48 @@ def test_active_cloudflare_source_transient_failure_deactivates_on_third_attempt
         transition = DomainClaimStateMachine(conn).get(claim.id)
     assert failed.activated_at is None
     assert failed.health_failure_count == 3
-    assert transition.state == "failed"
+    assert transition.source_mode is None
+    assert transition.target_mode == "direct"
+    assert transition.state == "observing"
+
+
+def test_source_failure_preserves_direct_handoff_after_cached_cloudflare_observation(
+    transition_db,
+):
+    claim = start_cloudflare_to_direct_handoff(transition_db)
+    collector = CloudflareSourceCollector("edge_unavailable")
+    worker = coordinator(
+        transition_db,
+        collector.collect(claim).dns,
+        collector=collector,
+    )
+
+    worker.run_once()
+    worker.run_once()
+    worker.run_once()
+    collector.error = None
+    worker.run_once()
+
+    with transition_db() as conn:
+        deactivated = DomainClaimStore(conn).get(claim.id, "my-site")
+        preserved = DomainClaimStateMachine(conn).get(claim.id)
+    assert deactivated.activated_at is None
+    assert preserved.source_mode is None
+    assert preserved.target_mode == "direct"
+    assert preserved.state in DomainClaimStateMachine.ACTIVE_STATES
+
+    direct = DnsObservation("direct", ("8.8.8.8",), 60, "direct-stable")
+    worker._evidence_collector = Collector(direct)
+    worker.run_once()
+    age_target_evidence(transition_db, claim.id)
+    worker.run_once()
+
+    with transition_db() as conn:
+        activated = DomainClaimStore(conn).get(claim.id, "my-site")
+        completed = DomainClaimStateMachine(conn).get(claim.id)
+    assert activated.activated_at is not None
+    assert activated.claim_mode == "direct"
+    assert completed.state == "completed"
 
 
 def test_active_cloudflare_source_recovery_resets_failure_counter(transition_db):
@@ -752,6 +795,118 @@ def test_automatic_onboarding_completes_after_ttl_separated_observations(transit
     assert path["mode_generation"] == claim.mode_generation
     assert path["probe_generation"] == transition.probe_generation
     assert path["confirmation_fingerprint"] == "stable"
+
+
+def test_automatic_onboarding_retargets_after_stable_supported_mismatch(transition_db):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        conn.execute(
+            "UPDATE custom_domain_claims SET automatic_mode = 1 WHERE id = ?",
+            (claim.id,),
+        )
+    cloudflare = DnsObservation(
+        "cloudflare", ("104.16.0.1",), 60, "cloudflare-cached"
+    )
+    worker = coordinator(transition_db, cloudflare)
+    worker.run_once()
+
+    with transition_db() as conn:
+        original = DomainClaimStateMachine(conn).get(claim.id)
+    assert original.target_mode == "cloudflare"
+
+    direct = DnsObservation("direct", ("8.8.8.8",), 60, "direct-stable")
+    worker._evidence_collector = Collector(direct)
+    worker.run_once()
+    age_target_evidence(transition_db, claim.id)
+    worker.run_once()
+
+    with transition_db() as conn:
+        retargeted = DomainClaimStateMachine(conn).get(claim.id)
+    assert retargeted.mode_generation > original.mode_generation
+    assert retargeted.source_mode is None
+    assert retargeted.target_mode == "direct"
+    assert retargeted.state == "observing"
+    assert retargeted.stable_observation_count == 0
+
+
+def test_retarget_rejects_stale_prior_reservation(transition_db):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        conn.execute(
+            "UPDATE custom_domain_claims SET automatic_mode = 1 WHERE id = ?",
+            (claim.id,),
+        )
+    cloudflare = DnsObservation(
+        "cloudflare", ("104.16.0.1",), 60, "cloudflare-cached"
+    )
+    coordinator(transition_db, cloudflare).run_once()
+    direct = DnsObservation("direct", ("8.8.8.8",), 60, "direct-stable")
+
+    with transition_db() as conn:
+        state = DomainClaimStateMachine(conn)
+        transition = state.get(claim.id)
+        reservation = state.reserve_probe(
+            claim.id, claim.route_generation, transition.mode_generation, "worker"
+        )
+        current = DomainClaimStore(conn).get(claim.id, "my-site")
+        assert state.record_reserved_observation(current, reservation, direct)
+        assert state.release_reservation(reservation)
+        conn.execute(
+            """UPDATE custom_domain_mode_transitions
+            SET last_target_observed_at = datetime('now', '-61 seconds')
+            WHERE claim_id = ?""",
+            (claim.id,),
+        )
+        reservation = state.reserve_probe(
+            claim.id, claim.route_generation, transition.mode_generation, "worker"
+        )
+        assert state.record_reserved_observation(current, reservation, direct)
+        assert state.retarget_reserved_automatic_onboarding(
+            current, reservation, "direct"
+        )
+
+        retargeted = state.get(claim.id)
+        assert not state.record_reserved_observation(current, reservation, direct)
+    assert retargeted.mode_generation > reservation.mode_generation
+    assert retargeted.probe_generation > reservation.probe_generation
+
+
+def test_automatic_onboarding_does_not_retarget_on_unstable_observations(
+    transition_db,
+):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        conn.execute(
+            "UPDATE custom_domain_claims SET automatic_mode = 1 WHERE id = ?",
+            (claim.id,),
+        )
+    cloudflare = DnsObservation(
+        "cloudflare", ("104.16.0.1",), 60, "cloudflare-cached"
+    )
+    worker = coordinator(transition_db, cloudflare)
+    worker.run_once()
+    with transition_db() as conn:
+        original = DomainClaimStateMachine(conn).get(claim.id)
+
+    observations = (
+        DnsObservation("direct", ("8.8.8.8",), 60, "direct-stable"),
+        cloudflare,
+        DnsObservation("direct", ("8.8.8.8",), 60, "direct-stable"),
+        DnsObservation("mixed", ("8.8.8.8", "104.16.0.1"), 60, "mixed"),
+        DnsObservation("direct", ("8.8.8.8",), 60, "direct-stable"),
+        DnsObservation("unsupported", ("1.1.1.1",), 60, "unsupported"),
+        DnsObservation("direct", ("8.8.8.8",), 60, "direct-stable"),
+    )
+    for observation in observations:
+        worker._evidence_collector = Collector(observation)
+        worker.run_once()
+        age_target_evidence(transition_db, claim.id)
+
+    with transition_db() as conn:
+        unchanged = DomainClaimStateMachine(conn).get(claim.id)
+    assert unchanged.mode_generation == original.mode_generation
+    assert unchanged.target_mode == "cloudflare"
+    assert unchanged.stable_observation_count == 1
 
 
 def test_transient_health_failure_deactivates_on_third_attempt(transition_db):

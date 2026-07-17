@@ -251,6 +251,41 @@ def test_transition_schema_rejects_stale_mode_generation(tmp_path, monkeypatch):
             )
 
 
+def test_retarget_migration_marks_existing_automatic_onboarding(tmp_path, monkeypatch):
+    path = tmp_path / "data.db"
+    with sqlite3.connect(path) as conn:
+        for migration in db_module.MIGRATIONS[:10]:
+            migration(conn)
+        conn.execute("PRAGMA user_version = 10")
+        conn.execute("INSERT INTO sites (name) VALUES ('site')")
+        claim_id = conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode, mode_generation,
+             automatic_mode)
+            VALUES ('one.example.com', 'site', 'token', 'verified', 'now', 'later',
+                    'routed', 1, 'cloudflare', 5, 1)"""
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO custom_domain_mode_transitions
+            (claim_id, mode_generation, probe_generation, source_mode, target_mode,
+             state, started_at)
+            VALUES (?, 5, 2, NULL, 'cloudflare', 'observing', 'now')""",
+            (claim_id,),
+        )
+    monkeypatch.setattr(db_module, "DB_PATH", path)
+
+    db_module.init_db()
+
+    with sqlite3.connect(path) as conn:
+        automatic_retarget = conn.execute(
+            """SELECT automatic_retarget FROM custom_domain_mode_transitions
+            WHERE claim_id = ?""",
+            (claim_id,),
+        ).fetchone()[0]
+    assert automatic_retarget == 1
+
+
 def test_migrations_are_idempotent(tmp_path, monkeypatch):
     path = tmp_path / "data.db"
     monkeypatch.setattr(db_module, "DB_PATH", path)

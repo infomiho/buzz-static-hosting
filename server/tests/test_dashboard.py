@@ -244,7 +244,8 @@ class TestCustomDomains:
             observed_ttl INTEGER,
             error TEXT,
             lease_owner TEXT,
-            lease_expires_at TEXT
+            lease_expires_at TEXT,
+            automatic_retarget INTEGER NOT NULL DEFAULT 0
         )""")
         conn.execute("""CREATE TABLE custom_domain_cloudflare_diagnostics (
             claim_id INTEGER,
