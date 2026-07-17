@@ -50,6 +50,17 @@ Users retain Cloudflare's proxy, caching, DDoS protection, and visitor-facing TL
 - Removal stops Buzz serving before the hostname claim is released.
 - Activation is independently default-off and cannot be disabled while activated Cloudflare routers remain.
 
+## Operational Verification
+
+On 2026-07-17, `cfactivate.miho.dev` was activated against the `code-screenshot` site through a fresh proxied claim:
+
+- Persistent TXT ownership, Cloudflare-only DNS, the exact router, edge TLS, the generation challenge, and trusted origin TLS were healthy.
+- `buzz-production` issued a fresh Let's Encrypt certificate through HTTP-01 before activation was enabled.
+- The hostname changed from `421` to `200`, and its body hash matched the canonical site and direct alias.
+- Buzz redeployed while the claim was active and resumed serving without DNS or router changes.
+- Removal stopped site serving before router withdrawal completed. Exact A and TXT records were deleted only after withdrawal was acknowledged.
+- Canonical health and the existing direct alias returned `200` throughout the rollout.
+
 ## Rollback
 
 Close admission, then withdraw Cloudflare and direct routers before disabling the global capability or removing the Traefik provider. Buzz does not change customer DNS or Cloudflare settings.
