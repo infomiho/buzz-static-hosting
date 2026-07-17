@@ -243,7 +243,7 @@
                     {% set diagnostic = cloudflare_diagnostics.get(claim.id) %}
                     <div class="mt-4 border-t-2 border-ink pt-4">
                         <p class="font-bold">Cloudflare proxy diagnostics</p>
-                        <p class="mt-2 text-rule">Keep orange-cloud proxying enabled, use Full (strict), and bypass cache, redirects, WAF, Workers, Access, and challenges for the displayed verification path.</p>
+                        <p class="mt-2 text-rule">Keep orange-cloud proxying enabled, use Full (strict), and bypass cache, redirects, WAF, Workers, Access, and challenges for the advanced verification path below.</p>
                         {% if diagnostic %}
                         <dl class="mt-3 grid gap-3 sm:grid-cols-[10rem_1fr]">
                             <dt class="font-bold">TXT ownership</dt>
@@ -266,11 +266,14 @@
                         {% endif %}
                     </div>
                     {% endif %}
-                    {% if claim.challenge_path and claim.route_status in ('publishing', 'routed') %}
-                    <div class="mt-4 border-t-2 border-ink pt-4">
-                        <p class="font-bold">Verification URL</p>
-                        <p class="mt-2 overflow-x-auto font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>
-                    </div>
+                    {% if claim.challenge_path and claim.route_status in ('publishing', 'routed') and not claim.activated_at %}
+                    <details class="mt-4 border-t-2 border-ink">
+                        <summary class="cursor-pointer pt-4 font-bold">Advanced verification</summary>
+                        <div class="pt-3">
+                            <p class="text-rule">Buzz checks this URL automatically. Use it only when configuring proxy, cache, redirect, or security-rule exceptions.</p>
+                            <p class="mt-2 overflow-x-auto font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>
+                        </div>
+                    </details>
                     {% endif %}
                     </div>
                 </details>

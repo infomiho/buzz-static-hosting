@@ -224,6 +224,16 @@ class TestCustomDomains:
             (id, hostname, site_name, verification_token, status, created_at, expires_at)
             VALUES (1, 'www.example.com', 'my-site', 'bdv_test', 'pending',
                     '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00')""")
+        conn.execute("""INSERT INTO custom_domain_claims
+            (id, hostname, site_name, verification_token, status, created_at, expires_at,
+             challenge_token, route_status, route_generation, activated_at)
+            VALUES
+              (2, 'active.example.com', 'my-site', 'bdv_active', 'verified',
+               '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'bdc_active', 'routed', 1, '2026-07-16T00:00:00+00:00'),
+              (3, 'checking.example.com', 'my-site', 'bdv_checking', 'verified',
+               '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'bdc_checking', 'routed', 1, NULL)""")
         conn.commit()
         (tmp_path / "my-site").mkdir()
         monkeypatch.setattr("server.routes.dashboard.db", db)
@@ -245,6 +255,9 @@ class TestCustomDomains:
         assert "_buzz.www.example.com" in response.text
         assert "buzz-domain-verification=bdv_test" in response.text
         assert "Waiting for DNS verification" in response.text
+        assert "Advanced verification" in response.text
+        assert "bdc_checking" in response.text
+        assert "bdc_active" not in response.text
         assert '<details class="border-x-2 border-t-2 border-ink border-b-2" data-domain-claim="1">' in response.text
         assert '<details class="border-x-2 border-t-2 border-ink border-b-2" data-domain-claim="1" open>' not in response.text
         assert response.text.index("Analytics") < response.text.index("Custom domains")
@@ -252,7 +265,7 @@ class TestCustomDomains:
         assert 'id="remove-domain-dialog"' in response.text
         assert "Buzz will stop tracking its ownership" in response.text
         assert "Add custom domain" in response.text
-        assert "1 of 5 aliases used for this site" in response.text
+        assert "3 of 5 aliases used for this site" in response.text
 
 
 class TestLoginFlow:
