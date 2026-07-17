@@ -169,6 +169,56 @@ def test_reconciler_rejects_malformed_router_tls(routing_db):
     assert claim.route_error == "router_configuration_mismatch"
 
 
+@pytest.mark.parametrize(
+    ("router", "error"),
+    [
+        (None, "router_not_observed"),
+        ({**expected_router(), "service": "wrong@docker"}, "router_configuration_mismatch"),
+    ],
+)
+def test_active_cloudflare_route_failure_stops_serving_immediately(
+    routing_db, router, error
+):
+    with routing_db() as conn:
+        store = DomainClaimStore(conn)
+        claim = store.list_for_site("my-site")[0]
+        conn.execute(
+            "UPDATE custom_domain_claims SET claim_mode = 'cloudflare' WHERE id = ?",
+            (claim.id,),
+        )
+    reconciler(FakeRuntimeClient(expected_router())).run_once()
+    with routing_db() as conn:
+        store = DomainClaimStore(conn)
+        claim = store.list_for_site("my-site")[0]
+        store.apply_cloudflare_activation(claim.id, claim.route_generation, None)
+
+    reconciler(FakeRuntimeClient(router)).run_once()
+
+    with routing_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.activated_at is None
+    assert claim.route_error == error
+    assert claim.activation_error == error
+
+
+def test_healthy_cloudflare_router_clears_route_error_for_revalidation(routing_db):
+    with routing_db() as conn:
+        store = DomainClaimStore(conn)
+        claim = store.list_for_site("my-site")[0]
+        conn.execute(
+            "UPDATE custom_domain_claims SET claim_mode = 'cloudflare' WHERE id = ?",
+            (claim.id,),
+        )
+    reconciler(FakeRuntimeClient(expected_router())).run_once()
+    reconciler(FakeRuntimeClient(None)).run_once()
+    reconciler(FakeRuntimeClient(expected_router())).run_once()
+
+    with routing_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.route_error is None
+    assert claim.activated_at is None
+
+
 def test_user_removal_waits_for_runtime_absence(routing_db):
     reconciler(FakeRuntimeClient(expected_router())).run_once()
     with routing_db() as conn:

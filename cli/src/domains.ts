@@ -49,6 +49,7 @@ export interface CloudflareDiagnostic {
   generation: number;
   checked_at: string;
   ranges_version: string | null;
+  ownership: DiagnosticComponent;
   dns: DiagnosticComponent;
   edge_tls: DiagnosticComponent;
   edge_http: DiagnosticComponent & {
@@ -60,6 +61,7 @@ export interface CloudflareDiagnostic {
   };
   http_forwarding: DiagnosticComponent & { status_code: number | null };
   origin: DiagnosticComponent;
+  consecutive_failures: number;
 }
 
 export interface DomainCapability {
@@ -72,6 +74,7 @@ export interface DomainCapability {
   routing_targets: { type: "A" | "AAAA"; value: string }[];
   cloudflare: {
     admission_enabled: boolean;
+    activation_enabled: boolean;
     ready: boolean;
     detail: string | null;
   };
@@ -117,6 +120,8 @@ function isCapability(value: unknown): value is DomainCapability {
     ) &&
     (!capability.cloudflare ||
       (typeof capability.cloudflare.admission_enabled === "boolean" &&
+        (capability.cloudflare.activation_enabled === undefined ||
+          typeof capability.cloudflare.activation_enabled === "boolean") &&
         typeof capability.cloudflare.ready === "boolean" &&
         (capability.cloudflare.detail === null ||
           typeof capability.cloudflare.detail === "string")))
@@ -140,6 +145,7 @@ function isCloudflareDiagnostic(value: unknown): value is CloudflareDiagnostic {
     Number.isInteger(diagnostic.generation) &&
     typeof diagnostic.checked_at === "string" &&
     nullableString(diagnostic.ranges_version) &&
+    isDiagnosticComponent(diagnostic.ownership) &&
     isDiagnosticComponent(diagnostic.dns) &&
     isDiagnosticComponent(diagnostic.edge_tls) &&
     isDiagnosticComponent(diagnostic.edge_http) &&
@@ -152,7 +158,8 @@ function isCloudflareDiagnostic(value: unknown): value is CloudflareDiagnostic {
     isDiagnosticComponent(diagnostic.http_forwarding) &&
     (diagnostic.http_forwarding?.status_code === null ||
       Number.isInteger(diagnostic.http_forwarding?.status_code)) &&
-    isDiagnosticComponent(diagnostic.origin)
+    isDiagnosticComponent(diagnostic.origin) &&
+    Number.isInteger(diagnostic.consecutive_failures)
   );
 }
 
@@ -195,10 +202,17 @@ function isClaim(value: unknown): value is DomainClaim {
 function normalizeClaim(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   const claim = value as Partial<DomainClaim>;
+  const diagnostic = claim.cloudflare_diagnostics;
   return {
     ...claim,
     mode: claim.mode ?? "direct",
-    cloudflare_diagnostics: claim.cloudflare_diagnostics ?? null,
+    cloudflare_diagnostics: diagnostic
+      ? {
+          ...diagnostic,
+          ownership: diagnostic.ownership ?? { status: "not_checked", error: null },
+          consecutive_failures: diagnostic.consecutive_failures ?? 0,
+        }
+      : null,
   };
 }
 
@@ -221,11 +235,17 @@ export async function getDomainCapability(
   }
   return {
     ...rawCapability,
-    cloudflare: rawCapability.cloudflare ?? {
-      admission_enabled: false,
-      ready: false,
-      detail: "This Buzz server does not support Cloudflare proxy diagnostics",
-    },
+    cloudflare: rawCapability.cloudflare
+      ? {
+          ...rawCapability.cloudflare,
+          activation_enabled: rawCapability.cloudflare.activation_enabled ?? false,
+        }
+      : {
+          admission_enabled: false,
+          activation_enabled: false,
+          ready: false,
+          detail: "This Buzz server does not support Cloudflare proxy diagnostics",
+        },
   };
 }
 
@@ -487,15 +507,15 @@ function formatCloudflareClaim(claim: DomainClaim): string {
   const lines = [
     claim.hostname,
     `  Site:            ${claim.site_name ?? "Deleted site"}`,
-    "  Mode:            Cloudflare diagnostics only",
-    `  Ownership:       ${ownership(claim)}`,
+    "  Mode:            Cloudflare proxy",
+    `  Ownership:       ${claim.status === "pending" ? ownership(claim) : diagnosticValue(diagnostic?.ownership)}`,
     `  Router:          ${routerStatus(claim)}`,
     `  Cloudflare DNS:  ${diagnosticValue(diagnostic?.dns)}`,
     `  Edge TLS:        ${diagnosticValue(diagnostic?.edge_tls)}`,
     `  Edge challenge:  ${diagnosticValue(diagnostic?.edge_http)}`,
     `  HTTP forwarding: ${diagnosticValue(diagnostic?.http_forwarding)}`,
     `  Origin:          ${diagnosticValue(diagnostic?.origin)}`,
-    "  Activation:      Disabled for Cloudflare mode",
+    `  Activation:      ${cloudflareActivation(claim)}`,
     `  Removal:         ${removal}`,
   ];
   if (claim.status === "pending") {
@@ -513,6 +533,14 @@ function formatCloudflareClaim(claim: DomainClaim): string {
     );
   }
   return lines.join("\n");
+}
+
+function cloudflareActivation(claim: DomainClaim): string {
+  if (isActive(claim) && claim.activation_error) {
+    return `Degraded (${claim.cloudflare_diagnostics?.consecutive_failures ?? 1}/3): ${claim.activation_error}`;
+  }
+  if (isActive(claim)) return "Active";
+  return claim.activation_error ?? "Not active";
 }
 
 function isActive(claim: DomainClaim): boolean {

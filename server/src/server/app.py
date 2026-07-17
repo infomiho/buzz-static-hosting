@@ -18,6 +18,7 @@ from .config import (
     ALLOW_REGISTRATION,
     ALLOWED_GITHUB_USERS,
     CONTENT_TYPES,
+    CLOUDFLARE_ACTIVATION_ENABLED,
     CUSTOM_DOMAIN_INGRESS_IPS,
     CUSTOM_DOMAIN_ORIGIN_HOST,
     CUSTOM_DOMAIN_RECONCILE_SECONDS,
@@ -125,6 +126,30 @@ def create_app() -> FastAPI:
         analytics_started = False
         stop_reconciler = asyncio.Event()
         try:
+            if not CLOUDFLARE_ACTIVATION_ENABLED:
+                with db() as conn:
+                    active_cloudflare_claim = conn.execute(
+                        """SELECT 1 FROM custom_domain_claims
+                        WHERE claim_mode = 'cloudflare' AND activated_at IS NOT NULL
+                          AND route_status IN ('publishing', 'routed', 'removing') LIMIT 1"""
+                    ).fetchone()
+                if active_cloudflare_claim:
+                    raise RuntimeError(
+                        "Withdraw active Cloudflare routers before disabling Cloudflare activation"
+                    )
+            else:
+                with db() as conn:
+                    active_cloudflare_claim = conn.execute(
+                        """SELECT 1 FROM custom_domain_claims
+                        WHERE claim_mode = 'cloudflare' AND activated_at IS NOT NULL
+                          AND route_status = 'routed' LIMIT 1"""
+                    ).fetchone()
+                if active_cloudflare_claim and not (
+                    CUSTOM_DOMAINS_ENABLED and TRAEFIK_CONTROL_TOKEN and TRAEFIK_API_URL
+                ):
+                    raise RuntimeError(
+                        "Active Cloudflare domains require the complete custom-domain runtime"
+                    )
             if not CUSTOM_DOMAINS_ENABLED:
                 with db() as conn:
                     routed_claim = conn.execute(
@@ -165,7 +190,8 @@ def create_app() -> FastAPI:
                         CUSTOM_DOMAIN_ORIGIN_HOST,
                     )
                     cloudflare_diagnostician = CloudflareDiagnostician(
-                        CUSTOM_DOMAIN_ORIGIN_HOST
+                        CUSTOM_DOMAIN_ORIGIN_HOST,
+                        activation_enabled=CLOUDFLARE_ACTIVATION_ENABLED,
                     )
                     reconciler = DomainRouteReconciler(
                         runtime_client,

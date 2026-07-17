@@ -29,6 +29,7 @@ Users retain Cloudflare's proxy, caching, DDoS protection, and visitor-facing TL
 - Add a Cloudflare-specific activation predicate.
 - Keep edge and origin evidence and errors separate.
 - Add Cloudflare-specific retry and backoff rules.
+- Fail closed immediately on ownership, Cloudflare DNS, router generation, and challenge identity failures. Allow three consecutive one-minute retries for edge and origin transport failures.
 - Extend dashboard, CLI, troubleshooting, and operator documentation.
 
 ## Verification
@@ -47,6 +48,7 @@ Users retain Cloudflare's proxy, caching, DDoS protection, and visitor-facing TL
 - Cloudflare failures never fall back to direct-mode security rules.
 - Closing admission prevents new claims. Withdraw existing routers before disabling the global capability or removing the provider.
 - Removal stops Buzz serving before the hostname claim is released.
+- Activation is independently default-off and cannot be disabled while activated Cloudflare routers remain.
 
 ## Rollback
 

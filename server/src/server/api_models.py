@@ -112,11 +112,13 @@ class CloudflareDiagnosticResponse(BaseModel):
     generation: int
     checked_at: str
     ranges_version: str | None
+    ownership: CloudflareDiagnosticComponent
     dns: CloudflareDiagnosticComponent
     edge_tls: CloudflareDiagnosticComponent
     edge_http: CloudflareEdgeHttpDiagnostic
     http_forwarding: CloudflareHttpForwardDiagnostic
     origin: CloudflareDiagnosticComponent
+    consecutive_failures: int
 
 
 class CustomDomainRoutingTarget(BaseModel):
@@ -137,6 +139,7 @@ class CustomDomainCapabilityResponse(BaseModel):
 
 class CloudflareCapability(BaseModel):
     admission_enabled: bool
+    activation_enabled: bool
     ready: bool
     detail: str | None
 

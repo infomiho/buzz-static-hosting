@@ -154,6 +154,7 @@ async def site_detail(
         "custom_domain_can_add": custom_domain_can_add,
         "direct_domains_available": direct_domains_available,
         "cloudflare_diagnostics_available": cloudflare_diagnostics_available,
+        "cloudflare_activation_enabled": config.CLOUDFLARE_ACTIVATION_ENABLED,
         "custom_domain_quota": domain_quota,
         "domain_claims": domain_claims,
         "cloudflare_diagnostics": cloudflare_diagnostics,

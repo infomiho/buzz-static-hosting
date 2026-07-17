@@ -450,6 +450,38 @@ class DomainClaimStore:
         )
         return cursor.rowcount > 0
 
+    def apply_cloudflare_activation(
+        self,
+        claim_id: int,
+        generation: int,
+        error: str | None,
+        deactivate: bool = False,
+        now: datetime | None = None,
+    ) -> bool:
+        now = now or datetime.now(timezone.utc)
+        if error:
+            cursor = self._conn.execute(
+                """UPDATE custom_domain_claims
+                SET activated_at = CASE WHEN ? THEN NULL ELSE activated_at END,
+                    activation_checked_at = ?,
+                    activation_error = ?
+                WHERE id = ? AND route_generation = ? AND status = 'verified'
+                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
+                  AND route_error IS NULL""",
+                (deactivate, now.isoformat(), error, claim_id, generation),
+            )
+        else:
+            cursor = self._conn.execute(
+                """UPDATE custom_domain_claims
+                SET activated_at = COALESCE(activated_at, ?), activation_checked_at = ?,
+                    activation_error = NULL
+                WHERE id = ? AND route_generation = ? AND status = 'verified'
+                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
+                  AND route_error IS NULL""",
+                (now.isoformat(), now.isoformat(), claim_id, generation),
+            )
+        return cursor.rowcount > 0
+
     def record_activation_error(
         self,
         claim_id: int,
@@ -479,8 +511,8 @@ class DomainClaimStore:
         row = self._conn.execute(
             """SELECT * FROM custom_domain_claims
             WHERE hostname = ? AND status = 'verified' AND route_status = 'routed'
-              AND activated_at IS NOT NULL AND site_name IS NOT NULL
-              AND claim_mode = 'direct'""",
+              AND route_error IS NULL AND activated_at IS NOT NULL
+              AND site_name IS NOT NULL""",
             (hostname,),
         ).fetchone()
         return self._from_row(row) if row else None
@@ -489,7 +521,7 @@ class DomainClaimStore:
         rows = self._conn.execute(
             """SELECT hostname FROM custom_domain_claims
             WHERE site_name = ? AND status = 'verified' AND route_status = 'routed'
-              AND activated_at IS NOT NULL AND claim_mode = 'direct'""",
+              AND route_error IS NULL AND activated_at IS NOT NULL""",
             (site_name,),
         ).fetchall()
         return frozenset(row["hostname"] for row in rows)
@@ -521,6 +553,41 @@ class DomainClaimStore:
               AND route_status IN ('publishing', 'removing') AND route_error IS NOT ?""",
             (error, claim_id, generation, error),
         )
+        return cursor.rowcount > 0
+
+    def record_cloudflare_route_health(
+        self,
+        claim_id: int,
+        generation: int,
+        error: str | None,
+        now: datetime | None = None,
+    ) -> bool:
+        now = now or datetime.now(timezone.utc)
+        if error:
+            cursor = self._conn.execute(
+                """UPDATE custom_domain_claims
+                SET route_error = ?, activated_at = NULL,
+                    activation_checked_at = ?, activation_error = ?
+                WHERE id = ? AND route_generation = ? AND status = 'verified'
+                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
+                  AND (route_error IS NOT ? OR activated_at IS NOT NULL)""",
+                (
+                    error,
+                    now.isoformat(),
+                    error,
+                    claim_id,
+                    generation,
+                    error,
+                ),
+            )
+        else:
+            cursor = self._conn.execute(
+                """UPDATE custom_domain_claims SET route_error = NULL
+                WHERE id = ? AND route_generation = ? AND status = 'verified'
+                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
+                  AND route_error IS NOT NULL""",
+                (claim_id, generation),
+            )
         return cursor.rowcount > 0
 
     def finish_withdrawal(

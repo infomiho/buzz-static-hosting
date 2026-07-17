@@ -65,7 +65,7 @@ export async function addDomain(
     requireReady(capability);
   } else if (!capability.cloudflare.ready) {
     throw new CliError(
-      capability.cloudflare.detail ?? "Cloudflare proxy diagnostics are not ready"
+      capability.cloudflare.detail ?? "Cloudflare proxy routing is not ready"
     );
   }
   const claim = await createDomainClaim(siteName, hostname, mode, cliOptions);
@@ -76,10 +76,14 @@ export async function addDomain(
   console.log(`  Value: ${claim.verification.value}\n`);
   if (mode === "cloudflare") {
     console.log("Keep Cloudflare proxying enabled and set SSL/TLS to Full (strict).");
+    if (!capability.cloudflare.activation_enabled) {
+      console.log("This server currently admits Cloudflare claims for diagnostics only.");
+    } else {
+      console.log("Buzz will activate the hostname after all proxy and origin checks pass.");
+    }
     console.log(
       "Bypass cache, redirects, WAF, Workers, Access, and challenges for the Buzz verification path."
     );
-    console.log("Diagnostics cannot activate or serve this hostname.");
   } else {
     console.log("Route the domain directly to this Buzz server:");
     for (const target of capability.routing_targets) {

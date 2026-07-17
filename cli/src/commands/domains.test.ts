@@ -181,7 +181,7 @@ describe("domain commands", () => {
     expect(readFileSync(cname, "utf8")).toBe("my-site\n");
   });
 
-  it("adds an explicit diagnostic-only Cloudflare claim", async () => {
+  it("adds an explicit Cloudflare claim while activation is disabled", async () => {
     const cloudflareCapability = {
       ...capability("unready"),
       cloudflare: { admission_enabled: true, ready: true, detail: null },
@@ -205,7 +205,7 @@ describe("domain commands", () => {
       "Keep Cloudflare proxying enabled and set SSL/TLS to Full (strict)."
     );
     expect(console.log).toHaveBeenCalledWith(
-      "Diagnostics cannot activate or serve this hostname."
+      "This server currently admits Cloudflare claims for diagnostics only."
     );
     expect(console.log).not.toHaveBeenCalledWith(
       expect.stringContaining("www.example.com ->")
@@ -417,6 +417,7 @@ describe("domain presentation", () => {
           generation: 1,
           checked_at: "2026-07-16T00:00:00+00:00",
           ranges_version: "2026-07-16",
+          ownership: { status: "healthy", error: null },
           dns: { status: "healthy", error: null },
           edge_tls: { status: "healthy", error: null },
           edge_http: {
@@ -434,16 +435,27 @@ describe("domain presentation", () => {
             status_code: 301,
           },
           origin: { status: "failed", error: "origin_tls_invalid" },
+          consecutive_failures: 1,
         },
       })
     );
 
-    expect(output).toContain("Mode:            Cloudflare diagnostics only");
+    expect(output).toContain("Mode:            Cloudflare proxy");
+    expect(output).toContain("Ownership:       healthy");
     expect(output).toContain("Cloudflare DNS:  healthy");
     expect(output).toContain("Edge challenge:  cloudflare_526");
     expect(output).toContain("HTTP forwarding: http_forward_redirect");
     expect(output).toContain("Origin:          origin_tls_invalid");
-    expect(output).toContain("Activation:      Disabled for Cloudflare mode");
+    expect(output).toContain("Activation:      Not active");
+  });
+
+  it("shows pending Cloudflare ownership before diagnostics begin", () => {
+    const output = formatDomainClaim(
+      claim({ mode: "cloudflare", status: "pending", cloudflare_diagnostics: null })
+    );
+
+    expect(output).toContain("Ownership:       Pending");
+    expect(output).not.toContain("Ownership:       Waiting for router acknowledgement");
   });
 
   it.each([

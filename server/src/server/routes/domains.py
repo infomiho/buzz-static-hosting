@@ -56,6 +56,10 @@ def cloudflare_diagnostic_response(diagnostic: CloudflareDiagnostic | None) -> d
         "generation": diagnostic.route_generation,
         "checked_at": diagnostic.checked_at,
         "ranges_version": diagnostic.ranges_version,
+        "ownership": {
+            "status": diagnostic.ownership_status,
+            "error": diagnostic.ownership_error,
+        },
         "dns": {"status": diagnostic.dns_status, "error": diagnostic.dns_error},
         "edge_tls": {
             "status": diagnostic.edge_tls_status,
@@ -79,6 +83,7 @@ def cloudflare_diagnostic_response(diagnostic: CloudflareDiagnostic | None) -> d
             "status": diagnostic.origin_status,
             "error": diagnostic.origin_error,
         },
+        "consecutive_failures": diagnostic.consecutive_failures,
     }
 
 
@@ -200,6 +205,7 @@ async def custom_domain_capability(
         "routing_targets": targets,
         "cloudflare": {
             "admission_enabled": config.CLOUDFLARE_DIAGNOSTICS_ENABLED,
+            "activation_enabled": config.CLOUDFLARE_ACTIVATION_ENABLED,
             "ready": cloudflare_detail is None,
             "detail": cloudflare_detail,
         },

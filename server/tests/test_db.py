@@ -87,6 +87,42 @@ def test_version_four_database_upgrades_to_multiple_aliases(tmp_path, monkeypatc
         } == {"direct"}
 
 
+def test_cloudflare_diagnostic_data_survives_activation_migration(tmp_path, monkeypatch):
+    path = tmp_path / "data.db"
+    with sqlite3.connect(path) as conn:
+        for migration in db_module.MIGRATIONS[:6]:
+            migration(conn)
+        conn.execute("PRAGMA user_version = 6")
+        conn.execute("INSERT INTO sites (name) VALUES ('existing-site')")
+        claim_id = conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode)
+            VALUES ('one.example.com', 'existing-site', 'token-one', 'verified',
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'routed', 1, 'cloudflare')"""
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO custom_domain_cloudflare_diagnostics
+            (claim_id, route_generation, checked_at, dns_status, edge_tls_status,
+             edge_http_status, http_forward_status, origin_status)
+            VALUES (?, 1, '2026-07-16T00:00:00+00:00', 'healthy', 'healthy',
+                    'healthy', 'healthy', 'healthy')""",
+            (claim_id,),
+        )
+    monkeypatch.setattr(db_module, "DB_PATH", path)
+
+    db_module.init_db()
+
+    with sqlite3.connect(path) as conn:
+        row = conn.execute(
+            """SELECT ownership_status, ownership_error, consecutive_failures
+            FROM custom_domain_cloudflare_diagnostics WHERE claim_id = ?""",
+            (claim_id,),
+        ).fetchone()
+    assert row == ("not_checked", None, 0)
+
+
 def test_migrations_are_idempotent(tmp_path, monkeypatch):
     path = tmp_path / "data.db"
     monkeypatch.setattr(db_module, "DB_PATH", path)

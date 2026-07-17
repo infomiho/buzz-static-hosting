@@ -6,12 +6,17 @@ import json
 import logging
 import socket
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
-from .custom_domains import DomainClaim, DomainClaimStore
+from .custom_domains import (
+    DnsTxtResolver,
+    DomainCheckUnavailable,
+    DomainClaim,
+    DomainClaimStore,
+)
 from .db import db
 from .domain_activation import (
     MAX_CANDIDATES_PER_PASS,
@@ -26,6 +31,12 @@ MAX_RANGE_AGE = timedelta(days=180)
 DIAGNOSTIC_INTERVAL = timedelta(seconds=60)
 MAX_RESOLVED_ADDRESSES = 16
 MAX_HEADER_VALUE = 512
+TRANSIENT_FAILURE_LIMIT = 3
+TRANSIENT_ACTIVATION_ERRORS = {
+    "edge_unavailable",
+    "origin_unavailable",
+    "cloudflare_525",
+}
 RANGE_PATH = Path(__file__).parent / "resources" / "cloudflare-ip-ranges.json"
 logger = logging.getLogger(__name__)
 
@@ -88,6 +99,26 @@ class CloudflareDiagnostic:
     http_forward_status_code: int | None
     origin_status: str
     origin_error: str | None
+    ownership_status: str
+    ownership_error: str | None
+    consecutive_failures: int = 0
+
+    @property
+    def activation_error(self) -> str | None:
+        for status, error in (
+            (self.ownership_status, self.ownership_error),
+            (self.dns_status, self.dns_error),
+            (self.edge_tls_status, self.edge_tls_error),
+            (self.edge_http_status, self.edge_http_error),
+            (self.origin_status, self.origin_error),
+        ):
+            if status != "healthy":
+                return error or "cloudflare_check_failed"
+        return None
+
+    @property
+    def allows_activation_grace(self) -> bool:
+        return self.activation_error in TRANSIENT_ACTIVATION_ERRORS
 
 
 def load_cloudflare_ranges(
@@ -256,7 +287,7 @@ class CloudflareDiagnosticStore:
               ON diagnostics.claim_id = claims.id
              AND diagnostics.route_generation = claims.route_generation
             WHERE claims.claim_mode = 'cloudflare' AND claims.status = 'verified'
-              AND claims.route_status = 'routed'
+              AND claims.route_status = 'routed' AND claims.route_error IS NULL
               AND (diagnostics.checked_at IS NULL OR diagnostics.checked_at <= ?)
             ORDER BY diagnostics.checked_at IS NOT NULL, diagnostics.checked_at, claims.id""",
             (checked_before,),
@@ -280,12 +311,14 @@ class CloudflareDiagnosticStore:
              edge_http_status, edge_http_error, edge_http_status_code,
              edge_address, cf_ray, cf_cache_status, redirect_location,
              http_forward_status, http_forward_error, http_forward_status_code,
-             origin_status, origin_error)
-            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              origin_status, origin_error, ownership_status, ownership_error,
+              consecutive_failures)
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             WHERE EXISTS (
                 SELECT 1 FROM custom_domain_claims
                 WHERE id = ? AND route_generation = ? AND claim_mode = 'cloudflare'
-                  AND status = 'verified' AND route_status = 'routed')
+                  AND status = 'verified' AND route_status = 'routed'
+                  AND route_error IS NULL)
             ON CONFLICT(claim_id, route_generation) DO UPDATE SET
               checked_at=excluded.checked_at, ranges_version=excluded.ranges_version,
               dns_status=excluded.dns_status, dns_error=excluded.dns_error,
@@ -300,7 +333,10 @@ class CloudflareDiagnosticStore:
               http_forward_status=excluded.http_forward_status,
               http_forward_error=excluded.http_forward_error,
               http_forward_status_code=excluded.http_forward_status_code,
-              origin_status=excluded.origin_status, origin_error=excluded.origin_error
+              origin_status=excluded.origin_status, origin_error=excluded.origin_error,
+              ownership_status=excluded.ownership_status,
+              ownership_error=excluded.ownership_error,
+              consecutive_failures=excluded.consecutive_failures
             WHERE excluded.checked_at > custom_domain_cloudflare_diagnostics.checked_at""",
             values + (diagnostic.claim_id, diagnostic.route_generation),
         )
@@ -317,16 +353,20 @@ class CloudflareDiagnostician:
             [str, DomainClaim], HttpForwardProbeResult
         ] = probe_cloudflare_http_forwarding,
         origin_probe: Callable[[str, DomainClaim], None] = probe_origin,
+        ownership_resolver: Callable[[str], tuple[str, ...]] | None = None,
         ranges: CloudflareRanges | None = None,
         range_error: str | None = None,
+        activation_enabled: bool = False,
     ):
         self._origin_host = origin_host
         self._resolver = resolver
         self._edge_probe = edge_probe
         self._http_probe = http_probe
         self._origin_probe = origin_probe
+        self._ownership_resolver = ownership_resolver or DnsTxtResolver().lookup
         self._ranges = ranges
         self._range_error = range_error
+        self._activation_enabled = activation_enabled
         if ranges is None and range_error is None:
             try:
                 self._ranges = load_cloudflare_ranges()
@@ -346,7 +386,15 @@ class CloudflareDiagnostician:
             try:
                 diagnostic = self._diagnose(claim)
                 with db() as conn:
-                    CloudflareDiagnosticStore(conn).record(diagnostic)
+                    diagnostic_store = CloudflareDiagnosticStore(conn)
+                    previous = diagnostic_store.get(claim.id, claim.route_generation)
+                    failures = 0
+                    if diagnostic.activation_error:
+                        failures = (previous.consecutive_failures if previous else 0) + 1
+                    diagnostic = replace(diagnostic, consecutive_failures=failures)
+                    recorded = diagnostic_store.record(diagnostic)
+                    if recorded and self._activation_enabled:
+                        self._apply_activation(conn, claim, diagnostic)
             except Exception:
                 logger.exception(
                     "Cloudflare diagnostic failed for claim %d generation %d",
@@ -356,6 +404,7 @@ class CloudflareDiagnostician:
 
     def _diagnose(self, claim: DomainClaim) -> CloudflareDiagnostic:
         checked_at = datetime.now(timezone.utc).isoformat()
+        ownership_status, ownership_error = self._validate_ownership(claim)
         dns_status, dns_error, addresses = self._validate_dns(claim.hostname)
         if addresses:
             edge = self._edge_probe(addresses[0], claim)
@@ -394,7 +443,34 @@ class CloudflareDiagnostician:
             http_forward.status_code,
             origin_status,
             origin_error,
+            ownership_status,
+            ownership_error,
         )
+
+    def _apply_activation(self, conn, claim: DomainClaim, diagnostic: CloudflareDiagnostic) -> None:
+        error = diagnostic.activation_error
+        deactivate = bool(
+            error
+            and (
+                not diagnostic.allows_activation_grace
+                or diagnostic.consecutive_failures >= TRANSIENT_FAILURE_LIMIT
+            )
+        )
+        DomainClaimStore(conn).apply_cloudflare_activation(
+            claim.id,
+            claim.route_generation,
+            error,
+            deactivate=deactivate,
+        )
+
+    def _validate_ownership(self, claim: DomainClaim) -> tuple[str, str | None]:
+        try:
+            values = self._ownership_resolver(claim.verification_name)
+        except DomainCheckUnavailable:
+            return "failed", "ownership_dns_unavailable"
+        if claim.verification_value not in values:
+            return "failed", "ownership_txt_mismatch"
+        return "healthy", None
 
     def _validate_dns(self, hostname: str) -> tuple[str, str | None, tuple[str, ...]]:
         if self._range_error or not self._ranges:

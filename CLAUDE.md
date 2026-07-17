@@ -55,7 +55,7 @@ For wildcard certificates, Coolify's Traefik proxy should use Cloudflare DNS-01 
 
 Custom domains are an optional operator capability and default to disabled through `BUZZ_CUSTOM_DOMAINS_ENABLED`. Disabled or unhealthy custom-domain infrastructure must not affect canonical Buzz hosting. Once custom-domain routers exist, disablement requires acknowledged router withdrawal before removing the Traefik provider integration.
 
-Cloudflare claims require explicit diagnostic mode and `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED`. They validate bundled Cloudflare ranges, edge forwarding, and origin health but cannot activate. The bundled range snapshot fails closed after 180 days.
+Cloudflare claims require explicit mode and `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED`; serving additionally requires `BUZZ_CLOUDFLARE_ACTIVATION_ENABLED`. Persistent ownership, Cloudflare ranges, edge challenge, and origin identity failures fail closed immediately. Edge and origin transport failures receive three attempts. The bundled range snapshot fails closed after 180 days.
 
 Staging and production custom-domain ACME resolvers need separate storage files. A valid staging certificate loaded in Traefik's global TLS store can suppress production issuance for the same hostname; remove only that staging certificate entry before the production cutover.
 

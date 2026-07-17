@@ -136,6 +136,15 @@ def _cloudflare_diagnostics(conn: sqlite3.Connection) -> None:
         FOREIGN KEY (claim_id) REFERENCES custom_domain_claims(id) ON DELETE CASCADE)""")
 
 
+def _cloudflare_activation(conn: sqlite3.Connection) -> None:
+    conn.execute("""ALTER TABLE custom_domain_cloudflare_diagnostics
+        ADD COLUMN ownership_status TEXT NOT NULL DEFAULT 'not_checked'""")
+    conn.execute("""ALTER TABLE custom_domain_cloudflare_diagnostics
+        ADD COLUMN ownership_error TEXT""")
+    conn.execute("""ALTER TABLE custom_domain_cloudflare_diagnostics
+        ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0""")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _base_schema,
     _custom_domain_claims,
@@ -143,6 +152,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _custom_domain_activation,
     _multiple_custom_domains,
     _cloudflare_diagnostics,
+    _cloudflare_activation,
 )
 
 

@@ -60,6 +60,8 @@ class DomainRouteReconciler:
             try:
                 if claim.route_status == "publishing":
                     self._reconcile_publication(claim)
+                elif claim.route_status == "routed" and claim.claim_mode == "cloudflare":
+                    self._reconcile_cloudflare_route(claim)
                 elif claim.route_status == "removing":
                     self._reconcile_withdrawal(claim)
             except Exception:
@@ -100,6 +102,20 @@ class DomainRouteReconciler:
             DomainClaimStore(conn).finish_withdrawal(claim.id, claim.route_generation)
         logger.info("Custom domain router %s withdrawal acknowledged", claim.route_name)
 
+    def _reconcile_cloudflare_route(self, claim: DomainClaim) -> None:
+        try:
+            router = self._runtime_client.router(claim.route_name)
+        except (OSError, ValueError):
+            self._record_cloudflare_route_health(claim, "runtime_api_unavailable")
+            return
+        if router is None:
+            self._record_cloudflare_route_health(claim, "router_not_observed")
+            return
+        if not self._matches_expected_router(claim, router):
+            self._record_cloudflare_route_health(claim, "router_configuration_mismatch")
+            return
+        self._record_cloudflare_route_health(claim, None)
+
     def _matches_expected_router(self, claim: DomainClaim, router: dict) -> bool:
         tls = router.get("tls")
         return (
@@ -120,4 +136,16 @@ class DomainRouteReconciler:
                 error,
             )
         if changed:
+            logger.warning("Custom domain router %s: %s", claim.route_name, error)
+
+    def _record_cloudflare_route_health(
+        self, claim: DomainClaim, error: str | None
+    ) -> None:
+        with db() as conn:
+            changed = DomainClaimStore(conn).record_cloudflare_route_health(
+                claim.id,
+                claim.route_generation,
+                error,
+            )
+        if changed and error:
             logger.warning("Custom domain router %s: %s", claim.route_name, error)

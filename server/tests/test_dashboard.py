@@ -223,7 +223,7 @@ class TestCustomDomains:
         conn.execute("""INSERT INTO custom_domain_claims
             (id, hostname, site_name, verification_token, status, created_at, expires_at)
             VALUES (1, 'www.example.com', 'my-site', 'bdv_test', 'pending',
-                    '2026-07-16T00:00:00+00:00', '2026-07-17T00:00:00+00:00')""")
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00')""")
         conn.commit()
         (tmp_path / "my-site").mkdir()
         monkeypatch.setattr("server.routes.dashboard.db", db)

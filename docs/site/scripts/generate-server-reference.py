@@ -107,6 +107,7 @@ def render_env_example() -> str:
 {setting('BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED', commented=True)}
 {setting('BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED', commented=True)}
 {setting('BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED', commented=True)}
+{setting('BUZZ_CLOUDFLARE_ACTIVATION_ENABLED', commented=True)}
 {setting('BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE', commented=True)}
 {setting('BUZZ_MAX_CUSTOM_DOMAINS_PER_USER', commented=True)}
 {setting('BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE', commented=True)}

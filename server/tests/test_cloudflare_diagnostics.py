@@ -20,6 +20,7 @@ from server.cloudflare_diagnostics import (
     probe_cloudflare_http_forwarding,
 )
 from server.custom_domains import DomainClaimStore
+from server.domain_activation import ActivationFailed
 
 
 def range_file(tmp_path, **overrides):
@@ -268,6 +269,206 @@ class FakeResponse:
 def routed_claim(diagnostic_db):
     with diagnostic_db() as conn:
         return DomainClaimStore(conn).list_for_site("my-site")[0]
+
+
+def activation_diagnostician(diagnostic_db, **overrides):
+    claim = routed_claim(diagnostic_db)
+    ranges = CloudflareRanges(
+        "test",
+        datetime.now(timezone.utc),
+        (ipaddress.ip_network("8.8.8.0/24"), ipaddress.ip_network("2001:4860::/32")),
+    )
+    options = {
+        "resolver": lambda _hostname: ("8.8.8.8",),
+        "edge_probe": lambda address, _claim: EdgeProbeResult(
+            "healthy", None, "healthy", None, address=address
+        ),
+        "http_probe": lambda _address, _claim: HttpForwardProbeResult(
+            "healthy", None, 200
+        ),
+        "origin_probe": lambda _origin, _claim: None,
+        "ownership_resolver": lambda _name: (claim.verification_value,),
+        "ranges": ranges,
+        "activation_enabled": True,
+        **overrides,
+    }
+    return CloudflareDiagnostician("origin", **options)
+
+
+def make_diagnostic_due(diagnostic_db):
+    with diagnostic_db() as conn:
+        conn.execute(
+            "UPDATE custom_domain_cloudflare_diagnostics SET checked_at = ?",
+            ((datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat(),),
+        )
+
+
+def test_healthy_cloudflare_evidence_activates_and_serves_claim(diagnostic_db):
+    activation_diagnostician(diagnostic_db).run_once()
+
+    with diagnostic_db() as conn:
+        store = DomainClaimStore(conn)
+        claim = store.list_for_site("my-site")[0]
+        resolved = store.find_activated(claim.hostname)
+
+    assert claim.activated_at is not None
+    assert claim.activation_error is None
+    assert resolved.id == claim.id
+
+
+def test_ownership_loss_deactivates_immediately(diagnostic_db):
+    activation_diagnostician(diagnostic_db).run_once()
+    make_diagnostic_due(diagnostic_db)
+
+    activation_diagnostician(
+        diagnostic_db, ownership_resolver=lambda _name: ()
+    ).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.activated_at is None
+    assert claim.activation_error == "ownership_txt_mismatch"
+
+
+def test_challenge_identity_failure_deactivates_immediately(diagnostic_db):
+    activation_diagnostician(diagnostic_db).run_once()
+    make_diagnostic_due(diagnostic_db)
+    mismatch = lambda address, _claim: EdgeProbeResult(
+        "healthy", None, "failed", "edge_challenge_mismatch", address=address
+    )
+
+    activation_diagnostician(diagnostic_db, edge_probe=mismatch).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.activated_at is None
+    assert claim.activation_error == "edge_challenge_mismatch"
+
+
+@pytest.mark.parametrize(
+    "edge",
+    [
+        EdgeProbeResult("failed", "edge_tls_invalid", "not_checked", None),
+        EdgeProbeResult("healthy", None, "failed", "cloudflare_526"),
+    ],
+)
+def test_tls_validation_failures_deactivate_immediately(diagnostic_db, edge):
+    activation_diagnostician(diagnostic_db).run_once()
+    make_diagnostic_due(diagnostic_db)
+
+    activation_diagnostician(
+        diagnostic_db, edge_probe=lambda _address, _claim: edge
+    ).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.activated_at is None
+
+
+def test_invalid_range_policy_deactivates_immediately(diagnostic_db):
+    activation_diagnostician(diagnostic_db).run_once()
+    make_diagnostic_due(diagnostic_db)
+
+    activation_diagnostician(
+        diagnostic_db,
+        ranges=None,
+        range_error="range_data_stale",
+        edge_probe=lambda _address, _claim: pytest.fail("edge must not be dialed"),
+    ).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.activated_at is None
+    assert claim.activation_error == "range_data_stale"
+
+
+@pytest.mark.parametrize("dns_error", ["dns_unavailable", "dns_no_addresses"])
+def test_dns_failures_deactivate_immediately(diagnostic_db, dns_error):
+    activation_diagnostician(diagnostic_db).run_once()
+    make_diagnostic_due(diagnostic_db)
+
+    def resolver(_hostname):
+        if dns_error == "dns_unavailable":
+            raise ActivationFailed(dns_error)
+        return ()
+
+    activation_diagnostician(diagnostic_db, resolver=resolver).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.activated_at is None
+    assert claim.activation_error == dns_error
+
+
+def test_router_failure_during_probe_cannot_reactivate_claim(diagnostic_db):
+    activation_diagnostician(diagnostic_db).run_once()
+    make_diagnostic_due(diagnostic_db)
+
+    def fail_router_during_probe(address, claim):
+        with diagnostic_db() as conn:
+            DomainClaimStore(conn).record_cloudflare_route_health(
+                claim.id, claim.route_generation, "router_not_observed"
+            )
+        return EdgeProbeResult("healthy", None, "healthy", None, address=address)
+
+    activation_diagnostician(
+        diagnostic_db, edge_probe=fail_router_during_probe
+    ).run_once()
+
+    with diagnostic_db() as conn:
+        store = DomainClaimStore(conn)
+        claim = store.list_for_site("my-site")[0]
+        resolved = store.find_activated(claim.hostname)
+    assert claim.activated_at is None
+    assert claim.route_error == "router_not_observed"
+    assert resolved is None
+
+
+def test_transient_edge_failure_has_three_attempt_grace_period(diagnostic_db):
+    activation_diagnostician(diagnostic_db).run_once()
+    unavailable = lambda address, _claim: EdgeProbeResult(
+        "failed", "edge_unavailable", "not_checked", None, address=address
+    )
+
+    for expected_failures in (1, 2):
+        make_diagnostic_due(diagnostic_db)
+        activation_diagnostician(diagnostic_db, edge_probe=unavailable).run_once()
+        with diagnostic_db() as conn:
+            claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+            evidence = CloudflareDiagnosticStore(conn).get(
+                claim.id, claim.route_generation
+            )
+        assert evidence.consecutive_failures == expected_failures
+        assert claim.activated_at is not None
+        assert claim.activation_error == "edge_unavailable"
+
+    make_diagnostic_due(diagnostic_db)
+    activation_diagnostician(diagnostic_db, edge_probe=unavailable).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    assert claim.activated_at is None
+    assert claim.activation_error == "edge_unavailable"
+
+
+def test_healthy_evidence_reactivates_after_transient_shutdown(diagnostic_db):
+    activation_diagnostician(diagnostic_db).run_once()
+    unavailable = lambda address, _claim: EdgeProbeResult(
+        "failed", "edge_unavailable", "not_checked", None, address=address
+    )
+    for _ in range(3):
+        make_diagnostic_due(diagnostic_db)
+        activation_diagnostician(diagnostic_db, edge_probe=unavailable).run_once()
+    make_diagnostic_due(diagnostic_db)
+
+    activation_diagnostician(diagnostic_db).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        evidence = CloudflareDiagnosticStore(conn).get(claim.id, claim.route_generation)
+    assert claim.activated_at is not None
+    assert claim.activation_error is None
+    assert evidence.consecutive_failures == 0
 
 
 @pytest.mark.parametrize(

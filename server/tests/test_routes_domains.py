@@ -112,8 +112,9 @@ def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch)
             {"type": "A", "value": "8.8.8.8"},
             {"type": "AAAA", "value": "2001:4860:4860::8888"},
         ],
-        "cloudflare": {
-            "admission_enabled": False,
+            "cloudflare": {
+                "admission_enabled": False,
+                "activation_enabled": False,
             "ready": False,
             "detail": "Cloudflare proxy diagnostics admission is not enabled",
         },
@@ -185,6 +186,7 @@ def test_cloudflare_capability_is_independent_of_direct_ingress(
     assert capability["status"] == "unready"
     assert capability["cloudflare"] == {
         "admission_enabled": True,
+        "activation_enabled": False,
         "ready": True,
         "detail": None,
     }
@@ -199,6 +201,7 @@ def test_cloudflare_capability_requires_diagnostic_runtime(domain_api, monkeypat
 
     assert capability["cloudflare"] == {
         "admission_enabled": True,
+        "activation_enabled": False,
         "ready": False,
         "detail": "Cloudflare diagnostic runtime is not configured",
     }

@@ -28,6 +28,10 @@
       },
       "CloudflareCapability": {
         "properties": {
+          "activation_enabled": {
+            "title": "Activation Enabled",
+            "type": "boolean"
+          },
           "admission_enabled": {
             "title": "Admission Enabled",
             "type": "boolean"
@@ -50,6 +54,7 @@
         },
         "required": [
           "admission_enabled",
+          "activation_enabled",
           "ready",
           "detail"
         ],
@@ -87,6 +92,10 @@
             "title": "Checked At",
             "type": "string"
           },
+          "consecutive_failures": {
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
           "dns": {
             "$ref": "#/components/schemas/CloudflareDiagnosticComponent"
           },
@@ -106,6 +115,9 @@
           "origin": {
             "$ref": "#/components/schemas/CloudflareDiagnosticComponent"
           },
+          "ownership": {
+            "$ref": "#/components/schemas/CloudflareDiagnosticComponent"
+          },
           "ranges_version": {
             "anyOf": [
               {
@@ -122,11 +134,13 @@
           "generation",
           "checked_at",
           "ranges_version",
+          "ownership",
           "dns",
           "edge_tls",
           "edge_http",
           "http_forwarding",
-          "origin"
+          "origin",
+          "consecutive_failures"
         ],
         "title": "CloudflareDiagnosticResponse",
         "type": "object"

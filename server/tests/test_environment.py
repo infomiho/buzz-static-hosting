@@ -40,7 +40,8 @@ def test_environment_registry_covers_server_and_deployment_settings():
         "BUZZ_TRAEFIK_SERVICE",
         "BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED",
         "BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED",
-        "BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED",
+            "BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED",
+            "BUZZ_CLOUDFLARE_ACTIVATION_ENABLED",
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE",
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_USER",
         "BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE",
@@ -121,6 +122,11 @@ def test_custom_domain_admission_defaults_to_disabled(monkeypatch):
 def test_cloudflare_diagnostics_default_to_disabled(monkeypatch):
     monkeypatch.delenv("BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED", raising=False)
     assert ENVIRONMENT_BY_NAME["BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED"].read() is False
+
+
+def test_cloudflare_activation_defaults_to_disabled(monkeypatch):
+    monkeypatch.delenv("BUZZ_CLOUDFLARE_ACTIVATION_ENABLED", raising=False)
+    assert ENVIRONMENT_BY_NAME["BUZZ_CLOUDFLARE_ACTIVATION_ENABLED"].read() is False
 
 
 def test_public_ingress_ips_are_normalized_and_must_be_global():

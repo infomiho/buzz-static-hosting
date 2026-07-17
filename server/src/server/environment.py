@@ -211,7 +211,14 @@ ENVIRONMENT_VARIABLES = (
     ),
     EnvironmentVariable(
         "BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED",
-        "Whether site owners can create diagnostic-only Cloudflare proxy claims.",
+        "Whether site owners can create Cloudflare proxy claims and inspect diagnostics.",
+        default=False,
+        example="true",
+        parser=parse_bool,
+    ),
+    EnvironmentVariable(
+        "BUZZ_CLOUDFLARE_ACTIVATION_ENABLED",
+        "Whether healthy Cloudflare proxy claims may activate and serve site content.",
         default=False,
         example="true",
         parser=parse_bool,

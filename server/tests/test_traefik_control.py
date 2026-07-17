@@ -239,6 +239,57 @@ def test_disabling_control_plane_is_rejected_while_routes_remain(tmp_path, monke
             pass
 
 
+def test_disabling_cloudflare_activation_is_rejected_while_active_route_remains(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
+    db_module.init_db()
+    with db_module.db() as conn:
+        conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
+        conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode, activated_at)
+            VALUES ('www.example.com', 'my-site', 'bdv_test', 'verified',
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'routed', 1, 'cloudflare', '2026-07-16T00:00:00+00:00')"""
+        )
+    monkeypatch.setattr("server.app.CLOUDFLARE_ACTIVATION_ENABLED", False)
+
+    with pytest.raises(RuntimeError, match="Withdraw active Cloudflare routers"):
+        with TestClient(create_app()):
+            pass
+
+
+@pytest.mark.parametrize(
+    ("control_token", "api_url"),
+    [(None, "http://traefik:8082/api"), ("secret", None)],
+)
+def test_active_cloudflare_claim_requires_complete_runtime(
+    tmp_path, monkeypatch, control_token, api_url
+):
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
+    db_module.init_db()
+    with db_module.db() as conn:
+        conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
+        conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode, activated_at)
+            VALUES ('www.example.com', 'my-site', 'bdv_test', 'verified',
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'routed', 1, 'cloudflare', '2026-07-16T00:00:00+00:00')"""
+        )
+    monkeypatch.setattr("server.app.CLOUDFLARE_ACTIVATION_ENABLED", True)
+    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.app.TRAEFIK_CONTROL_TOKEN", control_token)
+    monkeypatch.setattr("server.app.TRAEFIK_API_URL", api_url)
+
+    with pytest.raises(RuntimeError, match="complete custom-domain runtime"):
+        with TestClient(create_app()):
+            pass
+
+
 def test_enabled_custom_domains_start_and_stop_control_listener(tmp_path, monkeypatch):
     events = []
 

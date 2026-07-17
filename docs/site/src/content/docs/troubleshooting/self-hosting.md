@@ -73,7 +73,10 @@ Inspect Traefik logs for ACME and Cloudflare errors. Then check:
 
 ## Cloudflare Proxy Diagnostics
 
-Cloudflare claims are diagnostic-only. They continue returning `421` for site content even when every diagnostic passes.
+Cloudflare claims return `421` until activation is enabled and every required check passes. Active domains show degraded health during the first two consecutive edge or origin transport failures and stop serving on the third. Ownership, non-Cloudflare DNS, and challenge identity failures stop serving immediately. A fully healthy pass recovers automatically.
+
+- `ownership_txt_mismatch`: restore the exact TXT ownership value. Buzz has stopped serving the hostname.
+- `ownership_dns_unavailable`: the ownership lookup failed. Buzz has stopped serving because current ownership cannot be established.
 
 - `edge_tls_invalid`: wait for Universal SSL or correct the hostname's edge certificate.
 - `cloudflare_525`: Cloudflare could not complete the TLS handshake with the origin.
