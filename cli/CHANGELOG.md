@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.9.0...buzz-cli-v0.10.0) (2026-07-17)
+
+
+### Features
+
+* activate Cloudflare proxy domains ([208160f](https://github.com/infomiho/buzz-static-hosting/commit/208160f470e58120dbbf9fef348a22753f04974a))
+
 ## [0.9.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.8.0...buzz-cli-v0.9.0) (2026-07-16)
 
 
