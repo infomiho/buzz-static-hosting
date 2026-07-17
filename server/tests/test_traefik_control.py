@@ -129,8 +129,8 @@ def test_withdrawal_requires_a_post_request_snapshot():
     server.start()
     try:
         requested_at = datetime.now(timezone.utc).isoformat()
-        with request(server, "/traefik"):
-            pass
+        with request(server, "/traefik") as response:
+            assert response.read() == EMPTY_SNAPSHOT
         assert server.withdrawal_snapshot_acknowledged("buzz-domain-1-g1", requested_at)
     finally:
         server.stop()
