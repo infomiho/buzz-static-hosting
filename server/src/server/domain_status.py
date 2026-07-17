@@ -53,7 +53,14 @@ def project_domain_connection(
     claim: DomainClaim,
     transition: DomainModeTransition | None = None,
 ) -> DomainConnection:
-    effective_mode = claim.claim_mode if claim.has_fresh_health() else None
+    active_lifecycle = bool(
+        claim.status == "verified"
+        and claim.route_status == "routed"
+        and not claim.removal_requested_at
+    )
+    effective_mode = (
+        claim.claim_mode if active_lifecycle and claim.has_fresh_health() else None
+    )
     if transition and transition.state == "failed":
         status = "action_needed"
     elif transition and transition.state == "cancelled" and not transition.source_mode:
@@ -69,7 +76,7 @@ def project_domain_connection(
             status = "securing"
     elif effective_mode:
         status = "connected"
-    elif claim.activated_at:
+    elif active_lifecycle and claim.activated_at:
         status = "action_needed"
     elif claim.status == "verified" and claim.route_status in {"publishing", "routed"}:
         status = "securing"

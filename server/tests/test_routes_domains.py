@@ -599,6 +599,35 @@ def test_api_does_not_report_stale_activated_claim_as_connected(domain_api):
     assert response["effective_mode"] is None
 
 
+def test_api_does_not_report_withdrawn_claim_as_connected(domain_api):
+    client, resolver = domain_api
+    created = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "withdrawn.example.com", "mode": "direct"},
+    ).json()
+    resolver.values = (created["verification"]["value"],)
+    client.post(f"/sites/my-site/domains/{created['id']}/check")
+    with db_module.db() as conn:
+        claims = DomainClaimStore(conn)
+        claim = claims.prepare_routes(True)[0]
+        claims.mark_routed(claim.id, claim.route_generation)
+        claim = claims.get(claim.id, "my-site")
+        DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
+        conn.execute(
+            """UPDATE custom_domain_claims
+            SET status = 'cancelled', route_status = 'removed',
+                removal_requested_at = CURRENT_TIMESTAMP,
+                withdrawn_at = CURRENT_TIMESTAMP
+            WHERE id = ?""",
+            (claim.id,),
+        )
+
+    response = client.get("/sites/my-site/domains").json()[0]
+
+    assert response["connection_status"] == "waiting_for_dns"
+    assert response["effective_mode"] is None
+
+
 def test_completed_transition_does_not_project_historical_paths(domain_api):
     client, resolver = domain_api
     created = client.post(
