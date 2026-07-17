@@ -34,5 +34,9 @@
   {
     "name": "09-cloudflare-proxy-activation",
     "status": "completed"
+  },
+  {
+    "name": "10-automatic-domain-path-transitions",
+    "status": "pending"
   }
 ]
