@@ -141,16 +141,24 @@
         <section>
             {% if domain_claims %}
                 {% for claim in domain_claims %}
-                <details class="border-2 border-ink" data-domain-claim="{{ claim.id }}">
-                    <summary class="flex cursor-pointer flex-wrap items-baseline gap-3 px-4 py-3">
+                <details class="border-x-2 border-t-2 border-ink{% if loop.last %} border-b-2{% endif %}" data-domain-claim="{{ claim.id }}">
+                    <summary class="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3">
                         <span class="font-mono text-lg font-bold underline decoration-2 underline-offset-4">{{ claim.hostname }}</span>
                         {% if claim.status == 'verified' %}
-                        <span class="font-bold text-success">Ownership verified</span>
+                        <span class="inline-flex size-6 items-center justify-center bg-success font-bold leading-none text-paper" title="Ownership verified">
+                            <span aria-hidden="true">&#10003;</span>
+                            <span class="sr-only">Ownership verified</span>
+                        </span>
                         {% else %}
                         <span class="font-bold">Waiting for DNS verification</span>
                         {% endif %}
                         {% if claim.claim_mode == 'cloudflare' %}
-                        <span class="font-bold">Cloudflare proxy</span>
+                        <span class="inline-flex items-center text-cloudflare" title="Cloudflare proxy">
+                            <svg class="size-7 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M6.75 18a4.75 4.75 0 0 1-.5-9.47A6.25 6.25 0 0 1 18.1 10.5h.15a3.75 3.75 0 0 1 0 7.5H6.75Z" />
+                            </svg>
+                            <span class="sr-only">Cloudflare proxy</span>
+                        </span>
                         {% endif %}
                     </summary>
                     <div class="border-t-2 border-ink p-4">

@@ -12,6 +12,7 @@
   --color-danger: #ca3535;
   --color-danger-dark: #982828;
   --color-info: #1d70b8;
+  --color-cloudflare: oklch(0.722 0.192 50.313);
   --font-sans: Arial, ui-sans-serif, system-ui, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --radius-xs: 0;
