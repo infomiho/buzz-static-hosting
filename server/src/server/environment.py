@@ -224,6 +224,19 @@ ENVIRONMENT_VARIABLES = (
         parser=parse_bool,
     ),
     EnvironmentVariable(
+        "BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED",
+        "Whether DNS observations may start new automatic domain transitions.",
+        default=False,
+        example="false",
+        parser=parse_bool,
+    ),
+    EnvironmentVariable(
+        "BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN",
+        "Bearer token for the private custom-domain operator endpoint.",
+        sensitive=True,
+        example="replace-with-a-random-secret",
+    ),
+    EnvironmentVariable(
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE",
         "Maximum pending and verified custom domains for one site.",
         default=5,

@@ -23,13 +23,12 @@ from ..auth_service import (
 from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
 from ..custom_domains import DomainClaimLimits, DomainClaimStore
-from ..cloudflare_diagnostics import (
-    CloudflareDiagnosticStore,
-    CloudflareRangeError,
-    load_cloudflare_ranges,
-)
+from ..cloudflare_diagnostics import CloudflareDiagnosticStore
 from ..db import db
+from ..domain_capabilities import domain_capabilities
 from ..dependencies import get_auth_service, require_user
+from ..domain_status import project_domain_connection
+from ..domain_transitions import DomainClaimStateMachine
 from ..search_console import SearchConsoleError
 from ..site_store import SiteStore
 
@@ -85,12 +84,8 @@ async def site_detail(
     identity: Annotated[Identity, Depends(require_user)],
 ):
     domain = DOMAIN or "localhost:8080"
-    control = getattr(request.app.state, "traefik_control", None)
-    custom_domains_available = bool(
-        config.CUSTOM_DOMAINS_ENABLED
-        and control
-        and control.is_ready()
-    )
+    capability = domain_capabilities(request.app)
+    custom_domains_available = capability.control_ready
     with db() as conn:
         store = SiteStore(conn, SITES_DIR)
         site = store.get_by_name(name, identity.user.id)
@@ -102,10 +97,20 @@ async def site_detail(
             if claim.status in {"pending", "verified"}
         ]
         diagnostic_store = CloudflareDiagnosticStore(conn)
-        cloudflare_diagnostics = {
-            claim.id: diagnostic_store.get(claim.id, claim.route_generation)
+        transition_store = DomainClaimStateMachine(conn)
+        domain_connections = {
+            claim.id: project_domain_connection(claim, transition_store.get(claim.id))
             for claim in domain_claims
-            if claim.claim_mode == "cloudflare"
+        }
+        cloudflare_diagnostics = {
+            claim.id: diagnostic_store.get(
+                claim.id, claim.route_generation, claim.mode_generation
+            )
+            for claim in domain_claims
+            if (
+                domain_connections[claim.id].has_cloudflare_path
+                or claim.claim_mode == "cloudflare"
+            )
         }
         domain_quota = claim_store.quota(
             name,
@@ -116,28 +121,13 @@ async def site_detail(
             ),
         )
 
-    direct_domains_available = bool(
-        custom_domains_available
-        and config.CUSTOM_DOMAIN_ADMISSION_ENABLED
-        and config.CUSTOM_DOMAIN_ROUTING_ENABLED
-        and config.CUSTOM_DOMAIN_INGRESS_IPS
-        and not domain_quota.error
-    )
-    try:
-        load_cloudflare_ranges()
-        ranges_ready = True
-    except CloudflareRangeError:
-        ranges_ready = False
+    direct_domains_available = capability.status == "ready" and not domain_quota.error
     cloudflare_diagnostics_available = bool(
-        custom_domains_available
-        and getattr(request.app.state, "custom_domain_runtime_ready", False)
-        and config.CUSTOM_DOMAIN_ADMISSION_ENABLED
-        and config.CUSTOM_DOMAIN_ROUTING_ENABLED
-        and config.CLOUDFLARE_DIAGNOSTICS_ENABLED
-        and ranges_ready
+        capability.cloudflare_ready
         and not domain_quota.error
     )
     custom_domain_can_add = direct_domains_available or cloudflare_diagnostics_available
+    automatic_domains_ready = capability.automatic_ready and not domain_quota.error
 
     if domain and domain != "localhost:8080":
         site_url = f"https://{name}.{domain}"
@@ -155,8 +145,10 @@ async def site_detail(
         "direct_domains_available": direct_domains_available,
         "cloudflare_diagnostics_available": cloudflare_diagnostics_available,
         "cloudflare_activation_enabled": config.CLOUDFLARE_ACTIVATION_ENABLED,
+        "automatic_domains_ready": automatic_domains_ready,
         "custom_domain_quota": domain_quota,
         "domain_claims": domain_claims,
+        "domain_connections": domain_connections,
         "cloudflare_diagnostics": cloudflare_diagnostics,
     })
 

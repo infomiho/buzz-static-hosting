@@ -7,8 +7,11 @@ import threading
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
+from urllib.parse import urlsplit
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+from .exceptions import Conflict, NotFound
 
 EMPTY_SNAPSHOT = b"{}\n"
 MAX_SNAPSHOT_BYTES = 1024 * 1024
@@ -117,10 +120,18 @@ class TraefikControlServer:
         runtime_client: TraefikRuntimeClient | None,
         snapshot_provider: Callable[[], bytes] | None = None,
         host: str = "0.0.0.0",
+        operator_token: str | None = None,
+        handoff_provider: Callable[[], list[dict[str, Any]]] | None = None,
+        cancel_provider: Callable[[int], dict[str, Any]] | None = None,
     ):
         if not token:
             raise ValueError("Traefik control token must not be empty")
         self._token = token
+        self._operator_tokens = tuple(
+            token.strip() for token in (operator_token or "").split(",") if token.strip()
+        )
+        self._handoff_provider = handoff_provider
+        self._cancel_provider = cancel_provider
         self._runtime_client = runtime_client
         self._snapshot_provider = snapshot_provider or (lambda: EMPTY_SNAPSHOT)
         self._last_successful_poll: tuple[datetime, frozenset[str]] | None = None
@@ -162,10 +173,32 @@ class TraefikControlServer:
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
+                path = urlsplit(self.path).path
+                if path.startswith("/operator/"):
+                    if not self._require_operator_auth():
+                        return
+                    if path != "/operator/domain-transitions":
+                        self.send_error(404)
+                        return
+                    if not control._handoff_provider:
+                        self._send_error_json(503, "Operator endpoint unavailable")
+                        return
+                    logger.info("Custom-domain operator transition list read")
+                    try:
+                        transitions = control._handoff_provider()
+                    except Exception:
+                        logger.exception("Could not read custom-domain operator transitions")
+                        self._send_error_json(500, "Could not read transitions")
+                        return
+                    body = json.dumps(
+                        {"transitions": transitions}, separators=(",", ":"), sort_keys=True
+                    ).encode() + b"\n"
+                    self._send_json(body)
+                    return
                 if not control._authorized(self.headers.get("Authorization")):
                     self.send_error(401)
                     return
-                if self.path == "/traefik":
+                if path == "/traefik":
                     try:
                         body = control._snapshot()
                     except Exception:
@@ -179,20 +212,88 @@ class TraefikControlServer:
                     else:
                         control._record_poll(body)
                     return
-                if self.path == "/ready":
+                if path == "/ready":
                     self._send_json(control._readiness_payload())
                     return
                 self.send_error(404)
 
+            def do_POST(self) -> None:
+                prefix = "/operator/domain-transitions/"
+                suffix = "/cancel"
+                path = urlsplit(self.path).path
+                if path.startswith("/operator/") and not self._require_operator_auth():
+                    return
+                if path == "/operator/domain-transitions":
+                    self._send_method_not_allowed("GET")
+                    return
+                if not path.startswith(prefix) or not path.endswith(suffix):
+                    self.send_error(404)
+                    return
+                raw_claim_id = path[len(prefix) : -len(suffix)]
+                try:
+                    claim_id = int(raw_claim_id)
+                    if claim_id <= 0 or str(claim_id) != raw_claim_id:
+                        raise ValueError
+                except ValueError:
+                    self.send_error(404)
+                    return
+                if not control._cancel_provider:
+                    self._send_error_json(503, "Operator endpoint unavailable")
+                    return
+                try:
+                    result = control._cancel_provider(claim_id)
+                except NotFound as exc:
+                    self._send_error_json(404, str(exc))
+                    return
+                except Conflict as exc:
+                    self._send_error_json(409, str(exc))
+                    return
+                except Exception:
+                    logger.exception(
+                        "Custom-domain operator transition cancellation failed for claim %d",
+                        claim_id,
+                    )
+                    self._send_error_json(500, "Could not cancel transition")
+                    return
+                logger.info(
+                    "Custom-domain operator transition cancelled for claim %d",
+                    claim_id,
+                )
+                self._send_json(
+                    json.dumps(result, separators=(",", ":"), sort_keys=True).encode()
+                    + b"\n"
+                )
+
             def do_HEAD(self) -> None:
+                path = urlsplit(self.path).path
+                if path.startswith("/operator/"):
+                    if not self._require_operator_auth():
+                        return
+                    if path == "/operator/domain-transitions":
+                        self._send_method_not_allowed("GET")
+                    else:
+                        self.send_error(404)
+                    return
                 if not control._authorized(self.headers.get("Authorization")):
                     self.send_error(401)
                     return
-                if self.path not in {"/traefik", "/ready"}:
+                if path not in {"/traefik", "/ready"}:
                     self.send_error(404)
                     return
-                body = control._snapshot() if self.path == "/traefik" else control._readiness_payload()
+                body = control._snapshot() if path == "/traefik" else control._readiness_payload()
                 self._send_json(body, include_body=False)
+
+            def do_PUT(self) -> None:
+                self._reject_operator_method()
+
+            def do_PATCH(self) -> None:
+                self._reject_operator_method()
+
+            def do_DELETE(self) -> None:
+                self._reject_operator_method()
+
+            def do_OPTIONS(self) -> None:
+                self._reject_operator_method()
 
             def log_message(self, format: str, *args: Any) -> None:
                 return
@@ -206,12 +307,75 @@ class TraefikControlServer:
                 if include_body:
                     self.wfile.write(body)
 
+            def _send_error_json(
+                self, status: int, detail: str, headers: dict[str, str] | None = None
+            ) -> None:
+                body = json.dumps({"detail": detail}, separators=(",", ":")).encode() + b"\n"
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-store")
+                for name, value in (headers or {}).items():
+                    self.send_header(name, value)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _send_method_not_allowed(self, allow: str) -> None:
+                body = b'{"detail":"Method Not Allowed"}\n'
+                self.send_response(405)
+                self.send_header("Allow", allow)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _reject_operator_method(self) -> None:
+                path = urlsplit(self.path).path
+                if path.startswith("/operator/") and not self._require_operator_auth():
+                    return
+                if path == "/operator/domain-transitions":
+                    self._send_method_not_allowed("GET")
+                    return
+                prefix = "/operator/domain-transitions/"
+                if path.startswith(prefix) and path.endswith("/cancel"):
+                    self._send_method_not_allowed("POST")
+                    return
+                self.send_error(404)
+
+            def _require_operator_auth(self) -> bool:
+                if control._operator_authorized(self.headers.get("Authorization")):
+                    return True
+                self._send_error_json(
+                    401,
+                    "Unauthorized",
+                    {"WWW-Authenticate": "Bearer"},
+                )
+                return False
+
         return Handler
 
     def _authorized(self, authorization: str | None) -> bool:
         if authorization is None:
             return False
         return secrets.compare_digest(authorization, f"Bearer {self._token}")
+
+    def _operator_authorized(self, authorization: str | None) -> bool:
+        if not authorization or not self._operator_tokens:
+            return False
+        return any(
+            secrets.compare_digest(authorization, f"Bearer {token}")
+            for token in self._operator_tokens
+        )
+
+    def set_operator_handlers(
+        self,
+        handoff_provider: Callable[[], list[dict[str, Any]]],
+        cancel_provider: Callable[[int], dict[str, Any]],
+    ) -> None:
+        with self._lock:
+            self._handoff_provider = handoff_provider
+            self._cancel_provider = cancel_provider
 
     def _record_poll(self, body: bytes) -> None:
         payload = json.loads(body)

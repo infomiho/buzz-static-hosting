@@ -26,6 +26,36 @@
         "title": "ApiUser",
         "type": "object"
       },
+      "AutomaticDomainTransitionCapability": {
+        "properties": {
+          "admission_enabled": {
+            "title": "Admission Enabled",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "admission_enabled",
+          "ready",
+          "detail"
+        ],
+        "title": "AutomaticDomainTransitionCapability",
+        "type": "object"
+      },
       "CloudflareCapability": {
         "properties": {
           "activation_enabled": {
@@ -274,13 +304,19 @@
             "type": "string"
           },
           "mode": {
-            "default": "direct",
-            "enum": [
-              "direct",
-              "cloudflare"
+            "anyOf": [
+              {
+                "enum": [
+                  "direct",
+                  "cloudflare"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Mode",
-            "type": "string"
+            "title": "Mode"
           }
         },
         "required": [
@@ -342,6 +378,9 @@
             "title": "Admission Enabled",
             "type": "boolean"
           },
+          "automatic": {
+            "$ref": "#/components/schemas/AutomaticDomainTransitionCapability"
+          },
           "cloudflare": {
             "$ref": "#/components/schemas/CloudflareCapability"
           },
@@ -393,6 +432,7 @@
           "admission_enabled",
           "routing_enabled",
           "routing_targets",
+          "automatic",
           "cloudflare"
         ],
         "title": "CustomDomainCapabilityResponse",
@@ -654,9 +694,35 @@
               }
             ]
           },
+          "connection_status": {
+            "enum": [
+              "waiting_for_dns",
+              "securing",
+              "connected",
+              "updating",
+              "action_needed"
+            ],
+            "title": "Connection Status",
+            "type": "string"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "effective_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "direct",
+                  "cloudflare"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Mode"
           },
           "expires_at": {
             "title": "Expires At",
@@ -699,6 +765,24 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "observed_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "direct",
+                  "cloudflare",
+                  "mixed",
+                  "unsupported",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Mode"
           },
           "removal_requested_at": {
             "anyOf": [
@@ -758,6 +842,54 @@
             "title": "Status",
             "type": "string"
           },
+          "target_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "direct",
+                  "cloudflare"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Mode"
+          },
+          "transition_deadline_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Deadline At"
+          },
+          "transition_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Error"
+          },
+          "transition_started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Started At"
+          },
           "verification": {
             "$ref": "#/components/schemas/DomainVerificationRecord"
           },
@@ -806,6 +938,13 @@
           "removal_requested_at",
           "withdrawn_at",
           "mode",
+          "effective_mode",
+          "observed_mode",
+          "target_mode",
+          "connection_status",
+          "transition_started_at",
+          "transition_deadline_at",
+          "transition_error",
           "cloudflare_diagnostics"
         ],
         "title": "DomainClaimResponse",
@@ -1875,6 +2014,178 @@
           }
         ],
         "summary": "Check custom domain ownership",
+        "tags": [
+          "Custom Domains"
+        ]
+      }
+    },
+    "/sites/{site_name}/domains/{claim_id}/transition/cancel": {
+      "post": {
+        "operationId": "cancelDomainTransition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel a custom domain transition",
+        "tags": [
+          "Custom Domains"
+        ]
+      }
+    },
+    "/sites/{site_name}/domains/{claim_id}/transition/retry": {
+      "post": {
+        "operationId": "retryDomainTransition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry a custom domain transition",
         "tags": [
           "Custom Domains"
         ]

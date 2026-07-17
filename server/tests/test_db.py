@@ -123,6 +123,134 @@ def test_cloudflare_diagnostic_data_survives_activation_migration(tmp_path, monk
     assert row == ("not_checked", None, 0)
 
 
+def test_mode_transition_migration_preserves_claims_and_diagnostics(tmp_path, monkeypatch):
+    path = tmp_path / "data.db"
+    with sqlite3.connect(path) as conn:
+        for migration in db_module.MIGRATIONS[:7]:
+            migration(conn)
+        conn.execute("PRAGMA user_version = 7")
+        conn.execute("INSERT INTO sites (name) VALUES ('existing-site')")
+        claim_id = conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode, activated_at)
+            VALUES ('one.example.com', 'existing-site', 'token-one', 'verified',
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'routed', 3, 'cloudflare', '2026-07-16T01:00:00+00:00')"""
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode, activated_at)
+            VALUES ('direct.example.com', 'existing-site', 'token-direct', 'verified',
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'routed', 2, 'direct', '2026-07-16T01:00:00+00:00')"""
+        )
+        conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode, removal_requested_at)
+            VALUES ('removing.example.com', 'existing-site', 'token-removing', 'verified',
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'removing', 4, 'direct', '2026-07-16T03:00:00+00:00')"""
+        )
+        conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation, claim_mode)
+            VALUES ('detached.example.com', NULL, 'token-detached', 'cancelled',
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'removed', 5, 'direct')"""
+        )
+        conn.execute(
+            """INSERT INTO custom_domain_cloudflare_diagnostics
+            (claim_id, route_generation, checked_at, dns_status, edge_tls_status,
+             edge_http_status, http_forward_status, origin_status, ownership_status)
+            VALUES (?, 3, '2026-07-16T02:00:00+00:00', 'healthy', 'healthy',
+                    'healthy', 'healthy', 'healthy', 'healthy')""",
+            (claim_id,),
+        )
+    monkeypatch.setattr(db_module, "DB_PATH", path)
+
+    db_module.init_db()
+
+    with sqlite3.connect(path) as conn:
+        claim = conn.execute(
+            """SELECT claim_mode, activated_at, mode_generation, health_checked_at
+            FROM custom_domain_claims"""
+        ).fetchone()
+        diagnostic = conn.execute(
+            """SELECT route_generation, mode_generation, probe_generation,
+                      answer_fingerprint
+               FROM custom_domain_cloudflare_diagnostics"""
+        ).fetchone()
+        transition_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(custom_domain_mode_transitions)")
+        }
+        preserved = conn.execute(
+            """SELECT hostname, site_name, route_status, claim_mode, activated_at
+            FROM custom_domain_claims ORDER BY id"""
+        ).fetchall()
+
+    assert claim[:3] == ("cloudflare", "2026-07-16T01:00:00+00:00", 0)
+    assert claim[3] is not None
+    assert diagnostic == (3, 0, 0, None)
+    assert preserved == [
+        (
+            "one.example.com",
+            "existing-site",
+            "routed",
+            "cloudflare",
+            "2026-07-16T01:00:00+00:00",
+        ),
+        (
+            "direct.example.com",
+            "existing-site",
+            "routed",
+            "direct",
+            "2026-07-16T01:00:00+00:00",
+        ),
+        ("removing.example.com", "existing-site", "removing", "direct", None),
+        ("detached.example.com", None, "removed", "direct", None),
+    ]
+    assert {
+        "claim_id",
+        "mode_generation",
+        "probe_generation",
+        "source_mode",
+        "target_mode",
+        "state",
+        "answer_fingerprint",
+        "confirmed_fingerprint",
+        "confirmed_at",
+        "lease_owner",
+        "lease_expires_at",
+    } <= transition_columns
+
+
+def test_transition_schema_rejects_stale_mode_generation(tmp_path, monkeypatch):
+    path = tmp_path / "data.db"
+    monkeypatch.setattr(db_module, "DB_PATH", path)
+    db_module.init_db()
+    with sqlite3.connect(path) as conn:
+        conn.execute("INSERT INTO sites (name) VALUES ('site')")
+        claim_id = conn.execute(
+            """INSERT INTO custom_domain_claims
+            (hostname, site_name, verification_token, status, created_at, expires_at,
+             route_status, route_generation)
+            VALUES ('one.example.com', 'site', 'token', 'verified', 'now', 'later',
+                    'routed', 1)"""
+        ).lastrowid
+        with pytest.raises(sqlite3.IntegrityError, match="mode generation"):
+            conn.execute(
+                """INSERT INTO custom_domain_mode_transitions
+                (claim_id, mode_generation, target_mode, state, started_at)
+                VALUES (?, 99, 'direct', 'observing', 'now')""",
+                (claim_id,),
+            )
+
+
 def test_migrations_are_idempotent(tmp_path, monkeypatch):
     path = tmp_path / "data.db"
     monkeypatch.setattr(db_module, "DB_PATH", path)

@@ -4,12 +4,9 @@ import pytest
 
 from server import db as db_module
 from server.custom_domains import DomainClaimStore
-from server.domain_activation import (
-    MAX_RESPONSE_BYTES,
-    ActivationFailed,
-    DomainActivator,
-    probe_origin,
-)
+from server.domain_evidence import AddressAnswer, DomainDnsObserver, DomainEvidenceCollector
+from server.domain_activation import DomainActivator
+from server.domain_probes import MAX_RESPONSE_BYTES, ActivationFailed, probe_origin
 
 
 @pytest.fixture
@@ -28,11 +25,30 @@ def activation_db(tmp_path, monkeypatch):
 
 
 def activator(resolver, probe=lambda _origin, _claim: None):
-    return DomainActivator(
-        frozenset({"8.8.8.8"}),
+    def lookup(name, family):
+        if family == "AAAA":
+            return AddressAnswer.no_answer()
+        try:
+            return AddressAnswer.addresses(resolver(name), 0)
+        except ActivationFailed as exc:
+            return AddressAnswer(
+                "timeout" if exc.code == "dns_unavailable" else "invalid"
+            )
+
+    def ownership(name):
+        with db_module.db() as conn:
+            claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        return (claim.verification_value,) if claim.verification_name == name else ()
+
+    collector = DomainEvidenceCollector(
+        DomainDnsObserver(lookup, frozenset({"8.8.8.8"})),
         "traefik",
-        resolver=resolver,
-        probe=probe,
+        router_validator=lambda _claim: None,
+        ownership_resolver=ownership,
+        origin_probe=probe,
+    )
+    return DomainActivator(
+        evidence_collector=collector,
     )
 
 
@@ -48,10 +64,17 @@ def test_activation_requires_allowed_dns_and_exact_origin_challenge(activation_d
     with activation_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
         found = DomainClaimStore(conn).find_activated("www.example.com")
+        evidence = conn.execute(
+            "SELECT * FROM custom_domain_path_evidence WHERE claim_id = ?",
+            (claim.id,),
+        ).fetchone()
     assert claim.activated_at is not None
     assert claim.activation_error is None
     assert found is not None
     assert probes == [("traefik", "www.example.com")]
+    assert evidence["path_mode"] == "direct"
+    assert evidence["common_result"] == evidence["path_result"] == "healthy"
+    assert evidence["confirmation_fingerprint"] == evidence["answer_fingerprint"]
 
 
 @pytest.mark.parametrize(
@@ -59,7 +82,7 @@ def test_activation_requires_allowed_dns_and_exact_origin_challenge(activation_d
     [
         ((), "dns_no_addresses"),
         (("1.1.1.1",), "dns_unexpected_address"),
-        (("8.8.8.8", "127.0.0.1"), "dns_unexpected_address"),
+        (("8.8.8.8", "127.0.0.1"), "dns_non_public_address"),
     ],
 )
 def test_activation_rejects_unexpected_dns_answers(activation_db, addresses, error):
@@ -81,9 +104,14 @@ def test_activation_records_probe_failure(activation_db):
 
     with activation_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        evidence = conn.execute(
+            "SELECT path_result FROM custom_domain_path_evidence WHERE claim_id = ?",
+            (claim.id,),
+        ).fetchone()
     assert claim.activated_at is None
     assert claim.activation_error == "tls_invalid"
     assert claim.activation_checked_at is not None
+    assert evidence["path_result"] == "tls_invalid"
 
 
 def test_activation_isolates_alias_failures(activation_db):
@@ -123,8 +151,13 @@ def test_removal_race_prevents_activation(activation_db):
 
     with activation_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        evidence_count = conn.execute(
+            "SELECT COUNT(*) FROM custom_domain_path_evidence WHERE claim_id = ?",
+            (claim.id,),
+        ).fetchone()[0]
     assert claim.route_status == "removing"
     assert claim.activated_at is None
+    assert evidence_count == 0
 
 
 def test_new_route_generation_clears_activation(activation_db):

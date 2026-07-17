@@ -15,6 +15,8 @@ def test_openapi_contains_only_public_api_paths():
         "/sites/{site_name}/domains",
         "/sites/{site_name}/domains/{claim_id}/check",
         "/sites/{site_name}/domains/{claim_id}",
+        "/sites/{site_name}/domains/{claim_id}/transition/retry",
+        "/sites/{site_name}/domains/{claim_id}/transition/cancel",
         "/tokens",
         "/tokens/{token_id}",
         "/health",
@@ -41,6 +43,8 @@ def test_openapi_uses_stable_unique_operation_ids():
         "createDomainClaim",
         "checkDomainClaim",
         "cancelDomainClaim",
+        "retryDomainTransition",
+        "cancelDomainTransition",
         "listDeploymentTokens",
         "createDeploymentToken",
         "deleteDeploymentToken",
@@ -75,6 +79,20 @@ def test_openapi_documents_deployment_upload():
         "name",
         "url",
     }
+
+
+def test_openapi_documents_optional_mode_and_automatic_capability():
+    schema = create_app().openapi()
+    request = schema["components"]["schemas"]["CreateDomainClaimRequest"]
+    capability = schema["components"]["schemas"]["CustomDomainCapabilityResponse"]
+
+    assert request["required"] == ["hostname"]
+    assert "automatic" in capability["properties"]
+    assert set(
+        schema["components"]["schemas"][
+            "AutomaticDomainTransitionCapability"
+        ]["required"]
+    ) == {"admission_enabled", "ready", "detail"}
 
 
 def test_delete_operations_document_no_content():

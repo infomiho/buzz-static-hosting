@@ -14,6 +14,13 @@ export type DomainRouteStatus =
   | "routed"
   | "removing"
   | "removed";
+export type DomainMode = "direct" | "cloudflare";
+export type DomainConnectionStatus =
+  | "waiting_for_dns"
+  | "securing"
+  | "connected"
+  | "updating"
+  | "action_needed";
 
 export interface DomainClaim {
   id: number;
@@ -36,7 +43,14 @@ export interface DomainClaim {
   activation_error: string | null;
   removal_requested_at: string | null;
   withdrawn_at: string | null;
-  mode: "direct" | "cloudflare";
+  mode: DomainMode;
+  effective_mode?: DomainMode | null;
+  observed_mode?: DomainMode | "mixed" | "unsupported" | "unavailable" | null;
+  target_mode?: DomainMode | null;
+  connection_status?: DomainConnectionStatus;
+  transition_started_at?: string | null;
+  transition_deadline_at?: string | null;
+  transition_error?: string | null;
   cloudflare_diagnostics: CloudflareDiagnostic | null;
 }
 
@@ -72,6 +86,11 @@ export interface DomainCapability {
   admission_enabled: boolean;
   routing_enabled: boolean;
   routing_targets: { type: "A" | "AAAA"; value: string }[];
+  automatic?: {
+    admission_enabled: boolean;
+    ready: boolean;
+    detail: string | null;
+  };
   cloudflare: {
     admission_enabled: boolean;
     activation_enabled: boolean;
@@ -118,6 +137,11 @@ function isCapability(value: unknown): value is DomainCapability {
         ["A", "AAAA"].includes(target.type) &&
         typeof target.value === "string"
     ) &&
+    (!capability.automatic ||
+      (typeof capability.automatic.admission_enabled === "boolean" &&
+        typeof capability.automatic.ready === "boolean" &&
+        (capability.automatic.detail === null ||
+          typeof capability.automatic.detail === "string"))) &&
     (!capability.cloudflare ||
       (typeof capability.cloudflare.admission_enabled === "boolean" &&
         (capability.cloudflare.activation_enabled === undefined ||
@@ -194,6 +218,26 @@ function isClaim(value: unknown): value is DomainClaim {
     nullableString(claim.removal_requested_at) &&
     nullableString(claim.withdrawn_at) &&
     ["direct", "cloudflare"].includes(claim.mode ?? "") &&
+    (claim.effective_mode === undefined ||
+      claim.effective_mode === null ||
+      ["direct", "cloudflare"].includes(claim.effective_mode)) &&
+    (claim.observed_mode === undefined ||
+      claim.observed_mode === null ||
+      ["direct", "cloudflare", "mixed", "unsupported", "unavailable"].includes(
+        claim.observed_mode
+      )) &&
+    (claim.target_mode === undefined ||
+      claim.target_mode === null ||
+      ["direct", "cloudflare"].includes(claim.target_mode)) &&
+    (claim.connection_status === undefined ||
+      ["waiting_for_dns", "securing", "connected", "updating", "action_needed"].includes(
+        claim.connection_status
+      )) &&
+    [
+      claim.transition_started_at,
+      claim.transition_deadline_at,
+      claim.transition_error,
+    ].every((field) => field === undefined || nullableString(field)) &&
     (claim.cloudflare_diagnostics === null ||
       isCloudflareDiagnostic(claim.cloudflare_diagnostics))
   );
@@ -316,7 +360,7 @@ export function resolveDomainClaim(
 export async function createDomainClaim(
     siteName: string,
     hostname: string,
-    mode: "direct" | "cloudflare" = "direct",
+    mode: DomainMode | undefined,
     cliOptions: CliOptions = {}
 ): Promise<DomainClaim> {
   const response = await domainRequest(
@@ -324,7 +368,7 @@ export async function createDomainClaim(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hostname, mode }),
+      body: JSON.stringify({ hostname, ...(mode ? { mode } : {}) }),
     },
     cliOptions
   );
@@ -377,6 +421,41 @@ export async function cancelDomainClaim(
   }
   return response.status;
 }
+
+async function updateDomainTransition(
+  siteName: string,
+  claimId: number,
+  action: "retry" | "cancel",
+  cliOptions: CliOptions = {}
+): Promise<DomainClaim> {
+  const response = await domainRequest(
+    `/sites/${encodeURIComponent(siteName)}/domains/${claimId}/transition/${action}`,
+    { method: "POST" },
+    cliOptions
+  );
+  if (!response.ok) {
+    throw new CliError(
+      await errorMessage(response, `Could not ${action} custom-domain transition`)
+    );
+  }
+  const claim = normalizeClaim(await response.json());
+  if (!isClaim(claim)) {
+    throw new CliError("Server returned an invalid custom-domain response");
+  }
+  return claim;
+}
+
+export const retryDomainTransition = (
+  siteName: string,
+  claimId: number,
+  cliOptions: CliOptions = {}
+) => updateDomainTransition(siteName, claimId, "retry", cliOptions);
+
+export const cancelDomainTransition = (
+  siteName: string,
+  claimId: number,
+  cliOptions: CliOptions = {}
+) => updateDomainTransition(siteName, claimId, "cancel", cliOptions);
 
 function ownership(claim: DomainClaim): string {
   if (claim.status === "pending" && claim.last_error === "txt_mismatch") {
@@ -466,12 +545,13 @@ export function formatDomainClaim(claim: DomainClaim): string {
         : "Not requested";
   const lines = [
     claim.hostname,
+    ...connectionLines(claim),
     `  Site:        ${claim.site_name ?? "Deleted site"}`,
     `  Ownership:   ${ownership(claim)}`,
     `  Routing DNS: ${routingDns(claim)}`,
     `  Router:      ${routerStatus(claim)}`,
     `  Origin TLS:  ${originTls(claim)}`,
-    `  Public TLS:  ${active ? "Active" : "Not active"}`,
+    `  Public TLS:  ${publicTlsStatus(claim, active)}`,
     `  Removal:     ${removal}`,
   ];
   if (claim.status === "pending") {
@@ -491,6 +571,31 @@ export function formatDomainClaim(claim: DomainClaim): string {
   return lines.join("\n");
 }
 
+function connectionLines(claim: DomainClaim): string[] {
+  const labels: Record<DomainConnectionStatus, string> = {
+    waiting_for_dns: "Waiting for DNS",
+    securing: "Securing connection",
+    connected: "Connected",
+    updating: "Updating connection",
+    action_needed: "Action needed",
+  };
+  if (!claim.connection_status) return [];
+  const lines = [`  Connection:  ${labels[claim.connection_status]}`];
+  if (claim.effective_mode !== undefined) {
+    lines.push(`  Effective:   ${pathName(claim.effective_mode)}`);
+  }
+  if (claim.observed_mode) lines.push(`  Observed:    ${pathName(claim.observed_mode)}`);
+  if (claim.target_mode) lines.push(`  Target:      ${pathName(claim.target_mode)}`);
+  if (claim.transition_error) lines.push(`  Transition:  ${claim.transition_error}`);
+  return lines;
+}
+
+function pathName(mode: DomainClaim["observed_mode"]): string {
+  if (!mode) return "Not connected";
+  if (mode === "cloudflare") return "Cloudflare proxy";
+  return mode[0].toUpperCase() + mode.slice(1);
+}
+
 function diagnosticValue(component: DiagnosticComponent | undefined): string {
   if (!component) return "Waiting for router acknowledgement";
   return component.error ?? component.status;
@@ -506,18 +611,25 @@ function formatCloudflareClaim(claim: DomainClaim): string {
         : "Not requested";
   const lines = [
     claim.hostname,
+    ...connectionLines(claim),
     `  Site:            ${claim.site_name ?? "Deleted site"}`,
     "  Mode:            Cloudflare proxy",
     `  Ownership:       ${claim.status === "pending" ? ownership(claim) : diagnosticValue(diagnostic?.ownership)}`,
     `  Router:          ${routerStatus(claim)}`,
-    `  Cloudflare DNS:  ${diagnosticValue(diagnostic?.dns)}`,
-    `  Edge TLS:        ${diagnosticValue(diagnostic?.edge_tls)}`,
-    `  Edge challenge:  ${diagnosticValue(diagnostic?.edge_http)}`,
-    `  HTTP forwarding: ${diagnosticValue(diagnostic?.http_forwarding)}`,
-    `  Origin:          ${diagnosticValue(diagnostic?.origin)}`,
-    `  Activation:      ${cloudflareActivation(claim)}`,
-    `  Removal:         ${removal}`,
   ];
+  if (diagnostic) {
+    lines.push(
+      `  Cloudflare DNS:  ${diagnosticValue(diagnostic.dns)}`,
+      `  Edge TLS:        ${diagnosticValue(diagnostic.edge_tls)}`,
+      `  Edge challenge:  ${diagnosticValue(diagnostic.edge_http)}`,
+      `  HTTP forwarding: ${diagnosticValue(diagnostic.http_forwarding)}`,
+      `  Origin:          ${diagnosticValue(diagnostic.origin)}`
+    );
+  }
+  lines.push(
+    `  Activation:      ${cloudflareActivation(claim)}`,
+    `  Removal:         ${removal}`
+  );
   if (claim.status === "pending") {
     lines.push(
       "  Ownership record:",
@@ -536,6 +648,8 @@ function formatCloudflareClaim(claim: DomainClaim): string {
 }
 
 function cloudflareActivation(claim: DomainClaim): string {
+  const projected = projectedActivation(claim);
+  if (projected) return projected;
   if (isActive(claim) && claim.activation_error) {
     return `Degraded (${claim.cloudflare_diagnostics?.consecutive_failures ?? 1}/3): ${claim.activation_error}`;
   }
@@ -544,9 +658,23 @@ function cloudflareActivation(claim: DomainClaim): string {
 }
 
 function isActive(claim: DomainClaim): boolean {
+  if (claim.connection_status !== undefined) {
+    return claim.connection_status === "connected";
+  }
   return (
     claim.status === "verified" &&
     claim.route_status === "routed" &&
     claim.activated_at !== null
   );
+}
+
+function publicTlsStatus(claim: DomainClaim, legacyActive: boolean): string {
+  return projectedActivation(claim) ?? (legacyActive ? "Active" : "Not active");
+}
+
+function projectedActivation(claim: DomainClaim): string | null {
+  if (claim.connection_status === undefined) return null;
+  if (claim.connection_status === "connected") return "Active";
+  if (claim.connection_status === "updating") return "Authorization retained";
+  return "Not active";
 }

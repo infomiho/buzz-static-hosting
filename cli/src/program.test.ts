@@ -37,6 +37,8 @@ describe("createProgram", () => {
       "domains list",
       "domains add",
       "domains check",
+      "domains retry",
+      "domains cancel-transition",
       "domains remove",
     ]);
   });

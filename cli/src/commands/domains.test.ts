@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addDomain, checkDomain, listDomains, removeDomain } from "./domains.js";
+import {
+  addDomain,
+  cancelTransition,
+  checkDomain,
+  listDomains,
+  removeDomain,
+  retryTransition,
+} from "./domains.js";
 import { formatDomainClaim, resolveDomainClaim, type DomainClaim } from "../domains.js";
 
 const cliOptions = { server: "https://buzz.example.com", token: "session-token" };
@@ -23,6 +30,7 @@ function capability(status: "disabled" | "unready" | "ready" = "ready") {
     routing_targets: [{ type: "A", value: "203.0.113.10" }],
     cloudflare: {
       admission_enabled: false,
+      activation_enabled: false,
       ready: false,
       detail: "Cloudflare proxy diagnostics admission is not enabled",
     },
@@ -168,6 +176,25 @@ describe("domain commands", () => {
     expect(console.log).toHaveBeenCalledWith("\nBuzz does not change your DNS records.");
   });
 
+  it("omits mode when the server reports automatic transition readiness", async () => {
+    const automaticCapability = {
+      ...capability(),
+      automatic: { admission_enabled: true, ready: true, detail: null },
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(automaticCapability))
+      .mockResolvedValueOnce(jsonResponse(claim(), 201));
+
+    await addDomain("my-site", "www.example.com", {}, cliOptions);
+
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({ hostname: "www.example.com" })
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      "Point this hostname to Buzz using direct DNS or supported Cloudflare proxying:"
+    );
+  });
+
   it("does not change the canonical CNAME when adding a domain", async () => {
     const directory = mkdtempSync(join(tmpdir(), "buzz-domain-test-"));
     const cname = join(directory, "CNAME");
@@ -227,6 +254,28 @@ describe("domain commands", () => {
 
     expect(fetchMock.mock.calls[2][0]).toBe(
       "https://buzz.example.com/sites/my-site/domains/7/check"
+    );
+    expect(fetchMock.mock.calls[2][1]?.method).toBe("POST");
+  });
+
+  it.each([
+    ["retry", retryTransition],
+    ["cancel", cancelTransition],
+  ] as const)("posts the %s transition action", async (action, command) => {
+    const transitioned = claim({
+      connection_status: action === "retry" ? "securing" : "connected",
+      effective_mode: action === "retry" ? null : "direct",
+      target_mode: action === "retry" ? "cloudflare" : null,
+    });
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(capability()))
+      .mockResolvedValueOnce(jsonResponse([claim()]))
+      .mockResolvedValueOnce(jsonResponse(transitioned));
+
+    await command("my-site", "www.example.com", cliOptions);
+
+    expect(fetchMock.mock.calls[2][0]).toBe(
+      `https://buzz.example.com/sites/my-site/domains/7/transition/${action}`
     );
     expect(fetchMock.mock.calls[2][1]?.method).toBe("POST");
   });
@@ -379,6 +428,24 @@ describe("domain presentation", () => {
     expect(output).toContain("Removal:     In progress");
   });
 
+  it("formats automatic connection paths separately", () => {
+    const output = formatDomainClaim(
+      claim({
+        connection_status: "updating",
+        effective_mode: "direct",
+        observed_mode: "cloudflare",
+        target_mode: "cloudflare",
+      })
+    );
+
+    expect(output).toContain("Connection:  Updating connection");
+    expect(output).toContain("Effective:   Direct");
+    expect(output).toContain("Observed:    Cloudflare proxy");
+    expect(output).toContain("Target:      Cloudflare proxy");
+    expect(output).toContain("Public TLS:  Authorization retained");
+    expect(output).not.toContain("Public TLS:  Active");
+  });
+
   it("keeps unknown diagnostic codes visible", () => {
     expect(formatDomainClaim(claim({ route_error: "future_error" }))).toContain(
       "Router:      Error: future_error"
@@ -456,6 +523,24 @@ describe("domain presentation", () => {
 
     expect(output).toContain("Ownership:       Pending");
     expect(output).not.toContain("Ownership:       Waiting for router acknowledgement");
+    expect(output).not.toContain("Cloudflare DNS:");
+    expect(output).not.toContain("Edge TLS:");
+  });
+
+  it("uses authoritative connection state for Cloudflare activation", () => {
+    const output = formatDomainClaim(
+      claim({
+        mode: "cloudflare",
+        status: "verified",
+        route_status: "routed",
+        activated_at: "2026-07-16T02:00:00+00:00",
+        connection_status: "action_needed",
+        effective_mode: null,
+      })
+    );
+
+    expect(output).toContain("Activation:      Not active");
+    expect(output).not.toContain("Activation:      Active");
   });
 
   it.each([

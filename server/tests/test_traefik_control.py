@@ -1,4 +1,5 @@
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -29,11 +30,12 @@ class FakeResponse:
         return self._body
 
 
-def request(server, path, token="secret"):
+def request(server, path, token="secret", method="GET"):
     return urlopen(
         Request(
             f"http://127.0.0.1:{server.port}{path}",
             headers={"Authorization": f"Bearer {token}"},
+            method=method,
         )
     )
 
@@ -61,6 +63,150 @@ def test_control_server_rejects_missing_or_wrong_token():
                 raise AssertionError("request unexpectedly succeeded")
             except HTTPError as error:
                 assert error.code == 401
+    finally:
+        server.stop()
+
+
+def test_operator_transition_endpoint_uses_dedicated_token():
+    handoffs = [{"claim_id": 7, "hostname": "www.example.com"}]
+    server = TraefikControlServer(
+        "traefik-secret",
+        0,
+        None,
+        operator_token="old-operator-secret, operator-secret",
+        handoff_provider=lambda: handoffs,
+        host="127.0.0.1",
+    )
+    server.start()
+    try:
+        with request(
+            server, "/operator/domain-transitions?source=test", "operator-secret"
+        ) as response:
+            assert json.loads(response.read()) == {"transitions": handoffs}
+            assert response.headers["Cache-Control"] == "no-store"
+        with pytest.raises(HTTPError) as error:
+            request(server, "/operator/domain-transitions", "traefik-secret")
+        assert error.value.code == 401
+    finally:
+        server.stop()
+
+
+def test_operator_routes_authenticate_before_route_and_method_handling():
+    server = TraefikControlServer(
+        "traefik-secret",
+        0,
+        None,
+        operator_token="operator-secret",
+        handoff_provider=lambda: [],
+        host="127.0.0.1",
+    )
+    server.start()
+    try:
+        with pytest.raises(HTTPError) as missing:
+            request(server, "/operator/missing", "wrong")
+        assert missing.value.code == 401
+        assert missing.value.headers["WWW-Authenticate"] == "Bearer"
+        assert missing.value.headers["Cache-Control"] == "no-store"
+        assert json.loads(missing.value.read()) == {"detail": "Unauthorized"}
+        with pytest.raises(HTTPError) as method:
+            request(server, "/operator/domain-transitions", "wrong", "POST")
+        assert method.value.code == 401
+        assert method.value.headers["WWW-Authenticate"] == "Bearer"
+        with pytest.raises(HTTPError) as authorized_method:
+            request(server, "/operator/domain-transitions", "operator-secret", "POST")
+        assert authorized_method.value.code == 405
+        assert authorized_method.value.headers["Allow"] == "GET"
+        assert authorized_method.value.headers["Cache-Control"] == "no-store"
+        with pytest.raises(HTTPError) as cancel_method:
+            request(
+                server,
+                "/operator/domain-transitions/7/cancel",
+                "wrong",
+                "PUT",
+            )
+        assert cancel_method.value.code == 401
+    finally:
+        server.stop()
+
+
+def test_operator_provider_failure_is_no_store_json():
+    def fail():
+        raise RuntimeError("provider failed")
+
+    server = TraefikControlServer(
+        "traefik-secret",
+        0,
+        None,
+        operator_token="operator-secret",
+        handoff_provider=fail,
+        host="127.0.0.1",
+    )
+    server.start()
+    try:
+        with pytest.raises(HTTPError) as error:
+            request(server, "/operator/domain-transitions", "operator-secret")
+        assert error.value.code == 500
+        assert error.value.headers["Content-Type"] == "application/json"
+        assert error.value.headers["Cache-Control"] == "no-store"
+        assert json.loads(error.value.read())["detail"] == "Could not read transitions"
+    finally:
+        server.stop()
+
+
+def test_operator_transition_cancellation_maps_results_and_errors():
+    actions = []
+
+    def cancel(claim_id):
+        actions.append(claim_id)
+        if claim_id == 8:
+            from server.exceptions import Conflict
+
+            raise Conflict("Transition changed")
+        if claim_id == 9:
+            from server.exceptions import NotFound
+
+            raise NotFound("Custom domain claim not found")
+        return {"claim_id": claim_id, "state": "cancelled"}
+
+    server = TraefikControlServer(
+        "traefik-secret",
+        0,
+        None,
+        operator_token="operator-secret",
+        handoff_provider=lambda: [],
+        cancel_provider=cancel,
+        host="127.0.0.1",
+    )
+    server.start()
+    try:
+        with request(
+            server,
+            "/operator/domain-transitions/7/cancel",
+            "operator-secret",
+            "POST",
+        ) as response:
+            assert response.status == 200
+            assert json.load(response) == {"claim_id": 7, "state": "cancelled"}
+        for claim_id, status in ((8, 409), (9, 404)):
+            with pytest.raises(HTTPError) as error:
+                request(
+                    server,
+                    f"/operator/domain-transitions/{claim_id}/cancel",
+                    "operator-secret",
+                    "POST",
+                )
+            assert error.value.code == status
+            assert json.loads(error.value.read())["detail"]
+            error.value.close()
+        with pytest.raises(HTTPError) as error:
+            request(
+                server,
+                "/operator/domain-transitions/7/cancel",
+                "traefik-secret",
+                "POST",
+            )
+        assert error.value.code == 401
+        assert actions == [7, 8, 9]
     finally:
         server.stop()
 
@@ -294,7 +440,15 @@ def test_enabled_custom_domains_start_and_stop_control_listener(tmp_path, monkey
     events = []
 
     class FakeControlServer:
-        def __init__(self, token, port, runtime_client, snapshot_provider=None):
+        def __init__(
+            self,
+            token,
+            port,
+            runtime_client,
+            snapshot_provider=None,
+            operator_token=None,
+            handoff_provider=None,
+        ):
             assert token == "secret"
             assert port == 8081
             assert snapshot_provider is not None
@@ -320,3 +474,62 @@ def test_enabled_custom_domains_start_and_stop_control_listener(tmp_path, monkey
         assert events == ["created", "started"]
 
     assert events == ["created", "started", "stopped"]
+
+
+def test_lifespan_runs_transition_detection_before_legacy_validators(tmp_path, monkeypatch):
+    events = []
+    observed = threading.Event()
+
+    class Runtime:
+        def __init__(self, *args):
+            pass
+
+    class Control:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def refresh_readiness(self):
+            events.append("readiness")
+
+        def withdrawal_snapshot_acknowledged(self, *_args):
+            return True
+
+        def set_operator_handlers(self, *_args):
+            events.append("operator")
+
+    class Loop:
+        def __init__(self, name):
+            self.name = name
+
+        def run_once(self):
+            events.append(self.name)
+            if self.name == "cloudflare":
+                observed.set()
+
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
+    db_module.init_db()
+    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.app.TRAEFIK_CONTROL_TOKEN", "secret")
+    monkeypatch.setattr("server.app.TRAEFIK_API_URL", "http://traefik/api")
+    monkeypatch.setattr("server.app.TraefikRuntimeClient", Runtime)
+    monkeypatch.setattr("server.app.TraefikControlServer", Control)
+    monkeypatch.setattr("server.app.DomainRouteReconciler", lambda *a, **k: Loop("route"))
+    monkeypatch.setattr("server.app.DomainActivator", lambda *a, **k: Loop("direct"))
+    monkeypatch.setattr(
+        "server.app.CloudflareDiagnostician", lambda *a, **k: Loop("cloudflare")
+    )
+    monkeypatch.setattr(
+        "server.app.DomainTransitionCoordinator", lambda *a, **k: Loop("transition")
+    )
+
+    with TestClient(create_app()):
+        assert observed.wait(2)
+
+    assert events.index("transition") < events.index("direct")
+    assert events.index("transition") < events.index("cloudflare")

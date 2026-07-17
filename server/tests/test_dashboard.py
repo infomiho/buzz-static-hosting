@@ -218,7 +218,39 @@ class TestCustomDomains:
             activated_at TEXT,
             activation_checked_at TEXT,
             activation_error TEXT,
-            claim_mode TEXT NOT NULL DEFAULT 'direct'
+            claim_mode TEXT NOT NULL DEFAULT 'direct',
+            mode_generation INTEGER NOT NULL DEFAULT 0,
+            automatic_mode INTEGER NOT NULL DEFAULT 0,
+            health_checked_at TEXT,
+            health_failure_count INTEGER NOT NULL DEFAULT 0,
+            common_failure_count INTEGER NOT NULL DEFAULT 0
+        )""")
+        conn.execute("""CREATE TABLE custom_domain_mode_transitions (
+            claim_id INTEGER PRIMARY KEY,
+            mode_generation INTEGER NOT NULL,
+            probe_generation INTEGER NOT NULL DEFAULT 0,
+            source_mode TEXT,
+            target_mode TEXT NOT NULL,
+            state TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            deadline_at TEXT,
+            checked_at TEXT,
+            completed_at TEXT,
+            answer_fingerprint TEXT,
+            stable_observation_count INTEGER NOT NULL DEFAULT 0,
+            first_target_observed_at TEXT,
+            last_target_observed_at TEXT,
+            observed_mode TEXT,
+            observed_ttl INTEGER,
+            error TEXT,
+            lease_owner TEXT,
+            lease_expires_at TEXT
+        )""")
+        conn.execute("""CREATE TABLE custom_domain_cloudflare_diagnostics (
+            claim_id INTEGER,
+            route_generation INTEGER,
+            mode_generation INTEGER,
+            probe_generation INTEGER
         )""")
         conn.execute("""INSERT INTO custom_domain_claims
             (id, hostname, site_name, verification_token, status, created_at, expires_at)
@@ -234,6 +266,11 @@ class TestCustomDomains:
               (3, 'checking.example.com', 'my-site', 'bdv_checking', 'verified',
                '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
                'bdc_checking', 'routed', 1, NULL)""")
+        conn.execute("""INSERT INTO custom_domain_mode_transitions
+            (claim_id, mode_generation, source_mode, target_mode, state, started_at,
+             observed_mode)
+            VALUES (3, 0, NULL, 'cloudflare', 'observing',
+                    '2026-07-16T01:00:00+00:00', 'direct')""")
         conn.commit()
         (tmp_path / "my-site").mkdir()
         monkeypatch.setattr("server.routes.dashboard.db", db)
@@ -243,8 +280,13 @@ class TestCustomDomains:
         monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
         monkeypatch.setattr("server.config.CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
         monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured")
+        monkeypatch.setattr("server.config.CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
         client.app.state.traefik_control = type(
             "ReadyControlPlane", (), {"is_ready": lambda self: True}
+        )()
+        client.app.state.custom_domain_runtime_ready = True
+        client.app.state.cloudflare_range_state = type(
+            "RangeState", (), {"error": None}
         )()
         client.cookies.set(COOKIE_NAME, token)
 
@@ -254,10 +296,13 @@ class TestCustomDomains:
         assert "www.example.com" in response.text
         assert "_buzz.www.example.com" in response.text
         assert "buzz-domain-verification=bdv_test" in response.text
-        assert "Waiting for DNS verification" in response.text
-        assert "Advanced verification" in response.text
+        assert "Waiting for DNS" in response.text
+        assert ">Advanced</summary>" in response.text
         assert "bdc_checking" in response.text
-        assert "bdc_active" not in response.text
+        assert "bdc_active" in response.text
+        assert '<span class="sr-only">Cloudflare proxy</span>' in response.text
+        assert "Cancel transition" in response.text
+        assert 'name="mode"' in response.text
         assert '<details class="border-x-2 border-t-2 border-ink border-b-2" data-domain-claim="1">' in response.text
         assert '<details class="border-x-2 border-t-2 border-ink border-b-2" data-domain-claim="1" open>' not in response.text
         assert response.text.index("Analytics") < response.text.index("Custom domains")
@@ -266,6 +311,14 @@ class TestCustomDomains:
         assert "Buzz will stop tracking its ownership" in response.text
         assert "Add custom domain" in response.text
         assert "3 of 5 aliases used for this site" in response.text
+
+        client.app.state.automatic_domain_transition_admission_enabled = True
+        client.app.state.domain_transition_coordinator = object()
+        monkeypatch.setattr("server.config.CLOUDFLARE_ACTIVATION_ENABLED", True)
+        automatic_response = client.get("/dashboard/sites/my-site")
+
+        assert "const AUTOMATIC_DOMAINS_READY = true;" in automatic_response.text
+        assert 'name="mode"' not in automatic_response.text
 
 
 class TestLoginFlow:

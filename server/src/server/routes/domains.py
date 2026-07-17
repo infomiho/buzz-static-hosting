@@ -24,10 +24,11 @@ from ..custom_domains import (
 from ..cloudflare_diagnostics import (
     CloudflareDiagnostic,
     CloudflareDiagnosticStore,
-    CloudflareRangeError,
-    load_cloudflare_ranges,
 )
 from ..db import db
+from ..domain_capabilities import domain_capabilities
+from ..domain_status import project_domain_connection
+from ..domain_transitions import DomainClaimStateMachine, DomainModeTransition
 from ..dependencies import (
     Identity,
     require_custom_domain_admission_enabled,
@@ -88,8 +89,11 @@ def cloudflare_diagnostic_response(diagnostic: CloudflareDiagnostic | None) -> d
 
 
 def domain_response(
-    claim: DomainClaim, diagnostic: CloudflareDiagnostic | None = None
+    claim: DomainClaim,
+    diagnostic: CloudflareDiagnostic | None = None,
+    transition: DomainModeTransition | None = None,
 ) -> dict:
+    connection = project_domain_connection(claim, transition)
     return {
         "id": claim.id,
         "hostname": claim.hostname,
@@ -116,6 +120,13 @@ def domain_response(
         "removal_requested_at": claim.removal_requested_at,
         "withdrawn_at": claim.withdrawn_at,
         "mode": claim.claim_mode,
+        "effective_mode": connection.effective_mode,
+        "observed_mode": connection.observed_mode,
+        "target_mode": connection.target_mode,
+        "connection_status": connection.status,
+        "transition_started_at": connection.transition_started_at,
+        "transition_deadline_at": connection.transition_deadline_at,
+        "transition_error": connection.transition_error,
         "cloudflare_diagnostics": cloudflare_diagnostic_response(diagnostic),
     }
 
@@ -134,38 +145,7 @@ async def custom_domain_capability(
     request: Request,
     _identity: Annotated[Identity, Depends(require_user)],
 ):
-    control = getattr(request.app.state, "traefik_control", None)
-    runtime_ready = bool(control and control.is_ready())
-    diagnostic_runtime_ready = bool(
-        getattr(request.app.state, "custom_domain_runtime_ready", False)
-    )
-    control_ready = bool(
-        config.CUSTOM_DOMAINS_ENABLED
-        and config.TRAEFIK_CONTROL_TOKEN
-        and runtime_ready
-    )
-    routing_ready = bool(
-        config.CUSTOM_DOMAIN_ROUTING_ENABLED
-        and config.CUSTOM_DOMAIN_INGRESS_IPS
-    )
-    if not config.CUSTOM_DOMAINS_ENABLED:
-        status = "disabled"
-        detail = "Custom domains are not enabled on this Buzz server"
-    elif not config.TRAEFIK_CONTROL_TOKEN or control is None:
-        status = "unready"
-        detail = "Custom domains are enabled but the control plane is not configured"
-    elif not runtime_ready:
-        status = "unready"
-        detail = "Custom domain control plane is not ready"
-    elif not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
-        status = "unready"
-        detail = "New custom domain claims are not enabled on this Buzz server"
-    elif not routing_ready:
-        status = "unready"
-        detail = "Custom domain production routing is not configured"
-    else:
-        status = "ready"
-        detail = None
+    capability = domain_capabilities(request.app)
     targets = [
         {
             "type": "A" if ipaddress.ip_address(address).version == 4 else "AAAA",
@@ -176,38 +156,30 @@ async def custom_domain_capability(
             key=lambda value: (ipaddress.ip_address(value).version, value),
         )
     ]
-    cloudflare_detail = None
-    try:
-        load_cloudflare_ranges()
-    except CloudflareRangeError as exc:
-        cloudflare_detail = {
-            "range_data_missing": "Cloudflare IP range data is missing",
-            "range_data_invalid": "Cloudflare IP range data is invalid",
-            "range_data_stale": "Cloudflare IP range data is stale",
-        }[exc.code]
-    if not config.CLOUDFLARE_DIAGNOSTICS_ENABLED:
-        cloudflare_detail = "Cloudflare proxy diagnostics admission is not enabled"
-    elif not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
-        cloudflare_detail = "New custom domain claims are not enabled on this Buzz server"
-    elif not config.CUSTOM_DOMAIN_ROUTING_ENABLED:
-        cloudflare_detail = "Custom domain routing is not configured"
-    elif not control_ready:
-        cloudflare_detail = detail
-    elif not diagnostic_runtime_ready:
-        cloudflare_detail = "Cloudflare diagnostic runtime is not configured"
     return {
-        "status": status,
-        "detail": detail,
+        "status": capability.status,
+        "detail": capability.detail,
         "enabled": config.CUSTOM_DOMAINS_ENABLED,
-        "control_ready": control_ready,
+        "control_ready": capability.control_ready,
         "admission_enabled": config.CUSTOM_DOMAIN_ADMISSION_ENABLED,
-        "routing_enabled": routing_ready,
+        "routing_enabled": capability.routing_ready,
         "routing_targets": targets,
+        "automatic": {
+            "admission_enabled": bool(
+                getattr(
+                    request.app.state,
+                    "automatic_domain_transition_admission_enabled",
+                    False,
+                )
+            ),
+            "ready": capability.automatic_ready,
+            "detail": capability.automatic_detail,
+        },
         "cloudflare": {
             "admission_enabled": config.CLOUDFLARE_DIAGNOSTICS_ENABLED,
             "activation_enabled": config.CLOUDFLARE_ACTIVATION_ENABLED,
-            "ready": cloudflare_detail is None,
-            "detail": cloudflare_detail,
+            "ready": capability.cloudflare_ready,
+            "detail": capability.cloudflare_detail,
         },
     }
 
@@ -235,12 +207,20 @@ async def list_domain_claims(
     with db() as conn:
         claims = DomainClaimStore(conn).list_for_site(site_name)
         diagnostic_store = CloudflareDiagnosticStore(conn)
+        transition_store = DomainClaimStateMachine(conn)
         return [
             domain_response(
                 claim,
-                diagnostic_store.get(claim.id, claim.route_generation)
-                if claim.claim_mode == "cloudflare"
+                diagnostic_store.get(
+                    claim.id, claim.route_generation, claim.mode_generation
+                )
+                if (
+                    claim.claim_mode == "cloudflare"
+                    or transition_store.get(claim.id)
+                    and transition_store.get(claim.id).target_mode == "cloudflare"
+                )
                 else None,
+                transition_store.get(claim.id),
             )
             for claim in claims
         ]
@@ -275,7 +255,16 @@ async def create_domain_claim(
         hostname = normalize_hostname(data.hostname, config.DOMAIN)
     except InvalidHostname as exc:
         raise BadRequest(str(exc))
-    if data.mode == "direct":
+    capability = domain_capabilities(request.app)
+    automatic = data.mode is None
+    if automatic and not capability.automatic_ready:
+        raise HTTPException(
+            status_code=503,
+            detail=capability.automatic_detail
+            or "Automatic domain transitions are not ready",
+        )
+    claim_mode = data.mode or "direct"
+    if claim_mode == "direct":
         require_custom_domain_admission_enabled()
     else:
         if not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
@@ -298,20 +287,25 @@ async def create_domain_claim(
                 status_code=503,
                 detail="Custom domain routing is not configured",
             )
-        try:
-            load_cloudflare_ranges()
-        except CloudflareRangeError as exc:
+        diagnostician = getattr(request.app.state, "cloudflare_diagnostician", None)
+        range_error = (
+            diagnostician.range_error
+            if diagnostician
+            else request.app.state.cloudflare_range_state.error
+        )
+        if range_error:
             raise HTTPException(
                 status_code=503,
-                detail=f"Cloudflare diagnostics unavailable: {exc.code}",
-            ) from exc
+                detail=f"Cloudflare diagnostics unavailable: {range_error}",
+            )
     with db() as conn:
         try:
             claim = DomainClaimStore(conn).create(
                 site_name,
                 hostname,
                 limits=domain_limits(),
-                claim_mode=data.mode,
+                claim_mode=claim_mode,
+                automatic_mode=automatic,
             )
         except DomainQuotaExceeded as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
@@ -342,7 +336,17 @@ async def check_domain_claim(
     with db() as conn:
         claim = DomainClaimStore(conn).get(claim_id, site_name)
     if claim.status == "verified":
-        return domain_response(claim)
+        with db() as conn:
+            diagnostic_store = CloudflareDiagnosticStore(conn)
+            return domain_response(
+                claim,
+                diagnostic_store.get(
+                    claim.id, claim.route_generation, claim.mode_generation
+                )
+                if claim.claim_mode == "cloudflare"
+                else None,
+                DomainClaimStateMachine(conn).get(claim.id),
+            )
     retry_after = claim.check_retry_after()
     if retry_after:
         raise HTTPException(
@@ -369,8 +373,16 @@ async def check_domain_claim(
             )
         return domain_response(checked)
     with db() as conn:
+        claim = DomainClaimStore(conn).record_check(claim_id, site_name, values)
+        diagnostic_store = CloudflareDiagnosticStore(conn)
         return domain_response(
-            DomainClaimStore(conn).record_check(claim_id, site_name, values)
+            claim,
+            diagnostic_store.get(
+                claim.id, claim.route_generation, claim.mode_generation
+            )
+            if claim.claim_mode == "cloudflare"
+            else None,
+            DomainClaimStateMachine(conn).get(claim.id),
         )
 
 
@@ -399,3 +411,64 @@ async def cancel_domain_claim(
     if pending_withdrawal:
         return Response(status_code=202)
     return Response(status_code=204)
+
+
+def transition_coordinator(request: Request):
+    coordinator = getattr(request.app.state, "domain_transition_coordinator", None)
+    if not coordinator:
+        raise HTTPException(
+            status_code=503, detail="Automatic domain transitions are not configured"
+        )
+    return coordinator
+
+
+@router.post(
+    "/{claim_id}/transition/retry",
+    response_model=DomainClaimResponse,
+    operation_id="retryDomainTransition",
+    summary="Retry a custom domain transition",
+    responses={
+        401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+async def retry_domain_transition(
+    request: Request,
+    site_name: str,
+    claim_id: int,
+    identity: Annotated[Identity, Depends(require_user)],
+):
+    require_owned_site(site_name, identity.user.id)
+    coordinator = transition_coordinator(request)
+    await run_in_threadpool(coordinator.retry, claim_id, site_name)
+    with db() as conn:
+        claim = DomainClaimStore(conn).get(claim_id, site_name)
+        transition = DomainClaimStateMachine(conn).get(claim_id)
+    return domain_response(claim, transition=transition)
+
+
+@router.post(
+    "/{claim_id}/transition/cancel",
+    response_model=DomainClaimResponse,
+    operation_id="cancelDomainTransition",
+    summary="Cancel a custom domain transition",
+    responses={
+        401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+async def cancel_domain_transition(
+    request: Request,
+    site_name: str,
+    claim_id: int,
+    identity: Annotated[Identity, Depends(require_user)],
+):
+    require_owned_site(site_name, identity.user.id)
+    coordinator = transition_coordinator(request)
+    await run_in_threadpool(coordinator.cancel, claim_id, site_name)
+    with db() as conn:
+        claim = DomainClaimStore(conn).get(claim_id, site_name)
+        transition = DomainClaimStateMachine(conn).get(claim_id)
+    return domain_response(claim, transition=transition)

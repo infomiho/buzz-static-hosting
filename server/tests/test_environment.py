@@ -42,6 +42,8 @@ def test_environment_registry_covers_server_and_deployment_settings():
         "BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED",
             "BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED",
             "BUZZ_CLOUDFLARE_ACTIVATION_ENABLED",
+            "BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED",
+            "BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN",
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE",
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_USER",
         "BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE",
@@ -129,6 +131,16 @@ def test_cloudflare_activation_defaults_to_disabled(monkeypatch):
     assert ENVIRONMENT_BY_NAME["BUZZ_CLOUDFLARE_ACTIVATION_ENABLED"].read() is False
 
 
+def test_automatic_domain_transition_admission_defaults_to_disabled(monkeypatch):
+    monkeypatch.delenv(
+        "BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED", raising=False
+    )
+    assert (
+        ENVIRONMENT_BY_NAME["BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED"].read()
+        is False
+    )
+
+
 def test_public_ingress_ips_are_normalized_and_must_be_global():
     assert parse_public_ips(" 8.8.8.8,2001:4860:4860::8888 ") == frozenset(
         {"8.8.8.8", "2001:4860:4860::8888"}
@@ -147,5 +159,6 @@ def test_sensitive_settings_are_marked():
         "BUZZ_GSC_CREDENTIALS",
         "BUZZ_TRAEFIK_CONTROL_TOKEN",
         "BUZZ_TRAEFIK_API_AUTHORIZATION",
+        "BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN",
         "CF_API_TOKEN",
     }

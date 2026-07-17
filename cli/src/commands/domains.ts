@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { CliError, type CliOptions } from "../lib.js";
 import { confirm } from "../prompts.js";
 import {
+  cancelDomainTransition,
   cancelDomainClaim,
   checkDomainClaim,
   createDomainClaim,
@@ -10,6 +11,7 @@ import {
   getDomainCapability,
   getDomainClaims,
   resolveDomainClaim,
+  retryDomainTransition,
   type DomainCapability,
 } from "../domains.js";
 
@@ -57,11 +59,14 @@ export async function addDomain(
   cliOptions: CliOptions = {}
 ): Promise<void> {
   const capability = await getDomainCapability(cliOptions);
-  const mode = options.mode ?? "direct";
-  if (mode !== "direct" && mode !== "cloudflare") {
+  const automatic = !options.mode && capability.automatic?.ready === true;
+  const mode = options.mode ?? (automatic ? undefined : "direct");
+  if (mode && mode !== "direct" && mode !== "cloudflare") {
     throw new CliError("Mode must be 'direct' or 'cloudflare'");
   }
-  if (mode === "direct") {
+  if (automatic) {
+    requireReady(capability);
+  } else if (mode === "direct") {
     requireReady(capability);
   } else if (!capability.cloudflare.ready) {
     throw new CliError(
@@ -74,7 +79,13 @@ export async function addDomain(
   console.log(`  Type:  ${claim.verification.type}`);
   console.log(`  Name:  ${claim.verification.name}`);
   console.log(`  Value: ${claim.verification.value}\n`);
-  if (mode === "cloudflare") {
+  if (automatic) {
+    console.log("Point this hostname to Buzz using direct DNS or supported Cloudflare proxying:");
+    for (const target of capability.routing_targets) {
+      console.log(`  ${target.type.padEnd(5)} ${claim.hostname} -> ${target.value}`);
+    }
+    console.log("Use DNS-only records for a direct connection. If you use Cloudflare, keep proxying enabled and use Full (strict).");
+  } else if (mode === "cloudflare") {
     console.log("Keep Cloudflare proxying enabled and set SSL/TLS to Full (strict).");
     if (!capability.cloudflare.activation_enabled) {
       console.log("This server currently admits Cloudflare claims for diagnostics only.");
@@ -93,6 +104,35 @@ export async function addDomain(
   console.log("\nBuzz does not change your DNS records.");
   console.log(`After the records propagate, run:\n  buzz domains check ${siteName} ${claim.hostname}`);
 }
+
+async function updateTransition(
+  action: "retry" | "cancel",
+  siteName: string,
+  hostname: string,
+  cliOptions: CliOptions
+): Promise<void> {
+  const capability = await getDomainCapability(cliOptions);
+  requireControlReady(capability);
+  const current = resolveDomainClaim(await getDomainClaims(siteName, cliOptions), hostname);
+  const claim = await (action === "retry" ? retryDomainTransition : cancelDomainTransition)(
+    siteName,
+    current.id,
+    cliOptions
+  );
+  console.log(formatDomainClaim(claim));
+}
+
+export const retryTransition = (
+  siteName: string,
+  hostname: string,
+  cliOptions: CliOptions = {}
+) => updateTransition("retry", siteName, hostname, cliOptions);
+
+export const cancelTransition = (
+  siteName: string,
+  hostname: string,
+  cliOptions: CliOptions = {}
+) => updateTransition("cancel", siteName, hostname, cliOptions);
 
 export async function checkDomain(
   siteName: string,
@@ -160,7 +200,7 @@ export function registerDomainsCommand(program: Command): void {
   domains
     .command("add <site> <domain>")
     .description("Attach a custom domain to a site")
-    .option("--mode <mode>", "Routing mode: direct or cloudflare", "direct")
+    .option("--mode <mode>", "Deprecated: force direct or cloudflare routing")
     .action((site: string, domain: string, options: { mode?: string }) =>
       addDomain(site, domain, options, program.opts())
     );
@@ -168,6 +208,18 @@ export function registerDomainsCommand(program: Command): void {
     .command("check <site> <domain>")
     .description("Check custom-domain ownership and activation")
     .action((site: string, domain: string) => checkDomain(site, domain, program.opts()));
+  domains
+    .command("retry <site> <domain>")
+    .description("Retry a failed connection transition")
+    .action((site: string, domain: string) =>
+      retryTransition(site, domain, program.opts())
+    );
+  domains
+    .command("cancel-transition <site> <domain>")
+    .description("Cancel an active connection transition")
+    .action((site: string, domain: string) =>
+      cancelTransition(site, domain, program.opts())
+    );
   domains
     .command("remove <site> <domain>")
     .description("Remove a custom domain without changing DNS records")

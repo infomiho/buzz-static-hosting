@@ -57,7 +57,7 @@ class SiteResponse(BaseModel):
 
 class CreateDomainClaimRequest(BaseModel):
     hostname: str
-    mode: Literal["direct", "cloudflare"] = "direct"
+    mode: Literal["direct", "cloudflare"] | None = None
 
 
 class DomainVerificationRecord(BaseModel):
@@ -88,6 +88,15 @@ class DomainClaimResponse(BaseModel):
     removal_requested_at: str | None
     withdrawn_at: str | None
     mode: Literal["direct", "cloudflare"]
+    effective_mode: Literal["direct", "cloudflare"] | None
+    observed_mode: Literal["direct", "cloudflare", "mixed", "unsupported", "unavailable"] | None
+    target_mode: Literal["direct", "cloudflare"] | None
+    connection_status: Literal[
+        "waiting_for_dns", "securing", "connected", "updating", "action_needed"
+    ]
+    transition_started_at: str | None
+    transition_deadline_at: str | None
+    transition_error: str | None
     cloudflare_diagnostics: "CloudflareDiagnosticResponse | None"
 
 
@@ -134,7 +143,14 @@ class CustomDomainCapabilityResponse(BaseModel):
     admission_enabled: bool
     routing_enabled: bool
     routing_targets: list[CustomDomainRoutingTarget]
+    automatic: "AutomaticDomainTransitionCapability"
     cloudflare: "CloudflareCapability"
+
+
+class AutomaticDomainTransitionCapability(BaseModel):
+    admission_enabled: bool
+    ready: bool
+    detail: str | None
 
 
 class CloudflareCapability(BaseModel):

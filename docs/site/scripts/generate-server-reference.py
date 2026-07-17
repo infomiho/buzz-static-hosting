@@ -67,7 +67,7 @@ Command-line options take precedence where noted. Values used only by the bundle
 
 The CLI reads `BUZZ_SERVER` and `BUZZ_TOKEN`. The root `--server` and `--token` options take precedence, followed by environment variables, then saved configuration.
 
-Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.
+Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.
 """
 
 
@@ -108,6 +108,8 @@ def render_env_example() -> str:
 {setting('BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED', commented=True)}
 {setting('BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED', commented=True)}
 {setting('BUZZ_CLOUDFLARE_ACTIVATION_ENABLED', commented=True)}
+{setting('BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED', commented=True)}
+{setting('BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN', commented=True)}
 {setting('BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE', commented=True)}
 {setting('BUZZ_MAX_CUSTOM_DOMAINS_PER_USER', commented=True)}
 {setting('BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE', commented=True)}

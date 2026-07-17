@@ -26,6 +26,8 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz domains list`](#buzz-domains-list): List custom domains and lifecycle status
 - [`buzz domains add`](#buzz-domains-add): Attach a custom domain to a site
 - [`buzz domains check`](#buzz-domains-check): Check custom-domain ownership and activation
+- [`buzz domains retry`](#buzz-domains-retry): Retry a failed connection transition
+- [`buzz domains cancel-transition`](#buzz-domains-cancel-transition): Cancel an active connection transition
 - [`buzz domains remove`](#buzz-domains-remove): Remove a custom domain without changing DNS records
 
 ## buzz
@@ -204,15 +206,18 @@ Usage: buzz domains [options] [command]
 Manage custom domains
 
 Options:
-  -h, --help                        display help for command
+  -h, --help                         display help for command
 
 Commands:
-  list [site]                       List custom domains and lifecycle status
-  add [options] <site> <domain>     Attach a custom domain to a site
-  check <site> <domain>             Check custom-domain ownership and activation
-  remove [options] <site> <domain>  Remove a custom domain without changing DNS
-                                    records
-  help [command]                    display help for command
+  list [site]                        List custom domains and lifecycle status
+  add [options] <site> <domain>      Attach a custom domain to a site
+  check <site> <domain>              Check custom-domain ownership and
+                                     activation
+  retry <site> <domain>              Retry a failed connection transition
+  cancel-transition <site> <domain>  Cancel an active connection transition
+  remove [options] <site> <domain>   Remove a custom domain without changing DNS
+                                     records
+  help [command]                     display help for command
 ```
 
 ## buzz domains list
@@ -234,7 +239,7 @@ Usage: buzz domains add [options] <site> <domain>
 Attach a custom domain to a site
 
 Options:
-  --mode <mode>  Routing mode: direct or cloudflare (default: "direct")
+  --mode <mode>  Deprecated: force direct or cloudflare routing
   -h, --help     display help for command
 ```
 
@@ -244,6 +249,28 @@ Options:
 Usage: buzz domains check [options] <site> <domain>
 
 Check custom-domain ownership and activation
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz domains retry
+
+```text
+Usage: buzz domains retry [options] <site> <domain>
+
+Retry a failed connection transition
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz domains cancel-transition
+
+```text
+Usage: buzz domains cancel-transition [options] <site> <domain>
+
+Cancel an active connection transition
 
 Options:
   -h, --help  display help for command

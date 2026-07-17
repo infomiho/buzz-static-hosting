@@ -17,6 +17,7 @@ from .exceptions import BadRequest, Conflict, NotFound
 
 CLAIM_TTL = timedelta(hours=24)
 CHECK_COOLDOWN = timedelta(seconds=60)
+HEALTH_FRESHNESS_SECONDS = 10 * 60
 ACTIVE_STATUSES = ("pending", "verified")
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,11 @@ class DomainClaim:
     activation_checked_at: str | None
     activation_error: str | None
     claim_mode: str
+    mode_generation: int
+    automatic_mode: bool
+    health_checked_at: str | None
+    health_failure_count: int
+    common_failure_count: int
 
     @property
     def verification_name(self) -> str:
@@ -124,6 +130,15 @@ class DomainClaim:
         now = now or datetime.now(timezone.utc)
         available_at = datetime.fromisoformat(self.last_checked_at) + CHECK_COOLDOWN
         return max(0, math.ceil((available_at - now).total_seconds()))
+
+    def has_fresh_health(self, now: datetime | None = None) -> bool:
+        if not self.activated_at or not self.health_checked_at:
+            return False
+        now = now or datetime.now(timezone.utc)
+        checked_at = datetime.fromisoformat(self.health_checked_at)
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+        return checked_at >= now - timedelta(seconds=HEALTH_FRESHNESS_SECONDS)
 
     @property
     def route_name(self) -> str:
@@ -181,6 +196,7 @@ class DomainClaimStore:
         now: datetime | None = None,
         limits: DomainClaimLimits | None = None,
         claim_mode: str = "direct",
+        automatic_mode: bool = False,
     ) -> DomainClaim:
         now = now or datetime.now(timezone.utc)
         if not self._conn.in_transaction:
@@ -205,8 +221,8 @@ class DomainClaimStore:
             cursor = self._conn.execute(
                 """INSERT INTO custom_domain_claims
                 (hostname, site_name, verification_token, status, created_at, expires_at,
-                 claim_mode)
-                VALUES (?, ?, ?, 'pending', ?, ?, ?)""",
+                 claim_mode, automatic_mode)
+                VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)""",
                 (
                     hostname,
                     site_name,
@@ -214,6 +230,7 @@ class DomainClaimStore:
                     now.isoformat(),
                     (now + CLAIM_TTL).isoformat(),
                     claim_mode,
+                    automatic_mode,
                 ),
             )
         except sqlite3.IntegrityError as exc:
@@ -250,7 +267,7 @@ class DomainClaimStore:
             WHERE site_name = ? ORDER BY id DESC""",
             (site_name,),
         ).fetchall()
-        return [self._from_row(row) for row in rows]
+        return [self.from_row(row) for row in rows]
 
     def get(self, claim_id: int, site_name: str) -> DomainClaim:
         self.expire_pending()
@@ -260,7 +277,7 @@ class DomainClaimStore:
         ).fetchone()
         if not row:
             raise NotFound("Custom domain claim not found")
-        return self._from_row(row)
+        return self.from_row(row)
 
     def record_check(
         self,
@@ -353,6 +370,7 @@ class DomainClaimStore:
                 )
             return True
         if claim.route_status in {"publishing", "routed"}:
+            self._invalidate_transition(claim.id)
             self._conn.execute(
                 """UPDATE custom_domain_claims
                 SET route_status = 'removing', removal_requested_at = ?,
@@ -365,6 +383,7 @@ class DomainClaimStore:
                 claim.route_generation,
             )
             return True
+        self._invalidate_transition(claim.id)
         self._conn.execute(
             """UPDATE custom_domain_claims
             SET status = 'cancelled', route_status = 'removed',
@@ -390,14 +409,26 @@ class DomainClaimStore:
                     """UPDATE custom_domain_claims
                     SET route_status = 'publishing', route_generation = route_generation + 1,
                         challenge_token = ?, challenge_seen_at = NULL,
-                        route_updated_at = ?, route_error = NULL, withdrawn_at = NULL,
-                        activated_at = NULL, activation_checked_at = NULL,
-                        activation_error = NULL
+                        route_updated_at = ?, route_error = NULL, withdrawn_at = NULL
                     WHERE id = ?""",
                     (f"bdc_{secrets.token_urlsafe(32)}", now.isoformat(), row["id"]),
                 )
+                self._conn.execute(
+                    """UPDATE custom_domain_claims
+                    SET activated_at = NULL, activation_checked_at = NULL,
+                        activation_error = NULL, health_checked_at = NULL,
+                        health_failure_count = 0, common_failure_count = 0
+                    WHERE id = ?""",
+                    (row["id"],),
+                )
                 logger.info("Custom domain claim %d queued for publication", row["id"])
         else:
+            transition_claims = self._conn.execute(
+                """SELECT id FROM custom_domain_claims
+                WHERE status = 'verified' AND route_status IN ('publishing', 'routed')"""
+            ).fetchall()
+            for row in transition_claims:
+                self._invalidate_transition(row["id"])
             cursor = self._conn.execute(
                 """UPDATE custom_domain_claims
                 SET route_status = 'removing', route_updated_at = ?, route_error = NULL
@@ -414,7 +445,7 @@ class DomainClaimStore:
             WHERE status = 'verified' AND route_status IN ('publishing', 'routed', 'removing')
             ORDER BY id"""
         ).fetchall()
-        return [self._from_row(row) for row in rows]
+        return [self.from_row(row) for row in rows]
 
     def routable_claims(self) -> list[DomainClaim]:
         rows = self._conn.execute(
@@ -422,107 +453,39 @@ class DomainClaimStore:
             WHERE status = 'verified' AND route_status IN ('publishing', 'routed')
             ORDER BY id"""
         ).fetchall()
-        return [self._from_row(row) for row in rows]
+        return [self.from_row(row) for row in rows]
 
     def activation_candidates(self) -> list[DomainClaim]:
         rows = self._conn.execute(
             """SELECT * FROM custom_domain_claims
             WHERE status = 'verified' AND route_status = 'routed'
               AND activated_at IS NULL AND claim_mode = 'direct'
+              AND automatic_mode = 0 AND health_checked_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM custom_domain_mode_transitions
+                WHERE claim_id = custom_domain_claims.id
+                  AND mode_generation = custom_domain_claims.mode_generation)
             ORDER BY activation_checked_at IS NOT NULL, activation_checked_at, id"""
         ).fetchall()
-        return [self._from_row(row) for row in rows]
-
-    def mark_activated(
-        self,
-        claim_id: int,
-        generation: int,
-        now: datetime | None = None,
-    ) -> bool:
-        now = now or datetime.now(timezone.utc)
-        cursor = self._conn.execute(
-            """UPDATE custom_domain_claims
-            SET activated_at = ?, activation_checked_at = ?, activation_error = NULL
-            WHERE id = ? AND route_generation = ? AND status = 'verified'
-              AND route_status = 'routed' AND activated_at IS NULL
-              AND claim_mode = 'direct'""",
-            (now.isoformat(), now.isoformat(), claim_id, generation),
-        )
-        return cursor.rowcount > 0
-
-    def apply_cloudflare_activation(
-        self,
-        claim_id: int,
-        generation: int,
-        error: str | None,
-        deactivate: bool = False,
-        now: datetime | None = None,
-    ) -> bool:
-        now = now or datetime.now(timezone.utc)
-        if error:
-            cursor = self._conn.execute(
-                """UPDATE custom_domain_claims
-                SET activated_at = CASE WHEN ? THEN NULL ELSE activated_at END,
-                    activation_checked_at = ?,
-                    activation_error = ?
-                WHERE id = ? AND route_generation = ? AND status = 'verified'
-                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
-                  AND route_error IS NULL""",
-                (deactivate, now.isoformat(), error, claim_id, generation),
-            )
-        else:
-            cursor = self._conn.execute(
-                """UPDATE custom_domain_claims
-                SET activated_at = COALESCE(activated_at, ?), activation_checked_at = ?,
-                    activation_error = NULL
-                WHERE id = ? AND route_generation = ? AND status = 'verified'
-                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
-                  AND route_error IS NULL""",
-                (now.isoformat(), now.isoformat(), claim_id, generation),
-            )
-        return cursor.rowcount > 0
-
-    def record_activation_error(
-        self,
-        claim_id: int,
-        generation: int,
-        error: str,
-        now: datetime | None = None,
-    ) -> bool:
-        now = now or datetime.now(timezone.utc)
-        claim = self._conn.execute(
-            """SELECT activation_error FROM custom_domain_claims
-            WHERE id = ? AND route_generation = ? AND status = 'verified'
-              AND route_status = 'routed' AND activated_at IS NULL""",
-            (claim_id, generation),
-        ).fetchone()
-        if not claim:
-            return False
-        cursor = self._conn.execute(
-            """UPDATE custom_domain_claims
-            SET activation_checked_at = ?, activation_error = ?
-            WHERE id = ? AND route_generation = ? AND status = 'verified'
-              AND route_status = 'routed' AND activated_at IS NULL""",
-            (now.isoformat(), error, claim_id, generation),
-        )
-        return cursor.rowcount > 0 and claim["activation_error"] != error
+        return [self.from_row(row) for row in rows]
 
     def find_activated(self, hostname: str) -> DomainClaim | None:
         row = self._conn.execute(
             """SELECT * FROM custom_domain_claims
             WHERE hostname = ? AND status = 'verified' AND route_status = 'routed'
               AND route_error IS NULL AND activated_at IS NOT NULL
-              AND site_name IS NOT NULL""",
-            (hostname,),
+              AND site_name IS NOT NULL
+              AND julianday(health_checked_at) >= julianday('now', ?)""",
+            (hostname, f"-{HEALTH_FRESHNESS_SECONDS} seconds"),
         ).fetchone()
-        return self._from_row(row) if row else None
+        return self.from_row(row) if row else None
 
     def activated_hostnames_for_site(self, site_name: str) -> frozenset[str]:
         rows = self._conn.execute(
             """SELECT hostname FROM custom_domain_claims
             WHERE site_name = ? AND status = 'verified' AND route_status = 'routed'
-              AND route_error IS NULL AND activated_at IS NOT NULL""",
-            (site_name,),
+              AND route_error IS NULL AND activated_at IS NOT NULL
+              AND julianday(health_checked_at) >= julianday('now', ?)""",
+            (site_name, f"-{HEALTH_FRESHNESS_SECONDS} seconds"),
         ).fetchall()
         return frozenset(row["hostname"] for row in rows)
 
@@ -553,41 +516,6 @@ class DomainClaimStore:
               AND route_status IN ('publishing', 'removing') AND route_error IS NOT ?""",
             (error, claim_id, generation, error),
         )
-        return cursor.rowcount > 0
-
-    def record_cloudflare_route_health(
-        self,
-        claim_id: int,
-        generation: int,
-        error: str | None,
-        now: datetime | None = None,
-    ) -> bool:
-        now = now or datetime.now(timezone.utc)
-        if error:
-            cursor = self._conn.execute(
-                """UPDATE custom_domain_claims
-                SET route_error = ?, activated_at = NULL,
-                    activation_checked_at = ?, activation_error = ?
-                WHERE id = ? AND route_generation = ? AND status = 'verified'
-                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
-                  AND (route_error IS NOT ? OR activated_at IS NOT NULL)""",
-                (
-                    error,
-                    now.isoformat(),
-                    error,
-                    claim_id,
-                    generation,
-                    error,
-                ),
-            )
-        else:
-            cursor = self._conn.execute(
-                """UPDATE custom_domain_claims SET route_error = NULL
-                WHERE id = ? AND route_generation = ? AND status = 'verified'
-                  AND route_status = 'routed' AND claim_mode = 'cloudflare'
-                  AND route_error IS NOT NULL""",
-                (claim_id, generation),
-            )
         return cursor.rowcount > 0
 
     def finish_withdrawal(
@@ -621,7 +549,7 @@ class DomainClaimStore:
               AND route_status IN ('publishing', 'routed')""",
             (hostname, token),
         ).fetchone()
-        return self._from_row(row) if row else None
+        return self.from_row(row) if row else None
 
     def mark_challenge_seen(
         self,
@@ -654,8 +582,28 @@ class DomainClaimStore:
             (now.isoformat(),),
         )
 
+    def _invalidate_transition(self, claim_id: int) -> None:
+        transition = self._conn.execute(
+            "SELECT 1 FROM custom_domain_mode_transitions WHERE claim_id = ?",
+            (claim_id,),
+        ).fetchone()
+        self._conn.execute(
+            "UPDATE custom_domain_claims SET mode_generation = mode_generation + 1 WHERE id = ?",
+            (claim_id,),
+        )
+        if transition:
+            self._conn.execute(
+                """UPDATE custom_domain_mode_transitions
+                SET mode_generation = mode_generation + 1,
+                    probe_generation = probe_generation + 1,
+                    state = 'cancelled', completed_at = CURRENT_TIMESTAMP,
+                    lease_owner = NULL, lease_expires_at = NULL
+                WHERE claim_id = ?""",
+                (claim_id,),
+            )
+
     @staticmethod
-    def _from_row(row: sqlite3.Row) -> DomainClaim:
+    def from_row(row: sqlite3.Row) -> DomainClaim:
         return DomainClaim(
             id=row["id"],
             hostname=row["hostname"],
@@ -679,4 +627,9 @@ class DomainClaimStore:
             activation_checked_at=row["activation_checked_at"],
             activation_error=row["activation_error"],
             claim_mode=row["claim_mode"],
+            mode_generation=row["mode_generation"],
+            automatic_mode=bool(row["automatic_mode"]),
+            health_checked_at=row["health_checked_at"],
+            health_failure_count=row["health_failure_count"],
+            common_failure_count=row["common_failure_count"],
         )

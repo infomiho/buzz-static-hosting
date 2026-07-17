@@ -4,6 +4,7 @@ from server import db as db_module
 from server.app import create_app
 from server.cookies import COOKIE_NAME
 from server.custom_domains import DomainClaimStore
+from server.domain_transitions import DomainClaimStateMachine
 
 
 class StubAuth:
@@ -162,7 +163,8 @@ def test_activated_custom_domain_serves_canonical_site_identity(tmp_path, monkey
         store.record_check(claim.id, "my-site", (claim.verification_value,))
         claim = store.prepare_routes(True)[0]
         store.mark_routed(claim.id, claim.route_generation)
-        store.mark_activated(claim.id, claim.route_generation)
+        claim = store.get(claim.id, "my-site")
+        DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
     monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
     monkeypatch.setattr("server.app.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     client = make_client(tmp_path, monkeypatch)
@@ -198,7 +200,8 @@ def test_multiple_aliases_serve_independently(tmp_path, monkeypatch):
             claims.append(claim)
         for claim in store.prepare_routes(True):
             store.mark_routed(claim.id, claim.route_generation)
-            store.mark_activated(claim.id, claim.route_generation)
+            current = store.get(claim.id, "my-site")
+            DomainClaimStateMachine(conn).apply_activation_decision(current, None)
     monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
     monkeypatch.setattr("server.app.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     client = make_client(tmp_path, monkeypatch)

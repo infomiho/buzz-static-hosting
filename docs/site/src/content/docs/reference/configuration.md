@@ -39,6 +39,8 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED` | Whether site owners can create new custom-domain claims. | Buzz server | `false` | Optional |
 | `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED` | Whether site owners can create Cloudflare proxy claims and inspect diagnostics. | Buzz server | `false` | Optional |
 | `BUZZ_CLOUDFLARE_ACTIVATION_ENABLED` | Whether healthy Cloudflare proxy claims may activate and serve site content. | Buzz server | `false` | Optional |
+| `BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED` | Whether DNS observations may start new automatic domain transitions. | Buzz server | `false` | Optional |
+| `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN` | Bearer token for the private custom-domain operator endpoint. | Buzz server | Not set | Optional |
 | `BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE` | Maximum pending and verified custom domains for one site. | Buzz server | `5` | Optional |
 | `BUZZ_MAX_CUSTOM_DOMAINS_PER_USER` | Maximum pending and verified custom domains owned by one user. | Buzz server | `20` | Optional |
 | `BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE` | Maximum pending and verified custom domains across this Buzz server. | Buzz server | `1000` | Optional |
@@ -54,4 +56,4 @@ Command-line options take precedence where noted. Values used only by the bundle
 
 The CLI reads `BUZZ_SERVER` and `BUZZ_TOKEN`. The root `--server` and `--token` options take precedence, followed by environment variables, then saved configuration.
 
-Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.
+Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.

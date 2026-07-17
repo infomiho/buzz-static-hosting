@@ -4,6 +4,7 @@ import pytest
 
 from server import db as db_module
 from server.custom_domains import DomainClaimStore
+from server.domain_transitions import DomainClaimStateMachine
 from server.domain_routing import DomainRouteReconciler, build_traefik_snapshot
 
 
@@ -176,7 +177,7 @@ def test_reconciler_rejects_malformed_router_tls(routing_db):
         ({**expected_router(), "service": "wrong@docker"}, "router_configuration_mismatch"),
     ],
 )
-def test_active_cloudflare_route_failure_stops_serving_immediately(
+def test_route_reconciler_does_not_duplicate_active_claim_health_checks(
     routing_db, router, error
 ):
     with routing_db() as conn:
@@ -190,18 +191,18 @@ def test_active_cloudflare_route_failure_stops_serving_immediately(
     with routing_db() as conn:
         store = DomainClaimStore(conn)
         claim = store.list_for_site("my-site")[0]
-        store.apply_cloudflare_activation(claim.id, claim.route_generation, None)
+        DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
 
     reconciler(FakeRuntimeClient(router)).run_once()
 
     with routing_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
-    assert claim.activated_at is None
-    assert claim.route_error == error
-    assert claim.activation_error == error
+    assert claim.activated_at is not None
+    assert claim.route_error is None
+    assert claim.activation_error is None
 
 
-def test_healthy_cloudflare_router_clears_route_error_for_revalidation(routing_db):
+def test_route_reconciler_leaves_routed_health_evidence_to_collector(routing_db):
     with routing_db() as conn:
         store = DomainClaimStore(conn)
         claim = store.list_for_site("my-site")[0]

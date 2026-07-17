@@ -120,6 +120,10 @@ The quota settings limit pending and verified aliases per site, per user, and ac
 
 Set `BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED=true` to admit credential-free Cloudflare proxy claims. This checks persistent TXT ownership, Cloudflare addresses, edge TLS, challenge forwarding, and Full (strict) origin behavior. Bypass redirects, caching, WAF, Workers, Access, and challenges on Buzz and ACME verification paths. After controlled-zone verification, set `BUZZ_CLOUDFLARE_ACTIVATION_ENABLED=true` to let healthy claims serve content.
 
+Automatic connection-path detection defaults off. It is available only when direct routing and Cloudflare diagnostics and activation are all ready, including current Cloudflare ranges and the transition runtime. After validating existing direct and Cloudflare claims, set `BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED=true` to let Buzz detect and validate supported DNS path changes without replacing the domain claim. Closing admission prevents new transitions while active transitions continue to completion, cancellation, or their deadline.
+
+Set `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN` to one or more dedicated bearer tokens separated by commas. On the private control port `8081`, `GET /operator/domain-transitions` reports active transitions with current generation-qualified DNS and path evidence. `POST /operator/domain-transitions/{claim_id}/cancel` validates the current effective path before retaining it and returns `404` for an unknown claim or `409` when cancellation is unsafe or loses a race. Operator routes authenticate before route or method handling and return no-store JSON errors. Do not reuse `BUZZ_TRAEFIK_CONTROL_TOKEN`, expose these endpoints through the public app, or log/send the token outside the authorization header.
+
 Check the private readiness response:
 
 ```bash

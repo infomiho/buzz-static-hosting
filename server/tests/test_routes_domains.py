@@ -8,6 +8,12 @@ from server import db as db_module
 from server.app import create_app
 from server.auth_service import Identity, User
 from server.dependencies import get_identity
+from server.custom_domains import DomainClaimStore
+from server.domain_transitions import (
+    DomainClaimStateMachine,
+    DomainTransitionCoordinator,
+)
+from server.domain_evidence import DnsObservation
 
 
 class FakeTxtResolver:
@@ -56,6 +62,7 @@ def domain_api(tmp_path, monkeypatch):
     app = create_app()
     app.state.traefik_control = ReadyControlPlane()
     app.state.custom_domain_runtime_ready = True
+    app.state.cloudflare_range_state = type("RangeState", (), {"error": None})()
     resolver = FakeTxtResolver()
     app.state.domain_txt_resolver = resolver
     return TestClient(app), resolver
@@ -66,7 +73,7 @@ def test_domain_claim_lifecycle(domain_api):
 
     created = client.post(
         "/sites/my-site/domains",
-        json={"hostname": "WWW.Example.COM"},
+        json={"hostname": "WWW.Example.COM", "mode": "direct"},
     )
 
     assert created.status_code == 201
@@ -88,6 +95,42 @@ def test_domain_claim_lifecycle(domain_api):
     cancelled = client.delete(f"/sites/my-site/domains/{claim['id']}")
     assert cancelled.status_code == 204
     assert client.get("/sites/my-site/domains").json()[0]["status"] == "cancelled"
+
+
+def test_omitted_mode_requires_automatic_onboarding_readiness(
+    domain_api, monkeypatch
+):
+    client, _ = domain_api
+    unavailable = client.post(
+        "/sites/my-site/domains", json={"hostname": "old.example.com"}
+    )
+    explicit_compatibility = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "explicit.example.com", "mode": "direct"},
+    )
+    client.app.state.automatic_domain_transition_admission_enabled = True
+    client.app.state.domain_transition_coordinator = object()
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", True)
+    automatic = client.post(
+        "/sites/my-site/domains", json={"hostname": "new.example.com"}
+    )
+
+    assert unavailable.status_code == 503
+    assert explicit_compatibility.status_code == 201
+    assert explicit_compatibility.json()["mode"] == "direct"
+    assert explicit_compatibility.json()["effective_mode"] is None
+    assert automatic.status_code == 201
+    assert automatic.json()["mode"] == "direct"
+    assert automatic.json()["connection_status"] == "waiting_for_dns"
+    with db_module.db() as conn:
+        rows = conn.execute(
+            "SELECT hostname, automatic_mode FROM custom_domain_claims ORDER BY id"
+        ).fetchall()
+    assert [(row["hostname"], row["automatic_mode"]) for row in rows] == [
+        ("explicit.example.com", 0),
+        ("new.example.com", 1),
+    ]
 
 
 def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch):
@@ -112,12 +155,53 @@ def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch)
             {"type": "A", "value": "8.8.8.8"},
             {"type": "AAAA", "value": "2001:4860:4860::8888"},
         ],
-            "cloudflare": {
-                "admission_enabled": False,
-                "activation_enabled": False,
+        "automatic": {
+            "admission_enabled": False,
+            "ready": False,
+            "detail": "Automatic domain transitions are not enabled",
+        },
+        "cloudflare": {
+            "admission_enabled": False,
+            "activation_enabled": False,
             "ready": False,
             "detail": "Cloudflare proxy diagnostics admission is not enabled",
         },
+    }
+
+
+def test_custom_domain_capability_reports_automatic_runtime_readiness(
+    domain_api, monkeypatch
+):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", True)
+    client.app.state.automatic_domain_transition_admission_enabled = True
+
+    unready = client.get("/capabilities/custom-domains").json()["automatic"]
+    client.app.state.domain_transition_coordinator = object()
+    ready = client.get("/capabilities/custom-domains").json()["automatic"]
+
+    assert unready == {
+        "admission_enabled": True,
+        "ready": False,
+        "detail": "Automatic domain transition runtime is not configured",
+    }
+    assert ready == {"admission_enabled": True, "ready": True, "detail": None}
+
+
+def test_automatic_readiness_requires_cloudflare_activation(domain_api, monkeypatch):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", False)
+    client.app.state.automatic_domain_transition_admission_enabled = True
+    client.app.state.domain_transition_coordinator = object()
+
+    automatic = client.get("/capabilities/custom-domains").json()["automatic"]
+
+    assert automatic == {
+        "admission_enabled": True,
+        "ready": False,
+        "detail": "Cloudflare activation is not enabled for automatic transitions",
     }
 
 
@@ -172,6 +256,37 @@ def test_cloudflare_diagnostic_claim_requires_explicit_operator_admission(
     assert enabled.status_code == 201
     assert enabled.json()["mode"] == "cloudflare"
     assert enabled.json()["cloudflare_diagnostics"] is None
+
+
+def test_explicit_mode_keeps_released_cli_semantics_when_automatic_is_ready(
+    domain_api, monkeypatch
+):
+    client, _ = domain_api
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    client.app.state.automatic_domain_transition_admission_enabled = True
+    client.app.state.domain_transition_coordinator = object()
+
+    direct = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "direct.example.com", "mode": "direct"},
+    )
+    cloudflare = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
+    )
+
+    assert direct.status_code == 201
+    assert cloudflare.status_code == 201
+    assert direct.json()["mode"] == "direct"
+    assert cloudflare.json()["mode"] == "cloudflare"
+    with db_module.db() as conn:
+        modes = conn.execute(
+            "SELECT claim_mode, automatic_mode FROM custom_domain_claims ORDER BY id"
+        ).fetchall()
+    assert [(row["claim_mode"], row["automatic_mode"]) for row in modes] == [
+        ("direct", 0),
+        ("cloudflare", 0),
+    ]
 
 
 def test_cloudflare_capability_is_independent_of_direct_ingress(
@@ -239,7 +354,7 @@ def test_failed_txt_check_returns_actionable_state(domain_api):
     client, _ = domain_api
     created = client.post(
         "/sites/my-site/domains",
-        json={"hostname": "www.example.com"},
+        json={"hostname": "www.example.com", "mode": "direct"},
     ).json()
 
     response = client.post(f"/sites/my-site/domains/{created['id']}/check")
@@ -256,10 +371,10 @@ def test_failed_txt_check_returns_actionable_state(domain_api):
 def test_multiple_aliases_can_be_created_and_removed_independently(domain_api):
     client, _ = domain_api
     first = client.post(
-        "/sites/my-site/domains", json={"hostname": "one.example.com"}
+        "/sites/my-site/domains", json={"hostname": "one.example.com", "mode": "direct"}
     ).json()
     second = client.post(
-        "/sites/my-site/domains", json={"hostname": "two.example.com"}
+        "/sites/my-site/domains", json={"hostname": "two.example.com", "mode": "direct"}
     ).json()
 
     removed = client.delete(f"/sites/my-site/domains/{first['id']}")
@@ -275,10 +390,10 @@ def test_multiple_aliases_can_be_created_and_removed_independently(domain_api):
 def test_domain_quota_returns_actionable_response(domain_api, monkeypatch):
     client, _ = domain_api
     monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_SITE", 1)
-    client.post("/sites/my-site/domains", json={"hostname": "one.example.com"})
+    client.post("/sites/my-site/domains", json={"hostname": "one.example.com", "mode": "direct"})
 
     response = client.post(
-        "/sites/my-site/domains", json={"hostname": "two.example.com"}
+        "/sites/my-site/domains", json={"hostname": "two.example.com", "mode": "direct"}
     )
 
     assert response.status_code == 429
@@ -294,7 +409,7 @@ def test_domain_admission_requires_live_control_plane_readiness(domain_api):
 
     response = client.post(
         "/sites/my-site/domains",
-        json={"hostname": "www.example.com"},
+        json={"hostname": "www.example.com", "mode": "direct"},
     )
 
     assert response.status_code == 503
@@ -309,7 +424,7 @@ def test_domain_admission_requires_production_routing_configuration(
 
     response = client.post(
         "/sites/my-site/domains",
-        json={"hostname": "www.example.com"},
+        json={"hostname": "www.example.com", "mode": "direct"},
     )
 
     assert response.status_code == 503
@@ -321,7 +436,7 @@ def test_domain_claim_requires_site_ownership(domain_api):
 
     response = client.post(
         "/sites/other-site/domains",
-        json={"hostname": "www.example.com"},
+        json={"hostname": "www.example.com", "mode": "direct"},
     )
 
     assert response.status_code == 403
@@ -358,7 +473,7 @@ def test_existing_domain_claims_remain_available_when_operator_disables_them(
 
     create_response = client.post(
         "/sites/my-site/domains",
-        json={"hostname": "www.example.com"},
+        json={"hostname": "www.example.com", "mode": "direct"},
     )
     assert create_response.status_code == 503
     assert create_response.json()["detail"] == "Custom domains are not enabled on this Buzz server"
@@ -368,7 +483,7 @@ def test_routed_domain_removal_waits_for_traefik_withdrawal(domain_api):
     client, resolver = domain_api
     created = client.post(
         "/sites/my-site/domains",
-        json={"hostname": "www.example.com"},
+        json={"hostname": "www.example.com", "mode": "direct"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
@@ -386,3 +501,177 @@ def test_routed_domain_removal_waits_for_traefik_withdrawal(domain_api):
     claim = client.get("/sites/my-site/domains").json()[0]
     assert claim["status"] == "verified"
     assert claim["route_status"] == "removing"
+
+
+def test_transition_cancel_endpoint_retains_valid_effective_mode(domain_api):
+    client, resolver = domain_api
+    created = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "www.example.com", "mode": "direct"},
+    ).json()
+    resolver.values = (created["verification"]["value"],)
+    client.post(f"/sites/my-site/domains/{created['id']}/check")
+    with db_module.db() as conn:
+        claims = DomainClaimStore(conn)
+        claim = claims.prepare_routes(True)[0]
+        claims.mark_routed(claim.id, claim.route_generation)
+        claim = claims.get(claim.id, "my-site")
+        DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
+        claim = claims.get(claim.id, "my-site")
+        DomainClaimStateMachine(conn).start(
+            claim.id, claim.route_generation, "cloudflare"
+        )
+    observation = type(
+        "Observation",
+        (),
+        {
+            "mode": "direct",
+            "addresses": ("8.8.8.8",),
+            "ttl": 60,
+            "fingerprint": "direct",
+            "error": None,
+        },
+    )()
+    class Evidence:
+        common_error = None
+
+        def __init__(self, claim):
+            self.claim = claim
+            self.dns = observation
+            self.confirmed_dns = observation
+
+        def target_error(self, _mode):
+            return None
+
+    collector = type(
+        "Collector",
+        (),
+        {
+            "collect": lambda self, claim, _mode=None: Evidence(claim),
+        },
+    )()
+    diagnostic_recorder = type(
+        "DiagnosticRecorder",
+        (),
+        {"record_transition": lambda *_args: True, "record_health": lambda *_args: True},
+    )()
+    client.app.state.domain_transition_coordinator = DomainTransitionCoordinator(
+        collector,
+        diagnostic_recorder,
+        admission_enabled=lambda: False,
+        cloudflare_target_enabled=lambda: False,
+        database=db_module.db,
+    )
+
+    response = client.post(
+        f"/sites/my-site/domains/{created['id']}/transition/cancel"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["effective_mode"] == "direct"
+    assert response.json()["connection_status"] == "connected"
+    assert response.json()["transition_error"] is None
+
+
+def test_api_does_not_report_stale_activated_claim_as_connected(domain_api):
+    client, resolver = domain_api
+    created = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "stale.example.com", "mode": "direct"},
+    ).json()
+    resolver.values = (created["verification"]["value"],)
+    client.post(f"/sites/my-site/domains/{created['id']}/check")
+    with db_module.db() as conn:
+        claims = DomainClaimStore(conn)
+        claim = claims.prepare_routes(True)[0]
+        claims.mark_routed(claim.id, claim.route_generation)
+        claim = claims.get(claim.id, "my-site")
+        DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
+        conn.execute(
+            """UPDATE custom_domain_claims
+            SET health_checked_at = datetime('now', '-11 minutes') WHERE id = ?""",
+            (claim.id,),
+        )
+
+    response = client.get("/sites/my-site/domains").json()[0]
+
+    assert response["connection_status"] == "action_needed"
+    assert response["effective_mode"] is None
+
+
+def test_completed_transition_does_not_project_historical_paths(domain_api):
+    client, resolver = domain_api
+    created = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "complete.example.com", "mode": "direct"},
+    ).json()
+    resolver.values = (created["verification"]["value"],)
+    client.post(f"/sites/my-site/domains/{created['id']}/check")
+    with db_module.db() as conn:
+        claims = DomainClaimStore(conn)
+        claim = claims.prepare_routes(True)[0]
+        claims.mark_routed(claim.id, claim.route_generation)
+        state = DomainClaimStateMachine(conn)
+        transition = state.start(
+            claim.id, claim.route_generation, "direct"
+        )
+        observation = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
+        reservation = state.reserve_probe(
+            claim.id, claim.route_generation, transition.mode_generation, "test"
+        )
+        state.record_reserved_observation(claim, reservation, observation)
+        state.release_reservation(reservation)
+        conn.execute(
+            "UPDATE custom_domain_mode_transitions SET last_target_observed_at = datetime('now', '-61 seconds') WHERE claim_id = ?",
+            (claim.id,),
+        )
+        reservation = state.reserve_probe(
+            claim.id, claim.route_generation, transition.mode_generation, "test"
+        )
+        state.record_reserved_observation(claim, reservation, observation)
+        state.record_reserved_confirmation(claim, reservation, observation)
+        assert state.complete_reserved(claim, reservation)
+
+    response = client.get("/sites/my-site/domains").json()[0]
+
+    assert response["observed_mode"] is None
+    assert response["target_mode"] is None
+    assert response["transition_started_at"] is None
+
+
+def test_verified_ownership_check_returns_current_transition_and_diagnostic(
+    domain_api, monkeypatch
+):
+    client, resolver = domain_api
+    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+    created = client.post(
+        "/sites/my-site/domains",
+        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
+    ).json()
+    resolver.values = (created["verification"]["value"],)
+    client.post(f"/sites/my-site/domains/{created['id']}/check")
+    with db_module.db() as conn:
+        claims = DomainClaimStore(conn)
+        claim = claims.prepare_routes(True)[0]
+        claims.mark_routed(claim.id, claim.route_generation)
+        claim = claims.get(claim.id, "my-site")
+        DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
+        claim = claims.get(claim.id, "my-site")
+        transition = DomainClaimStateMachine(conn).start(
+            claim.id, claim.route_generation, "direct"
+        )
+        conn.execute(
+            """INSERT INTO custom_domain_cloudflare_diagnostics
+            (claim_id, route_generation, mode_generation, probe_generation, checked_at,
+             dns_status, edge_tls_status, edge_http_status, http_forward_status,
+             origin_status, ownership_status)
+            VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, 'healthy', 'healthy', 'healthy',
+                    'healthy', 'healthy', 'healthy')""",
+            (claim.id, claim.route_generation, transition.mode_generation),
+        )
+
+    response = client.post(f"/sites/my-site/domains/{created['id']}/check")
+
+    assert response.status_code == 200
+    assert response.json()["target_mode"] == "direct"
+    assert response.json()["cloudflare_diagnostics"]["dns"]["status"] == "healthy"

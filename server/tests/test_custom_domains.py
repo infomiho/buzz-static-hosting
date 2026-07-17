@@ -110,14 +110,31 @@ def test_cloudflare_claims_cannot_enter_direct_activation(claim_db):
         for claim in routed:
             store.mark_routed(claim.id, claim.route_generation)
         candidates = store.activation_candidates()
-        cloudflare = store.get(cloudflare.id, "site-one")
-
-        activated = store.mark_activated(
-            cloudflare.id, cloudflare.route_generation
-        )
 
     assert [claim.hostname for claim in candidates] == ["direct.example.com"]
-    assert activated is False
+
+
+def test_legacy_direct_activation_excludes_automatic_and_health_managed_claims(claim_db):
+    with claim_db() as conn:
+        store = DomainClaimStore(conn)
+        automatic = store.create(
+            "site-one", "automatic.example.com", automatic_mode=True
+        )
+        recovering = store.create("site-one", "recovering.example.com")
+        explicit = store.create("site-one", "explicit.example.com")
+        for claim in (automatic, recovering, explicit):
+            store.record_check(claim.id, "site-one", (claim.verification_value,))
+        for claim in store.prepare_routes(True):
+            store.mark_routed(claim.id, claim.route_generation)
+        conn.execute(
+            """UPDATE custom_domain_claims SET health_checked_at = CURRENT_TIMESTAMP
+            WHERE id = ?""",
+            (recovering.id,),
+        )
+
+        candidates = store.activation_candidates()
+
+    assert [claim.hostname for claim in candidates] == ["explicit.example.com"]
 
 
 def test_duplicate_active_hostname_is_rejected_for_same_site(claim_db):
