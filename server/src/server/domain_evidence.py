@@ -255,16 +255,56 @@ class ClaimEvidence:
         if mode == "cloudflare":
             if self.edge is None or len(self.edge) != len(self.dns.addresses):
                 return EvidenceResult("failed", "edge_confirmation_missing")
-            for result in self.edge:
-                if result.tls_status != "healthy" or result.http_status != "healthy":
-                    return EvidenceResult(
-                        "failed",
-                        result.tls_error
-                        or result.http_error
-                        or "cloudflare_target_unhealthy",
-                        transient=(result.tls_error or result.http_error)
-                        in {"edge_unavailable", "cloudflare_525"},
-                    )
+            by_family: dict[int, list[EdgeProbeResult]] = {}
+            for address, result in zip(self.dns.addresses, self.edge):
+                by_family.setdefault(ipaddress.ip_address(address).version, []).append(result)
+            healthy_families = {
+                family
+                for family, results in by_family.items()
+                if all(
+                    result.tls_status == "healthy" and result.http_status == "healthy"
+                    for result in results
+                )
+            }
+            skipped_families = {
+                family
+                for family, results in by_family.items()
+                if healthy_families
+                and all(
+                    result.tls_error == "edge_address_family_unavailable"
+                    and result.http_error is None
+                    for result in results
+                )
+            }
+            failures = [
+                result
+                for family, results in by_family.items()
+                if family not in skipped_families
+                for result in results
+                if result.tls_status != "healthy" or result.http_status != "healthy"
+            ]
+            failure = next(
+                (
+                    result
+                    for result in failures
+                    if (result.tls_error or result.http_error)
+                    != "edge_address_family_unavailable"
+                ),
+                None,
+            )
+            if failure:
+                error = (
+                    failure.tls_error
+                    or failure.http_error
+                    or "cloudflare_target_unhealthy"
+                )
+                return EvidenceResult(
+                    "failed",
+                    error,
+                    transient=error in {"edge_unavailable", "cloudflare_525"},
+                )
+            if failures:
+                return EvidenceResult("failed", "edge_unavailable", transient=True)
         return None
 
 

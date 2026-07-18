@@ -545,6 +545,109 @@ def test_changed_confirmation_and_one_bad_address_fail_closed(transition_db):
     assert one_bad.target_error("cloudflare").error == "edge_challenge_mismatch"
 
 
+HEALTHY_EDGE = EdgeProbeResult("healthy", None, "healthy", None)
+FAMILY_UNAVAILABLE = EdgeProbeResult(
+    "failed", "edge_address_family_unavailable", "not_checked", None
+)
+
+
+def cloudflare_evidence(claim, addresses, edge, fingerprint):
+    healthy = EvidenceResult("healthy")
+    observation = DnsObservation("cloudflare", addresses, 60, fingerprint)
+    return ClaimEvidence(
+        claim,
+        healthy,
+        observation,
+        healthy,
+        healthy,
+        edge=edge,
+        confirmed_dns=observation,
+    )
+
+
+def test_cloudflare_accepts_wholly_unroutable_ipv6_when_ipv4_fully_validates(
+    transition_db,
+):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    addresses = ("104.16.0.1", "104.16.0.2", "2606:4700::1", "2606:4700::2")
+    evidence = cloudflare_evidence(
+        claim,
+        addresses,
+        (HEALTHY_EDGE, HEALTHY_EDGE, FAMILY_UNAVAILABLE, FAMILY_UNAVAILABLE),
+        "all-answers",
+    )
+
+    assert evidence.target_error("cloudflare") is None
+    assert evidence.dns.addresses == addresses
+    assert evidence.confirmed_dns.fingerprint == "all-answers"
+
+
+def test_cloudflare_fails_when_all_address_families_are_unroutable(transition_db):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    addresses = ("104.16.0.1", "2606:4700::1")
+    evidence = cloudflare_evidence(
+        claim,
+        addresses,
+        (FAMILY_UNAVAILABLE, FAMILY_UNAVAILABLE),
+        "all-unroutable",
+    )
+
+    error = evidence.target_error("cloudflare")
+
+    assert (error.error, error.transient) == ("edge_unavailable", True)
+
+
+def test_cloudflare_does_not_skip_partial_family_transport_failure(transition_db):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    addresses = ("104.16.0.1", "2606:4700::1", "2606:4700::2")
+    evidence = cloudflare_evidence(
+        claim,
+        addresses,
+        (
+            HEALTHY_EDGE,
+            FAMILY_UNAVAILABLE,
+            EdgeProbeResult(
+                "failed", "edge_unavailable", "not_checked", None
+            ),
+        ),
+        "partial-failure",
+    )
+
+    assert evidence.target_error("cloudflare").error == "edge_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        (
+            EdgeProbeResult("failed", "edge_tls_invalid", "not_checked", None),
+            "edge_tls_invalid",
+        ),
+        (
+            EdgeProbeResult("healthy", None, "failed", "edge_challenge_present"),
+            "edge_challenge_present",
+        ),
+    ],
+)
+def test_cloudflare_does_not_hide_invalid_result_in_reachable_family(
+    transition_db, result, expected
+):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    addresses = ("104.16.0.1", "104.16.0.2", "2606:4700::1")
+    evidence = cloudflare_evidence(
+        claim,
+        addresses,
+        (HEALTHY_EDGE, result, FAMILY_UNAVAILABLE),
+        "reachable-failure",
+    )
+
+    assert evidence.target_error("cloudflare").error == expected
+
+
 @pytest.mark.parametrize("source,target", [("direct", "cloudflare"), ("cloudflare", "direct")])
 def test_active_transition_completes_in_both_directions(
     transition_db, source, target

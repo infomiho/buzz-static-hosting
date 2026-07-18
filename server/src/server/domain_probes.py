@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import http.client
 import ipaddress
 import json
@@ -202,7 +203,15 @@ def probe_cloudflare_edge(address: str, claim: DomainClaim) -> EdgeProbeResult:
         return EdgeProbeResult(
             "failed", "edge_tls_invalid", "not_checked", None, address=address
         )
-    except (OSError, http.client.HTTPException):
+    except OSError as exc:
+        error = (
+            "edge_address_family_unavailable"
+            if ipaddress.ip_address(address).version == 6
+            and exc.errno in {errno.ENETUNREACH, errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL}
+            else "edge_unavailable"
+        )
+        return EdgeProbeResult("failed", error, "not_checked", None, address=address)
+    except http.client.HTTPException:
         return EdgeProbeResult(
             "failed", "edge_unavailable", "not_checked", None, address=address
         )

@@ -75,6 +75,8 @@ Inspect Traefik logs for ACME and Cloudflare errors. Then check:
 
 Cloudflare claims return `421` until activation is enabled and every required check passes. Active domains show degraded health during the first two consecutive edge or origin transport failures and stop serving on the third. Ownership, non-Cloudflare DNS, and challenge identity failures stop serving immediately. A fully healthy pass recovers automatically.
 
+Standard Coolify Docker networks are IPv4-only unless IPv6 is explicitly enabled. Cloudflare can return A records and synthetic AAAA records for a proxied hostname. Buzz still validates every answer against Cloudflare ranges and includes every answer in DNS confirmation, but it does not require successful IPv6 connections when every IPv6 address reports that the container runtime cannot route IPv6 and every IPv4 address fully validates. Any partial IPv6 failure, ordinary transport error, TLS error, or challenge error remains actionable and blocks activation.
+
 - `ownership_txt_mismatch`: restore the exact TXT ownership value. Buzz has stopped serving the hostname.
 - `ownership_dns_unavailable`: the ownership lookup failed. Buzz has stopped serving because current ownership cannot be established.
 

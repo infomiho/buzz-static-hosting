@@ -384,7 +384,11 @@ class CloudflareDiagnostician:
             (confirmed.edge or (EdgeProbeResult("not_checked", None, "not_checked", None),))[0],
         )
         if evidence.dns.mode == "cloudflare" and confirmed.edge and not target_error:
-            edge = confirmed.edge[0]
+            edge = next(
+                result
+                for result in confirmed.edge
+                if result.tls_status == "healthy" and result.http_status == "healthy"
+            )
         http_forward = (
             self._http_probe(evidence.dns.addresses[0], claim)
             if include_http_forwarding

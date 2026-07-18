@@ -223,13 +223,15 @@ def test_failed_check_keeps_claim_pending(claim_db):
 
 
 def test_pending_claim_expires_and_releases_site(claim_db):
-    now = datetime(2026, 7, 16, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
     with claim_db() as conn:
-        first = DomainClaimStore(conn).create("site-one", "old.example.com", now)
+        first = DomainClaimStore(conn).create(
+            "site-one", "old.example.com", now - timedelta(hours=25)
+        )
     with claim_db() as conn:
         store = DomainClaimStore(conn)
         replacement = store.create(
-            "site-one", "new.example.com", now + timedelta(hours=25)
+            "site-one", "new.example.com", now
         )
         expired = store.get(first.id, "site-one")
 

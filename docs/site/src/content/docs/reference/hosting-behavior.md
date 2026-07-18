@@ -23,7 +23,7 @@ A site can have multiple independently verified custom hostnames. Every alias se
 
 Explicit `direct` claims activate after DNS and origin validation. Explicit `cloudflare` claims run credential-free edge and origin diagnostics and can activate only when the server operator enables Cloudflare activation. When the client omits the mode, Buzz accepts the claim only if automatic path observation is ready; it never silently substitutes an explicit direct claim.
 
-Automatic claims may transition between direct and Cloudflare paths after generation-qualified DNS and path evidence is stable. Missing, invalid, or stale Cloudflare range data blocks Cloudflare cutover and immediately fails closed for an active Cloudflare path.
+Automatic claims may transition between direct and Cloudflare paths after generation-qualified DNS and path evidence is stable. Missing, invalid, or stale Cloudflare range data blocks Cloudflare cutover and immediately fails closed for an active Cloudflare path. Cloudflare range validation and confirmation include every A and AAAA answer. Every address in a runtime-reachable family must pass edge TLS and challenge validation. Buzz tolerates a wholly unroutable IPv6 family only when every IPv6 address has an address-family routing limitation and IPv4 fully validates; partial or ordinary failures remain blocking.
 
 ## File Lookup Order
 

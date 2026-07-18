@@ -1,3 +1,4 @@
+import errno
 import ipaddress
 import json
 import ssl
@@ -91,9 +92,15 @@ def diagnostician(diagnostic_db, addresses=("8.8.8.8",), **overrides):
     )
 
     def lookup(_name, family):
-        if family == "AAAA":
+        version = 4 if family == "A" else 6
+        family_addresses = tuple(
+            address
+            for address in addresses
+            if ipaddress.ip_address(address).version == version
+        )
+        if not family_addresses:
             return AddressAnswer.no_answer()
-        return AddressAnswer.addresses(addresses, 60)
+        return AddressAnswer.addresses(family_addresses, 60)
 
     collector = overrides.pop("evidence_collector", None) or DomainEvidenceCollector(
         DomainDnsObserver(lookup, frozenset(), cloudflare_range_state=range_state),
@@ -226,6 +233,43 @@ def test_all_cloudflare_addresses_are_probed(diagnostic_db):
     assert set(checked) == {"8.8.8.8", "8.8.8.9"}
 
 
+def test_unroutable_ipv6_is_probed_but_diagnostics_present_healthy_ipv4(
+    diagnostic_db,
+):
+    checked = []
+
+    def edge_probe(address, _claim):
+        checked.append(address)
+        if ipaddress.ip_address(address).version == 6:
+            return EdgeProbeResult(
+                "failed",
+                "edge_address_family_unavailable",
+                "not_checked",
+                None,
+                address=address,
+            )
+        return EdgeProbeResult("healthy", None, "healthy", None, address=address)
+
+    diagnostician(
+        diagnostic_db,
+        addresses=("8.8.8.8", "8.8.8.9", "2001:4860::1", "2001:4860::2"),
+        edge_probe=edge_probe,
+    ).run_once()
+
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        diagnostic = CloudflareDiagnosticStore(conn).get(claim.id, claim.route_generation)
+
+    assert set(checked) == {
+        "8.8.8.8",
+        "8.8.8.9",
+        "2001:4860::1",
+        "2001:4860::2",
+    }
+    assert diagnostic.activation_error is None
+    assert diagnostic.edge_address in {"8.8.8.8", "8.8.8.9"}
+
+
 def test_mixed_addresses_fail_without_edge_probe(diagnostic_db):
     ranges = CloudflareRanges(
         "test",
@@ -354,6 +398,42 @@ def test_edge_probe_rejects_invalid_tls(diagnostic_db, monkeypatch):
     result = probe_cloudflare_edge("8.8.8.8", claim)
 
     assert (result.tls_error, result.http_status) == ("edge_tls_invalid", "not_checked")
+
+
+@pytest.mark.parametrize(
+    "error_number", [errno.ENETUNREACH, errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL]
+)
+def test_edge_probe_classifies_ipv6_routing_limitations(
+    diagnostic_db, monkeypatch, error_number
+):
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    monkeypatch.setattr(
+        "socket.create_connection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(error_number, "ignored")),
+    )
+
+    ipv6 = probe_cloudflare_edge("2001:4860::1", claim)
+    ipv4 = probe_cloudflare_edge("8.8.8.8", claim)
+
+    assert ipv6.tls_error == "edge_address_family_unavailable"
+    assert ipv4.tls_error == "edge_unavailable"
+
+
+@pytest.mark.parametrize("error_number", [errno.ETIMEDOUT, errno.ECONNRESET])
+def test_edge_probe_keeps_ipv6_transport_failures_as_edge_unavailable(
+    diagnostic_db, monkeypatch, error_number
+):
+    with diagnostic_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+    monkeypatch.setattr(
+        "socket.create_connection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(error_number, "ignored")),
+    )
+
+    result = probe_cloudflare_edge("2001:4860::1", claim)
+
+    assert result.tls_error == "edge_unavailable"
 
 
 def test_http_forwarding_redirect_is_observed(diagnostic_db, monkeypatch):

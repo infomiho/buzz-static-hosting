@@ -185,7 +185,7 @@ Cloudflare Universal SSL can take 15 minutes to 24 hours after zone activation, 
 
 Target probes pin connections to the validated answer set. If the answer fingerprint changes during a probe, its evidence is discarded.
 
-Cutover probes validate every unique resolved address concurrently, including every represented address family. Every address must return healthy edge TLS and the exact public challenge. One healthy address cannot mask stale, denied, redirected, or mismatched behavior on another address. Continuous checks may rotate bounded address subsets only if every current address is covered within the maximum evidence age.
+Cutover probes validate every unique resolved address concurrently, including every represented address family. DNS range classification and confirmation fingerprints always include every A and AAAA answer. Every address in a runtime-reachable family must return healthy edge TLS and the exact public challenge. Buzz tolerates a wholly unroutable IPv6 family only when every IPv6 address reports an address-family routing limitation and every IPv4 address fully validates. Partial IPv6 failures, ordinary transport failures, invalid TLS, stale or mismatched challenges, redirects, cache, WAF, Access, Workers, and managed challenges remain blocking. If no family validates, edge transport is unavailable. Continuous checks may rotate bounded address subsets only if every current address is covered within the maximum evidence age.
 
 ## Failure Taxonomy
 
