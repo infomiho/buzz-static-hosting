@@ -69,12 +69,7 @@
                 <summary class="disclosure-label w-fit cursor-pointer">Breakdown</summary>
                 <div class="mt-5 flex flex-col gap-5">
                     <div class="hidden border-2 border-ink px-4 py-6 text-center text-rule" id="analytics-breakdown-empty">No data yet</div>
-                    <div class="hidden gap-5 lg:grid-cols-2" id="analytics-dimensions">
-                        <div id="analytics-pages"></div>
-                        <div id="analytics-referrers"></div>
-                        <div id="analytics-campaigns"></div>
-                        <div id="analytics-countries"></div>
-                    </div>
+                    <div class="hidden -mb-5 gap-5 lg:columns-2" id="analytics-dimensions"></div>
                     <div class="hidden" id="analytics-search-terms"></div>
                 </div>
             </details>
@@ -518,7 +513,7 @@ function initCustomDomains() {
 
 function renderDimension(title, rows) {
     if (!rows || rows.length === 0) return '';
-    let html = '<div class="border-2 border-ink"><div class="border-b-2 border-ink px-4 py-2.5 font-bold">' + title + '</div>';
+    let html = '<div class="mb-5 break-inside-avoid border-2 border-ink"><div class="border-b-2 border-ink px-4 py-2.5 font-bold">' + title + '</div>';
     html += '<div class="divide-y-2 divide-ink">';
     for (const row of rows) {
         html += '<div class="flex items-center justify-between gap-4 px-4 py-2.5">';
@@ -686,14 +681,13 @@ async function loadAnalytics() {
         document.getElementById('analytics-bytes').textContent = formatSize(data.totals.bytes);
         document.getElementById('analytics-not-found').textContent = data.totals.not_found.toLocaleString();
         renderChart(data.series);
-        document.getElementById('analytics-pages').innerHTML = renderDimension('Top pages', data.top_pages);
-        document.getElementById('analytics-referrers').innerHTML = renderDimension('Referrers', data.referrers);
-        document.getElementById('analytics-campaigns').innerHTML = renderDimension('Campaigns', data.campaigns);
-        document.getElementById('analytics-countries').innerHTML = renderDimension('Countries', data.countries);
         const dimensions = document.getElementById('analytics-dimensions');
-        const hasDimensions = [data.top_pages, data.referrers, data.campaigns, data.countries].some(rows => rows && rows.length);
+        dimensions.innerHTML = renderDimension('Top pages', data.top_pages)
+            + renderDimension('Referrers', data.referrers)
+            + renderDimension('Campaigns', data.campaigns)
+            + renderDimension('Countries', data.countries);
+        const hasDimensions = dimensions.innerHTML !== '';
         dimensions.classList.toggle('hidden', !hasDimensions);
-        dimensions.classList.toggle('grid', hasDimensions);
         if (hasDimensions) {
             breakdownHasData = true;
         }
