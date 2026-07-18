@@ -159,9 +159,9 @@
                 {% set task = domain_tasks[claim.id] %}
                 {% set desired_mode = connection.target_mode or claim.claim_mode %}
                 <details class="domain-task{% if loop.last %} border-b-2{% endif %}" data-domain-claim="{{ claim.id }}" data-domain-state="{{ task.phase }}" data-next-action="{{ task.next_action }}"{% if task.open_by_default %} open{% endif %}>
-                    <summary class="domain-summary">
+                    <summary class="group domain-summary">
                         <span class="min-w-0">
-                            <span class="block break-words font-mono text-lg font-bold">{{ claim.hostname }}</span>
+                            <span class="block break-words font-mono text-lg font-bold underline decoration-2 underline-offset-4 group-hover:decoration-4">{{ claim.hostname }}</span>
                             <span class="mt-1 block text-pretty text-rule">{{ task.summary }}</span>
                         </span>
                         <span class="domain-status{% if task.phase == 'connected' %} text-success{% elif task.phase == 'action_needed' %} text-danger-dark{% endif %}">
