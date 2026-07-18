@@ -180,6 +180,15 @@
     @apply inline-flex border-2 border-ink px-2 py-0.5 text-sm font-bold uppercase tracking-[0.08em];
   }
 
+  .disclosure-label {
+    @apply font-bold underline decoration-2 underline-offset-4;
+  }
+
+  .disclosure-label:hover,
+  summary:hover .disclosure-label {
+    @apply decoration-4;
+  }
+
   .card {
     @apply border-4 border-ink bg-paper;
   }
@@ -299,7 +308,7 @@
   }
 
   .manage-domain > summary {
-    @apply w-fit cursor-pointer font-bold underline decoration-2 underline-offset-4 hover:decoration-4;
+    @apply w-fit cursor-pointer;
   }
 
   .manage-domain-content {

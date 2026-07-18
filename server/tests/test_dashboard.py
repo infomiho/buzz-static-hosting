@@ -391,6 +391,9 @@ class TestCustomDomains:
         assert "bdc_active" in response.text
         assert response.text.count("Connected through Cloudflare") == 2
         assert "Ownership verified" not in response.text
+        assert response.text.count('class="disclosure-label') >= 3
+        assert response.text.count('<span aria-hidden="true">&#10003;</span>') == 1
+        assert 'class="sr-only">Connected</span>' in response.text
         assert re.search(r'<details[^>]*class="[^"]*manage-domain', response.text)
         assert response.text.index("Manage domain") < response.text.index("Cancel update")
         assert response.text.index("Manage domain") < response.text.index("Remove domain")

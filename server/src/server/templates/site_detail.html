@@ -66,7 +66,7 @@
             </div>
 
             <details id="analytics-details">
-                <summary class="w-fit cursor-pointer font-bold underline decoration-2 underline-offset-4 hover:decoration-4">Breakdown</summary>
+                <summary class="disclosure-label w-fit cursor-pointer">Breakdown</summary>
                 <div class="mt-5 flex flex-col gap-5">
                     <div class="hidden border-2 border-ink px-4 py-6 text-center text-rule" id="analytics-breakdown-empty">No data yet</div>
                     <div class="hidden gap-5 lg:grid-cols-2" id="analytics-dimensions">
@@ -85,7 +85,7 @@
     <div class="card">
         <details id="files-details">
             <summary class="flex cursor-pointer flex-wrap items-baseline gap-3 px-5 py-4">
-                <span class="font-bold underline decoration-2 underline-offset-4">Files</span>
+                <span class="disclosure-label">Files</span>
                 <span class="text-rule">{{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</span>
             </summary>
             <div class="border-t-2 border-ink">
@@ -159,19 +159,22 @@
                 {% set task = domain_tasks[claim.id] %}
                 {% set desired_mode = connection.target_mode or claim.claim_mode %}
                 <details class="domain-task{% if loop.last %} border-b-2{% endif %}" data-domain-claim="{{ claim.id }}" data-domain-state="{{ task.phase }}" data-next-action="{{ task.next_action }}"{% if task.open_by_default %} open{% endif %}>
-                    <summary class="group domain-summary">
+                    <summary class="domain-summary">
                         <span class="min-w-0">
-                            <span class="block break-words font-mono text-lg font-bold underline decoration-2 underline-offset-4 group-hover:decoration-4">{{ claim.hostname }}</span>
+                            <span class="disclosure-label block break-words font-mono text-lg">{{ claim.hostname }}</span>
                             <span class="mt-1 block text-pretty text-rule">{{ task.summary }}</span>
                         </span>
                         <span class="domain-status{% if task.phase == 'connected' %} text-success{% elif task.phase == 'action_needed' %} text-danger-dark{% endif %}">
+                            {% if task.phase == 'connected' %}
+                            <span class="text-xl leading-none" title="Connected"><span aria-hidden="true">&#10003;</span><span class="sr-only">Connected</span></span>
+                            {% endif %}
                             {% if connection.effective_mode == 'cloudflare' %}
                             <span class="inline-flex items-center text-cloudflare" title="Connected through Cloudflare">
                                 <svg class="size-7 fill-current" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.75 18a4.75 4.75 0 0 1-.5-9.47A6.25 6.25 0 0 1 18.1 10.5h.15a3.75 3.75 0 0 1 0 7.5H6.75Z" /></svg>
                                 <span class="sr-only">Connected through Cloudflare</span>
                             </span>
                             {% endif %}
-                            <span>{{ task.label }}</span>
+                            {% if task.phase != 'connected' %}<span>{{ task.label }}</span>{% endif %}
                         </span>
                     </summary>
                     <div class="domain-task-panel">
@@ -233,7 +236,7 @@
                         <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark claim-action-error" role="alert"></p>
                         {% set diagnostic = cloudflare_diagnostics.get(claim.id) %}
                         <details class="manage-domain">
-                            <summary>Manage domain</summary>
+                            <summary class="disclosure-label">Manage domain</summary>
                             <div class="manage-domain-content">
                                 <section>
                                     <h4>Connection details</h4>
