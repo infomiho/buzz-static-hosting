@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import logging
 from datetime import date, timedelta
 from pathlib import Path
@@ -27,7 +28,7 @@ from ..cloudflare_diagnostics import CloudflareDiagnosticStore
 from ..db import db
 from ..domain_capabilities import domain_capabilities
 from ..dependencies import get_auth_service, require_user
-from ..domain_status import project_domain_connection
+from ..domain_status import project_domain_connection, project_domain_task
 from ..domain_transitions import DomainClaimStateMachine
 from ..search_console import SearchConsoleError
 from ..site_store import SiteStore
@@ -102,6 +103,10 @@ async def site_detail(
             claim.id: project_domain_connection(claim, transition_store.get(claim.id))
             for claim in domain_claims
         }
+        domain_tasks = {
+            claim.id: project_domain_task(claim, domain_connections[claim.id])
+            for claim in domain_claims
+        }
         cloudflare_diagnostics = {
             claim.id: diagnostic_store.get(
                 claim.id, claim.route_generation, claim.mode_generation
@@ -128,6 +133,16 @@ async def site_detail(
     )
     custom_domain_can_add = direct_domains_available or cloudflare_diagnostics_available
     automatic_domains_ready = capability.automatic_ready and not domain_quota.error
+    domain_routing_targets = [
+        {
+            "type": "A" if ipaddress.ip_address(address).version == 4 else "AAAA",
+            "value": address,
+        }
+        for address in sorted(
+            config.CUSTOM_DOMAIN_INGRESS_IPS,
+            key=lambda value: (ipaddress.ip_address(value).version, value),
+        )
+    ]
 
     if domain and domain != "localhost:8080":
         site_url = f"https://{name}.{domain}"
@@ -146,9 +161,11 @@ async def site_detail(
         "cloudflare_diagnostics_available": cloudflare_diagnostics_available,
         "cloudflare_activation_enabled": config.CLOUDFLARE_ACTIVATION_ENABLED,
         "automatic_domains_ready": automatic_domains_ready,
+        "domain_routing_targets": domain_routing_targets,
         "custom_domain_quota": domain_quota,
         "domain_claims": domain_claims,
         "domain_connections": domain_connections,
+        "domain_tasks": domain_tasks,
         "cloudflare_diagnostics": cloudflare_diagnostics,
     })
 

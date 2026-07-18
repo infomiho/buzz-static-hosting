@@ -1,4 +1,5 @@
 import hashlib
+import re
 import secrets
 import sqlite3
 from contextlib import contextmanager
@@ -184,7 +185,8 @@ class TestCustomDomains:
 
         assert response.status_code == 200
         assert "Custom domains" in response.text
-        assert "control plane is disabled or not ready" in response.text
+        assert "Custom-domain services are disabled or not ready" in response.text
+        assert "Try again later" in response.text
         assert "Add custom domain" not in response.text
 
     def test_site_detail_shows_pending_verification_record(
@@ -254,24 +256,53 @@ class TestCustomDomains:
             probe_generation INTEGER
         )""")
         conn.execute("""INSERT INTO custom_domain_claims
-            (id, hostname, site_name, verification_token, status, created_at, expires_at)
+            (id, hostname, site_name, verification_token, status, created_at, expires_at,
+             last_error)
             VALUES (1, 'www.example.com', 'my-site', 'bdv_test', 'pending',
-                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00')""")
+                    '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+                    'txt_mismatch')""")
         conn.execute("""INSERT INTO custom_domain_claims
             (id, hostname, site_name, verification_token, status, created_at, expires_at,
-             challenge_token, route_status, route_generation, activated_at)
+             challenge_token, route_status, route_generation, activated_at, claim_mode,
+             health_checked_at, activation_error, removal_requested_at)
             VALUES
               (2, 'active.example.com', 'my-site', 'bdv_active', 'verified',
                '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
-               'bdc_active', 'routed', 1, '2026-07-16T00:00:00+00:00'),
+               'bdc_active', 'routed', 1, '2026-07-16T00:00:00+00:00',
+               'cloudflare', CURRENT_TIMESTAMP, NULL, NULL),
               (3, 'checking.example.com', 'my-site', 'bdv_checking', 'verified',
                '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
-               'bdc_checking', 'routed', 1, NULL)""")
+               'bdc_checking', 'routed', 1, NULL, 'direct', NULL, NULL, NULL),
+              (4, 'broken.example.com', 'my-site', 'bdv_broken', 'verified',
+               '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'bdc_broken', 'routed', 1, '2026-07-16T00:00:00+00:00',
+               'direct', NULL, 'origin_unavailable', NULL),
+              (5, 'leaving.example.com', 'my-site', 'bdv_leaving', 'verified',
+               '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'bdc_leaving', 'removing', 1, '2026-07-16T00:00:00+00:00',
+               'direct', NULL, NULL, CURRENT_TIMESTAMP),
+              (6, 'updating.example.com', 'my-site', 'bdv_updating', 'verified',
+               '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'bdc_updating', 'routed', 1, '2026-07-16T00:00:00+00:00',
+               'direct', CURRENT_TIMESTAMP, NULL, NULL),
+              (7, 'stale.example.com', 'my-site', 'bdv_stale', 'verified',
+               '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'bdc_stale', 'routed', 1, '2026-07-16T00:00:00+00:00',
+               'direct', NULL, 'dns_unavailable', NULL),
+              (8, 'connecting.example.com', 'my-site', 'bdv_connecting', 'verified',
+               '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'bdc_connecting', 'publishing', 1, NULL,
+               'direct', NULL, NULL, NULL)""")
         conn.execute("""INSERT INTO custom_domain_mode_transitions
             (claim_id, mode_generation, source_mode, target_mode, state, started_at,
-             observed_mode)
-            VALUES (3, 0, NULL, 'cloudflare', 'observing',
-                    '2026-07-16T01:00:00+00:00', 'direct')""")
+             observed_mode, error)
+            VALUES
+              (3, 0, NULL, 'cloudflare', 'observing',
+               '2026-07-16T01:00:00+00:00', 'direct', NULL),
+              (4, 0, NULL, 'direct', 'failed',
+               '2026-07-16T01:00:00+00:00', 'direct', 'origin_unavailable'),
+              (6, 0, 'direct', 'cloudflare', 'observing',
+               '2026-07-16T01:00:00+00:00', 'cloudflare', NULL)""")
         conn.commit()
         (tmp_path / "my-site").mkdir()
         monkeypatch.setattr("server.routes.dashboard.db", db)
@@ -282,6 +313,7 @@ class TestCustomDomains:
         monkeypatch.setattr("server.config.CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
         monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured")
         monkeypatch.setattr("server.config.CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
+        monkeypatch.setattr("server.config.MAX_CUSTOM_DOMAINS_PER_SITE", 10)
         client.app.state.traefik_control = type(
             "ReadyControlPlane", (), {"is_ready": lambda self: True}
         )()
@@ -297,21 +329,84 @@ class TestCustomDomains:
         assert "www.example.com" in response.text
         assert "_buzz.www.example.com" in response.text
         assert "buzz-domain-verification=bdv_test" in response.text
-        assert "Waiting for DNS" in response.text
-        assert ">Advanced</summary>" in response.text
+        assert "Verify ownership" in response.text
+        assert "Verify domain ownership" in response.text
+        assert "Add the DNS records below to prove ownership" in response.text
+        assert "Point the domain to Buzz" in response.text
+        assert "8.8.8.8" in response.text
+        assert "Check ownership" in response.text
+        assert response.text.count('data-copy-target="domain-') >= 4
+        assert 'data-copy-target="domain-ownership-1-name"' in response.text
+        assert 'data-copy-target="domain-ownership-1-value"' in response.text
+        assert 'data-copy-target="domain-routing-1-1-value"' in response.text
+        assert 'aria-label="Copy TXT record value"' in response.text
+        assert "If this setup expires, add the domain again." in response.text
+        assert "The TXT record does not match yet" in response.text
+        assert "navigator.clipboard.writeText(target.textContent.trim())" in response.text
+        assert "button.textContent = 'Copied'" in response.text
+
+        def domain_tag(claim_id):
+            match = re.search(
+                rf'<details[^>]+data-domain-claim="{claim_id}"[^>]*>', response.text
+            )
+            assert match
+            return match.group(0)
+
+        assert " open" in domain_tag(1)
+        assert " open" not in domain_tag(2)
+        assert " open" in domain_tag(3)
+        assert " open" in domain_tag(4)
+        assert " open" in domain_tag(5)
+        assert " open" not in domain_tag(6)
+        assert " open" in domain_tag(7)
+        assert " open" not in domain_tag(8)
+
+        assert 'data-domain-state="verify_ownership"' in domain_tag(1)
+        assert 'data-next-action="check_ownership"' in domain_tag(1)
+        assert 'data-domain-state="connected"' in domain_tag(2)
+        assert 'data-next-action="visit"' in domain_tag(2)
+        assert "Buzz is serving your site on this domain." in response.text
+        assert "Visit domain" in response.text
+        assert 'data-domain-state="configure_dns"' in domain_tag(3)
+        assert 'data-next-action="configure_dns"' in domain_tag(3)
+        assert "Buzz detected DNS settings that do not match" in response.text
+        assert 'data-domain-state="connecting"' in domain_tag(8)
+        assert 'data-next-action="wait"' in domain_tag(8)
+        assert "Buzz is preparing the secure connection." in response.text
+        assert "No action needed" in response.text
+        assert 'data-domain-state="action_needed"' in domain_tag(4)
+        assert "Buzz could not validate this domain. Check its DNS settings." in response.text
+        assert "Retry connection" in response.text
+        assert 'data-domain-state="removing"' in domain_tag(5)
+        assert "Buzz is safely withdrawing this domain." in response.text
+        assert "Withdrawal in progress" in response.text
+        assert 'data-domain-state="updating"' in domain_tag(6)
+        assert "DNS change detected. Buzz is validating the new connection." in response.text
+        assert "retains the current authorization" in response.text
+        assert 'data-domain-state="action_needed"' in domain_tag(7)
+        assert "Buzz will retry automatically" in response.text
+        assert "No DNS change is needed yet." in response.text
+
         assert "bdc_checking" in response.text
         assert "bdc_active" in response.text
-        assert '<span class="sr-only">Cloudflare proxy</span>' in response.text
-        assert "Cancel transition" in response.text
+        assert response.text.count("Connected through Cloudflare") == 2
+        assert "Ownership verified" not in response.text
+        assert re.search(r'<details[^>]*class="[^"]*manage-domain', response.text)
+        assert response.text.index("Manage domain") < response.text.index("Cancel update")
+        assert response.text.index("Manage domain") < response.text.index("Remove domain")
+        assert "Cancel transition" not in response.text
+        assert "Consecutive failures" not in response.text
         assert 'name="mode"' in response.text
-        assert '<details class="border-x-2 border-t-2 border-ink border-b-2" data-domain-claim="1">' in response.text
-        assert '<details class="border-x-2 border-t-2 border-ink border-b-2" data-domain-claim="1" open>' not in response.text
+        assert "Direct</strong> points DNS to Buzz" in response.text
+        assert "Cloudflare</strong> keeps the hostname proxied" in response.text
         assert response.text.index("Analytics") < response.text.index("Custom domains")
         assert response.text.index("Files") < response.text.index("Custom domains")
         assert 'id="remove-domain-dialog"' in response.text
-        assert "Buzz will stop tracking its ownership" in response.text
+        assert "Buzz will stop serving this hostname" in response.text
+        assert 'id="remove-domain-error"' in response.text
+        assert "removeDialog.close();\n                showDomainError" not in response.text
         assert "Add custom domain" in response.text
-        assert "3 of 5 aliases used for this site" in response.text
+        assert "8 of 10 aliases used for this site" in response.text
 
         client.app.state.automatic_domain_transition_admission_enabled = True
         client.app.state.domain_transition_coordinator = object()
@@ -320,6 +415,7 @@ class TestCustomDomains:
 
         assert "const AUTOMATIC_DOMAINS_READY = true;" in automatic_response.text
         assert 'name="mode"' not in automatic_response.text
+        assert "Buzz detects direct and Cloudflare connections automatically" in automatic_response.text
 
 
 class TestLoginFlow:

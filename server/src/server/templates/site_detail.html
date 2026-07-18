@@ -127,6 +127,20 @@
         </details>
     </div>
 
+    {% macro dns_record(record_type, record_name, record_value, record_id) %}
+    <div class="dns-record mt-4">
+        <div class="dns-record-row"><span class="dns-record-label">Type</span><span class="font-mono">{{ record_type }}</span></div>
+        <div class="dns-record-row">
+            <span class="dns-record-label">Name</span><span id="{{ record_id }}-name" class="dns-record-value">{{ record_name }}</span>
+            <button type="button" class="btn-sm-outline copy-domain-value" data-copy-target="{{ record_id }}-name" aria-label="Copy {{ record_type }} record name" aria-live="polite">Copy</button>
+        </div>
+        <div class="dns-record-row">
+            <span class="dns-record-label">Value</span><span id="{{ record_id }}-value" class="dns-record-value">{{ record_value }}</span>
+            <button type="button" class="btn-sm-outline copy-domain-value" data-copy-target="{{ record_id }}-value" aria-label="Copy {{ record_type }} record value" aria-live="polite">Copy</button>
+        </div>
+    </div>
+    {% endmacro %}
+
     <!-- Custom domains -->
     <div class="card" id="custom-domains">
         <header class="flex flex-wrap items-start justify-between gap-4">
@@ -138,128 +152,137 @@
             <button class="btn-sm-outline" id="open-domain-dialog">Add custom domain</button>
             {% endif %}
         </header>
-        <section>
+        <section class="custom-domain-list">
             {% if domain_claims %}
                 {% for claim in domain_claims %}
                 {% set connection = domain_connections[claim.id] %}
-                <details class="border-x-2 border-t-2 border-ink{% if loop.last %} border-b-2{% endif %}" data-domain-claim="{{ claim.id }}">
-                    <summary class="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3">
-                        <span class="font-mono text-lg font-bold underline decoration-2 underline-offset-4">{{ claim.hostname }}</span>
-                        <span class="font-bold">{{ connection.status_label }}</span>
-                        {% if claim.status == 'verified' %}
-                        <span class="inline-flex size-6 items-center justify-center text-xl font-bold leading-none text-success" title="Ownership verified"><span aria-hidden="true">&#10003;</span><span class="sr-only">Ownership verified</span></span>
-                        {% endif %}
-                        {% if connection.has_cloudflare_path or claim.claim_mode == 'cloudflare' %}
-                        <span class="inline-flex items-center text-cloudflare" title="Cloudflare proxy">
-                            <svg class="size-7 fill-current" viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M6.75 18a4.75 4.75 0 0 1-.5-9.47A6.25 6.25 0 0 1 18.1 10.5h.15a3.75 3.75 0 0 1 0 7.5H6.75Z" />
-                            </svg>
-                            <span class="sr-only">Cloudflare proxy</span>
+                {% set task = domain_tasks[claim.id] %}
+                {% set desired_mode = connection.target_mode or claim.claim_mode %}
+                <details class="domain-task{% if loop.last %} border-b-2{% endif %}" data-domain-claim="{{ claim.id }}" data-domain-state="{{ task.phase }}" data-next-action="{{ task.next_action }}"{% if task.open_by_default %} open{% endif %}>
+                    <summary class="domain-summary">
+                        <span class="min-w-0">
+                            <span class="block break-words font-mono text-lg font-bold">{{ claim.hostname }}</span>
+                            <span class="mt-1 block text-pretty text-rule">{{ task.summary }}</span>
                         </span>
-                        {% endif %}
+                        <span class="domain-status{% if task.phase == 'connected' %} text-success{% elif task.phase == 'action_needed' %} text-danger-dark{% endif %}">
+                            {% if connection.effective_mode == 'cloudflare' %}
+                            <span class="inline-flex items-center text-cloudflare" title="Connected through Cloudflare">
+                                <svg class="size-7 fill-current" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.75 18a4.75 4.75 0 0 1-.5-9.47A6.25 6.25 0 0 1 18.1 10.5h.15a3.75 3.75 0 0 1 0 7.5H6.75Z" /></svg>
+                                <span class="sr-only">Connected through Cloudflare</span>
+                            </span>
+                            {% endif %}
+                            <span>{{ task.label }}</span>
+                        </span>
                     </summary>
-                    <div class="border-t-2 border-ink p-4">
-                        <div class="flex flex-wrap items-center justify-between gap-4">
-                            <div>
-                                {% if connection.status == 'connected' %}
-                                <p class="font-bold text-success">Connected at <a class="underline decoration-2 underline-offset-4" href="https://{{ claim.hostname }}">https://{{ claim.hostname }}</a></p>
-                                {% elif connection.status == 'updating' %}
-                                <p>Buzz retained this hostname's authorization while checking the new connection path. Public reachability still depends on your DNS and provider configuration.</p>
-                                {% elif connection.status == 'action_needed' %}
-                                <p class="text-danger-dark">Buzz could not validate the connection{% if connection.transition_error or claim.activation_error %}: <span class="font-mono">{{ connection.transition_error or claim.activation_error }}</span>{% endif %}.</p>
-                                {% elif connection.status == 'securing' %}
-                                <p class="text-rule">Buzz is checking DNS, routing, and TLS before connecting this hostname.</p>
-                                {% else %}
-                                <p class="text-rule">The claim expires {{ claim.expires_at[:16].replace('T', ' ') }} UTC.</p>
+                    <div class="domain-task-panel">
+                        {% if task.phase == 'removing' %}
+                        <h3 class="text-xl font-bold">Withdrawal in progress</h3>
+                        <p class="mt-2 text-pretty text-rule">Buzz is removing the route safely. The domain will disappear from this list when withdrawal finishes.</p>
+                        {% elif task.phase == 'verify_ownership' %}
+                        <h3 class="text-xl font-bold">Verify domain ownership</h3>
+                        <p class="mt-2 text-pretty text-rule">Add this TXT record at your DNS provider, then ask Buzz to check it.</p>
+                        {{ dns_record('TXT', claim.verification_name, claim.verification_value, 'domain-ownership-' ~ claim.id) }}
+                        {% if claim.last_error == 'txt_mismatch' %}
+                        <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">The TXT record does not match yet. Check the name and value, then allow time for DNS propagation.</p>
+                        {% elif claim.last_error == 'dns_unavailable' %}
+                        <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">DNS is temporarily unavailable. Check your provider, then try again shortly.</p>
+                        {% endif %}
+                        <p class="mt-4 text-pretty text-rule">Complete verification before {{ claim.expires_at[:16].replace('T', ' ') }} UTC. If this setup expires, add the domain again.</p>
+                        {% if domain_routing_targets %}
+                        <h3 class="mt-7 text-xl font-bold">Point the domain to Buzz</h3>
+                        <p class="mt-2 text-pretty text-rule">Add these records now so Buzz can connect the domain after ownership is verified.</p>
+                        {% for target in domain_routing_targets %}{{ dns_record(target.type, claim.hostname, target.value, 'domain-routing-' ~ claim.id ~ '-' ~ loop.index) }}{% endfor %}
+                        {% if claim.automatic_mode %}<p class="mt-4 text-pretty text-rule">For a direct connection, keep the records DNS-only. For Cloudflare, enable proxying, use Full (strict), and bypass cache or security rules for <span class="font-mono">/.well-known/buzz-domain-check/*</span>.</p>
+                        {% elif desired_mode == 'cloudflare' %}<p class="mt-4 text-pretty text-rule">Enable Cloudflare proxying, use Full (strict), and bypass cache or security rules for <span class="font-mono">/.well-known/buzz-domain-check/*</span>.</p>
+                        {% else %}<p class="mt-4 text-rule">Keep these records DNS-only.</p>{% endif %}
+                        {% endif %}
+                        {% if custom_domains_available %}<div class="domain-actions"><button class="btn check-domain" data-claim-id="{{ claim.id }}">Check ownership</button></div>
+                        {% else %}<p class="mt-4 text-rule">Buzz cannot check DNS right now. Try again when custom-domain services are available.</p>{% endif %}
+                        {% elif task.phase == 'configure_dns' %}
+                        <h3 class="text-xl font-bold">Point the domain to Buzz</h3>
+                        <p class="mt-2 text-pretty text-rule">Ownership is verified. Add these records at your DNS provider; Buzz checks them automatically.</p>
+                        {% for target in domain_routing_targets %}{{ dns_record(target.type, claim.hostname, target.value, 'domain-routing-' ~ claim.id ~ '-' ~ loop.index) }}{% endfor %}
+                        {% if claim.automatic_mode %}<p class="mt-4 text-pretty text-rule">For a direct connection, keep the records DNS-only. For Cloudflare, enable proxying, use Full (strict), and bypass cache or security rules for <span class="font-mono">/.well-known/buzz-domain-check/*</span>.</p>
+                        {% elif desired_mode == 'cloudflare' %}<p class="mt-4 text-pretty text-rule">Enable Cloudflare proxying, use Full (strict), and bypass cache or security rules for <span class="font-mono">/.well-known/buzz-domain-check/*</span>.</p>
+                        {% else %}<p class="mt-4 text-rule">Keep these records DNS-only.</p>{% endif %}
+                        {% elif task.phase == 'connecting' %}
+                        <h3 class="text-xl font-bold">No action needed</h3>
+                        <p class="mt-2 text-pretty text-rule">Buzz is publishing the route and setting up TLS automatically. This domain will connect when those checks pass.</p>
+                        {% elif task.phase == 'connected' %}
+                        <div class="domain-actions mt-0"><a class="btn" href="https://{{ claim.hostname }}" target="_blank" rel="noopener">Visit domain<span class="sr-only"> (opens in new tab)</span></a></div>
+                        {% elif task.phase == 'updating' %}
+                        <h3 class="text-xl font-bold">Connection update in progress</h3>
+                        <p class="mt-2 text-pretty text-rule">Buzz retains the current authorization while validating the change. Your DNS and provider settings still control whether visitors can reach the domain.</p>
+                        {% else %}
+                        {% if task.next_action == 'wait' %}
+                        <h3 class="text-xl font-bold">Buzz will retry automatically</h3>
+                        <p class="mt-2 text-pretty text-rule">A required DNS check is temporarily unavailable. No DNS change is needed yet.</p>
+                        {% else %}
+                        <h3 class="text-xl font-bold">Check DNS and proxy settings</h3>
+                        <p class="mt-2 text-pretty text-rule">Confirm the domain points to Buzz. If you use a proxy, allow Buzz's challenge URL and secure origin connection.</p>
+                        {% if domain_routing_targets %}
+                        <h4 class="mt-5 font-bold">Expected DNS records</h4>
+                        {% for target in domain_routing_targets %}{{ dns_record(target.type, claim.hostname, target.value, 'domain-recovery-' ~ claim.id ~ '-' ~ loop.index) }}{% endfor %}
+                        {% if desired_mode == 'cloudflare' %}<p class="mt-4 text-pretty text-rule">Enable Cloudflare proxying, use Full (strict), and bypass cache or security rules for <span class="font-mono">/.well-known/buzz-domain-check/*</span>.</p>
+                        {% else %}<p class="mt-4 text-rule">Keep these records DNS-only.</p>{% endif %}
+                        {% endif %}
+                        {% if task.next_action == 'retry' %}<div class="domain-actions"><button class="btn transition-action" data-claim-id="{{ claim.id }}" data-action="retry">Retry connection</button></div>{% endif %}
+                        {% endif %}
+                        {% endif %}
+
+                        <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark claim-action-error" role="alert"></p>
+                        {% set diagnostic = cloudflare_diagnostics.get(claim.id) %}
+                        <details class="manage-domain">
+                            <summary>Manage domain</summary>
+                            <div class="manage-domain-content">
+                                <section>
+                                    <h4>Connection details</h4>
+                                    <dl class="domain-details">
+                                        <dt>Route state</dt><dd class="font-mono">{{ claim.route_status }}</dd>
+                                         {% if connection.effective_mode %}<dt>Current path</dt><dd>{{ connection.effective_mode | capitalize }}</dd>{% endif %}
+                                         {% if connection.observed_mode %}<dt>DNS detected</dt><dd>{{ connection.observed_mode | capitalize }}</dd>{% endif %}
+                                         {% if connection.target_mode %}<dt>Changing to</dt><dd>{{ connection.target_mode | capitalize }}</dd>{% endif %}
+                                        {% if connection.transition_error or claim.activation_error or claim.route_error or claim.last_error %}<dt>Error code</dt><dd class="break-words font-mono">{{ connection.transition_error or claim.activation_error or claim.route_error or claim.last_error }}</dd>{% endif %}
+                                    </dl>
+                                    {% if claim.challenge_path %}<p class="mt-4 text-rule">Challenge URL for proxy, cache, redirect, or security-rule exceptions:</p><p class="mt-1 break-all font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>{% endif %}
+                                </section>
+                                {% if diagnostic %}
+                                <section>
+                                    <h4>Cloudflare diagnostics</h4>
+                                    <dl class="domain-details">
+                                        <dt>TXT ownership</dt><dd class="break-words font-mono">{{ diagnostic.ownership_error or diagnostic.ownership_status }}</dd>
+                                        <dt>Cloudflare DNS</dt><dd class="break-words font-mono">{{ diagnostic.dns_error or diagnostic.dns_status }}</dd>
+                                        <dt>Edge TLS</dt><dd class="break-words font-mono">{{ diagnostic.edge_tls_error or diagnostic.edge_tls_status }}</dd>
+                                        <dt>Edge challenge</dt><dd class="break-words font-mono">{{ diagnostic.edge_http_error or diagnostic.edge_http_status }}</dd>
+                                        <dt>HTTP forwarding</dt><dd class="break-words font-mono">{{ diagnostic.http_forward_error or diagnostic.http_forward_status }}</dd>
+                                        <dt>Origin</dt><dd class="break-words font-mono">{{ diagnostic.origin_error or diagnostic.origin_status }}</dd>
+                                        {% if diagnostic.consecutive_failures %}<dt>Consecutive failures</dt><dd class="font-mono">{{ diagnostic.consecutive_failures }}</dd>{% endif %}
+                                    </dl>
+                                </section>
                                 {% endif %}
-                                {% if connection.show_paths %}
-                                <dl class="mt-3 grid gap-x-3 gap-y-1 sm:grid-cols-[8rem_1fr]">
-                                    {% if connection.effective_mode %}<dt class="font-bold">Effective</dt><dd>{{ connection.effective_mode | capitalize }}</dd>{% endif %}
-                                    {% if connection.observed_mode %}<dt class="font-bold">Observed</dt><dd>{{ connection.observed_mode | capitalize }}</dd>{% endif %}
-                                    {% if connection.target_mode %}<dt class="font-bold">Target</dt><dd>{{ connection.target_mode | capitalize }}</dd>{% endif %}
-                                </dl>
+                                {% if connection.can_cancel or claim.route_status != 'removing' %}
+                                <section>
+                                    <h4>Actions</h4>
+                                    <div class="domain-actions mt-3">
+                                        {% if connection.can_cancel %}<button class="btn-sm-outline transition-action" data-claim-id="{{ claim.id }}" data-action="cancel">Cancel update</button>{% endif %}
+                                        {% if claim.route_status != 'removing' %}<button class="btn-sm-outline border-danger text-danger-dark remove-domain" data-claim-id="{{ claim.id }}" data-hostname="{{ claim.hostname }}">Remove domain</button>{% endif %}
+                                    </div>
+                                </section>
                                 {% endif %}
                             </div>
-                        <div class="flex flex-wrap gap-3">
-                            {% if claim.status == 'pending' and custom_domains_available %}
-                            <button class="btn-sm-outline check-domain" data-claim-id="{{ claim.id }}">Check now</button>
-                            {% endif %}
-                            {% if connection.can_retry %}
-                            <button class="btn-sm-outline transition-action" data-claim-id="{{ claim.id }}" data-action="retry">Retry transition</button>
-                            {% endif %}
-                            {% if connection.can_cancel %}
-                            <button class="btn-sm-outline transition-action" data-claim-id="{{ claim.id }}" data-action="cancel">Cancel transition</button>
-                            {% endif %}
-                            {% if claim.route_status != 'removing' %}
-                            <button class="btn-sm-outline border-danger text-danger-dark remove-domain" data-claim-id="{{ claim.id }}" data-hostname="{{ claim.hostname }}">Remove</button>
-                            {% endif %}
-                        </div>
-                        <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark transition-action-error" role="alert"></p>
-                    </div>
-                    {% if claim.status == 'pending' %}
-                    <div class="mt-4 border-t-2 border-ink pt-4">
-                        <p class="font-bold">Add this DNS record</p>
-                        <dl class="mt-3 grid gap-3 sm:grid-cols-[8rem_1fr]">
-                            <dt class="font-bold">Type</dt>
-                            <dd class="font-mono">TXT</dd>
-                            <dt class="font-bold">Name</dt>
-                            <dd class="overflow-x-auto font-mono">{{ claim.verification_name }}</dd>
-                            <dt class="font-bold">Value</dt>
-                            <dd class="overflow-x-auto font-mono">{{ claim.verification_value }}</dd>
-                        </dl>
-                        {% if claim.last_error == 'txt_mismatch' %}
-                        <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">Buzz did not find the expected TXT value. DNS changes can take time to propagate.</p>
-                        {% elif claim.last_error == 'dns_unavailable' %}
-                        <p class="mt-4 border-l-4 border-danger pl-3 text-danger-dark" role="alert">Buzz could not complete the DNS lookup. Try again shortly.</p>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-                    {% set diagnostic = cloudflare_diagnostics.get(claim.id) %}
-                    {% if claim.challenge_path or diagnostic %}
-                    <details class="mt-4 border-t-2 border-ink">
-                        <summary class="cursor-pointer pt-4 font-bold">Advanced</summary>
-                        <div class="pt-3">
-                        {% if diagnostic %}
-                        <p class="font-bold">Cloudflare component diagnostics</p>
-                        <dl class="mt-3 grid gap-3 sm:grid-cols-[10rem_1fr]">
-                            <dt class="font-bold">TXT ownership</dt>
-                            <dd class="font-mono">{{ diagnostic.ownership_error or diagnostic.ownership_status }}</dd>
-                            <dt class="font-bold">Cloudflare DNS</dt>
-                            <dd class="font-mono">{{ diagnostic.dns_error or diagnostic.dns_status }}</dd>
-                            <dt class="font-bold">Edge TLS</dt>
-                            <dd class="font-mono">{{ diagnostic.edge_tls_error or diagnostic.edge_tls_status }}</dd>
-                            <dt class="font-bold">Edge challenge</dt>
-                            <dd class="font-mono">{{ diagnostic.edge_http_error or diagnostic.edge_http_status }}</dd>
-                            <dt class="font-bold">HTTP forwarding</dt>
-                            <dd class="font-mono">{{ diagnostic.http_forward_error or diagnostic.http_forward_status }}</dd>
-                            <dt class="font-bold">Origin</dt>
-                            <dd class="font-mono">{{ diagnostic.origin_error or diagnostic.origin_status }}</dd>
-                            <dt class="font-bold">Consecutive failures</dt>
-                            <dd class="font-mono">{{ diagnostic.consecutive_failures }}</dd>
-                        </dl>
-                        {% endif %}
-                        {% if claim.challenge_path %}
-                            <p class="text-rule">Buzz checks this URL automatically. Use it only when configuring proxy, cache, redirect, or security-rule exceptions.</p>
-                            <p class="mt-2 overflow-x-auto font-mono">https://{{ claim.hostname }}{{ claim.challenge_path }}</p>
-                        {% endif %}
-                        </div>
-                    </details>
-                    {% endif %}
+                        </details>
                     </div>
                 </details>
                 {% endfor %}
             {% elif not custom_domains_available %}
             <h3 class="text-xl font-bold">Not available</h3>
-            <p class="mt-2 text-rule">The custom-domain control plane is disabled or not ready. Existing claims remain visible for safe removal.</p>
+            <p class="mt-2 text-rule">Custom-domain services are disabled or not ready. Try again later or ask your Buzz operator to enable them.</p>
             {% else %}
             <h3 class="text-xl font-bold">No custom domains</h3>
-            <p class="mt-2 text-rule">Your site remains available at its permanent Buzz URL.</p>
+            <p class="mt-2 text-rule">Add a hostname you control. Your permanent Buzz URL will keep working.</p>
             {% endif %}
-            {% if custom_domain_quota.error %}
-            <p class="mt-4 border-l-4 border-ink pl-3 text-rule">{{ custom_domain_quota.error }}</p>
-            {% else %}
-            <p class="mt-4 text-rule">{{ custom_domain_quota.site_usage }} of {{ custom_domain_quota.limits.per_site }} aliases used for this site.</p>
-            {% endif %}
+            {% if custom_domain_quota.error %}<p class="domain-quota border-l-4 border-ink pl-3">{{ custom_domain_quota.error }}</p>
+            {% else %}<p class="domain-quota">{{ custom_domain_quota.site_usage }} of {{ custom_domain_quota.limits.per_site }} aliases used for this site.</p>{% endif %}
             <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark" id="domain-action-error" role="alert"></p>
         </section>
     </div>
@@ -272,7 +295,8 @@
     <div>
         <header>
             <h2>Add custom domain</h2>
-            <p>Enter a hostname you control. Buzz will provide a TXT record to prove ownership.</p>
+            {% if automatic_domains_ready %}<p>Enter one hostname. Buzz detects direct and Cloudflare connections automatically.</p>
+            {% else %}<p>Enter one hostname and choose how it connects to Buzz.</p>{% endif %}
         </header>
         <section>
             <form id="add-domain-form">
@@ -285,7 +309,7 @@
                     {% if direct_domains_available %}<option value="direct">Direct to Buzz</option>{% endif %}
                     <option value="cloudflare">Cloudflare proxy</option>
                 </select>
-                <p class="mt-2 text-rule">Cloudflare mode validates proxied DNS, edge TLS, challenge routing, and Full (strict) origin TLS{% if not cloudflare_activation_enabled %}; activation is currently disabled by the operator{% endif %}.</p>
+                <p class="mt-2 text-rule"><strong>Direct</strong> points DNS to Buzz. <strong>Cloudflare</strong> keeps the hostname proxied through Cloudflare{% if not cloudflare_activation_enabled %}; Cloudflare activation is currently disabled by the operator{% endif %}.</p>
                 {% endif %}
                 <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="add-domain-error" role="alert"></p>
             </form>
@@ -303,7 +327,8 @@
     <div>
         <header>
             <h2>Remove custom domain</h2>
-            <p>Remove <strong id="remove-domain-hostname"></strong> from this site? Buzz will stop tracking its ownership, but will not change its DNS records.</p>
+            <p>Remove <strong id="remove-domain-hostname"></strong> from this site? Buzz will stop serving this hostname after safely withdrawing its route. Your DNS records will not change.</p>
+            <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="remove-domain-error" role="alert"></p>
         </header>
         <footer>
             <button type="button" class="btn-outline" id="cancel-remove-domain">Cancel</button>
@@ -369,7 +394,28 @@ function showDomainError(message) {
     error.classList.remove('hidden');
 }
 
+async function copyDomainValue(button) {
+    const target = document.getElementById(button.dataset.copyTarget);
+    try {
+        await navigator.clipboard.writeText(target.textContent.trim());
+        button.textContent = 'Copied';
+        setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+    } catch {
+        showClaimError(button, 'Could not copy the DNS value. Select it and copy it manually.');
+    }
+}
+
+function showClaimError(button, message) {
+    const error = button.closest('[data-domain-claim]').querySelector('.claim-action-error');
+    error.textContent = message;
+    error.classList.remove('hidden');
+}
+
 function initCustomDomains() {
+    document.querySelectorAll('.copy-domain-value').forEach(button => {
+        button.addEventListener('click', () => copyDomainValue(button));
+    });
+
     const dialog = document.getElementById('add-domain-dialog');
     const openButton = document.getElementById('open-domain-dialog');
     const cancelButton = document.getElementById('cancel-domain-dialog');
@@ -411,9 +457,9 @@ function initCustomDomains() {
                 await domainRequest('/' + button.dataset.claimId + '/check', { method: 'POST' });
                 location.reload();
             } catch (error) {
-                showDomainError(error.message);
+                showClaimError(button, error.message);
                 button.disabled = false;
-                button.textContent = 'Check now';
+                button.textContent = 'Check ownership';
             }
         });
     });
@@ -421,7 +467,7 @@ function initCustomDomains() {
     document.querySelectorAll('.transition-action').forEach(button => {
         button.addEventListener('click', async () => {
             const originalText = button.textContent;
-            const error = button.closest('[data-domain-claim]').querySelector('.transition-action-error');
+            const error = button.closest('[data-domain-claim]').querySelector('.claim-action-error');
             button.disabled = true;
             button.textContent = button.dataset.action === 'retry' ? 'Retrying...' : 'Cancelling...';
             error.classList.add('hidden');
@@ -447,6 +493,7 @@ function initCustomDomains() {
             button.addEventListener('click', () => {
                 removeButton = button;
                 document.getElementById('remove-domain-hostname').textContent = button.dataset.hostname;
+                document.getElementById('remove-domain-error').classList.add('hidden');
                 removeDialog.showModal();
             });
         });
@@ -457,8 +504,9 @@ function initCustomDomains() {
                 await domainRequest('/' + removeButton.dataset.claimId, { method: 'DELETE' });
                 location.reload();
             } catch (error) {
-                removeDialog.close();
-                showDomainError(error.message);
+                const removeError = document.getElementById('remove-domain-error');
+                removeError.textContent = error.message;
+                removeError.classList.remove('hidden');
                 confirmRemove.disabled = false;
             }
         });

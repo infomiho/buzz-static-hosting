@@ -3,6 +3,13 @@ from dataclasses import dataclass
 from .custom_domains import DomainClaim
 from .domain_transitions import DomainClaimStateMachine, DomainModeTransition
 
+TRANSIENT_DNS_ERRORS = {
+    "dns_answer_changed",
+    "dns_confirmation_missing",
+    "dns_timeout",
+    "dns_unavailable",
+}
+
 
 @dataclass(frozen=True)
 class DomainConnection:
@@ -47,6 +54,120 @@ class DomainConnection:
             self.transition_state in DomainClaimStateMachine.ACTIVE_STATES
             or self.transition_state == "failed"
         )
+
+
+@dataclass(frozen=True)
+class DomainTask:
+    phase: str
+    label: str
+    summary: str
+    next_action: str
+    open_by_default: bool
+
+
+def project_domain_task(claim: DomainClaim, connection: DomainConnection) -> DomainTask:
+    if claim.route_status == "removing":
+        return DomainTask(
+            "removing",
+            "Removing",
+            "Buzz is safely withdrawing this domain.",
+            "wait",
+            True,
+        )
+    if claim.status == "pending":
+        return DomainTask(
+            "verify_ownership",
+            "Verify ownership",
+            "Add the DNS records below to prove ownership and point the domain to Buzz.",
+            "check_ownership",
+            True,
+        )
+    if connection.status == "waiting_for_dns" and claim.route_status == "routed":
+        return DomainTask(
+            "configure_dns",
+            "Update DNS",
+            "Point this domain to Buzz using the records below.",
+            "configure_dns",
+            True,
+        )
+    if connection.status == "connected":
+        return DomainTask(
+            "connected",
+            "Connected",
+            "Buzz is serving your site on this domain.",
+            "visit",
+            False,
+        )
+    if connection.status == "action_needed":
+        if claim.activation_error in TRANSIENT_DNS_ERRORS:
+            return DomainTask(
+                "action_needed",
+                "Action needed",
+                "Buzz could not check DNS right now. It will retry automatically.",
+                "wait",
+                True,
+            )
+        return DomainTask(
+            "action_needed",
+            "Action needed",
+            "Buzz could not validate this domain. Check its DNS settings.",
+            "retry" if connection.can_retry else "fix_configuration",
+            True,
+        )
+    if (
+        connection.target_mode
+        and connection.observed_mode
+        and connection.observed_mode != connection.target_mode
+    ) or (
+        (claim.activation_error or "").startswith("dns_")
+        and claim.activation_error not in TRANSIENT_DNS_ERRORS
+    ):
+        return DomainTask(
+            "configure_dns",
+            "Update DNS",
+            "Buzz detected DNS settings that do not match the required connection.",
+            "configure_dns",
+            True,
+        )
+    if connection.status == "updating":
+        return DomainTask(
+            "updating",
+            "Updating",
+            "DNS change detected. Buzz is validating the new connection.",
+            "wait",
+            False,
+        )
+    if claim.activation_error in TRANSIENT_DNS_ERRORS:
+        return DomainTask(
+            "action_needed",
+            "Action needed",
+            "Buzz could not check DNS right now. It will retry automatically.",
+            "wait",
+            True,
+        )
+    if claim.activation_error:
+        return DomainTask(
+            "action_needed",
+            "Action needed",
+            "Buzz could not validate this domain. Check its DNS settings.",
+            "fix_configuration",
+            True,
+        )
+    if connection.status in {"waiting_for_dns", "securing"}:
+        return DomainTask(
+            "connecting",
+            "Connecting",
+            "Buzz is preparing the secure connection.",
+            "wait",
+            False,
+        )
+    return DomainTask(
+        "action_needed",
+        "Action needed",
+        "Buzz could not validate this domain. Check its DNS settings.",
+        "retry" if connection.can_retry else "fix_configuration",
+        True,
+    )
 
 
 def project_domain_connection(

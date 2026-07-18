@@ -151,7 +151,7 @@ Keep the `buzz-custom` resolver on Let's Encrypt's staging directory during this
    BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=true
    ```
 
-2. Open a site's detail page, add a custom hostname, publish the displayed TXT record, and select **Check now**.
+2. Open a site's detail page, add a custom hostname, publish the displayed DNS records, and select **Check ownership**.
 3. After ownership verifies, Buzz publishes one exact generation-qualified `Host()` router through the HTTP provider.
 4. Wait for the dashboard to report that Traefik acknowledged the router.
 5. Open the staging verification URL displayed by Buzz. The request records that the public hostname reached the expected Buzz site. No other path on that custom hostname is served during this stage.

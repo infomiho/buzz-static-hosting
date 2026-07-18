@@ -125,7 +125,7 @@
   }
 
   .btn-sm-outline {
-    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 border-2 border-ink bg-paper px-3 py-1 text-center font-bold text-ink transition duration-100 ease-out hover:bg-mist active:translate-y-0.5;
+    @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 border-2 border-ink bg-paper px-3 py-1 text-center font-bold text-ink transition duration-100 ease-out hover:bg-mist active:translate-y-0.5 sm:min-h-10;
   }
 
   .btn-sm-ghost {
@@ -248,6 +248,78 @@
 
   .alert-destructive h2 {
     @apply heading-m;
+  }
+
+  .custom-domain-list {
+    @apply flex flex-col;
+  }
+
+  .domain-task {
+    @apply border-x-2 border-t-2 border-ink;
+  }
+
+  .domain-summary {
+    @apply grid cursor-pointer grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-6;
+  }
+
+  .domain-status {
+    @apply inline-flex items-center gap-2 font-bold sm:justify-self-end sm:text-right;
+  }
+
+  .domain-task-panel {
+    @apply border-t-2 border-ink p-4 sm:p-5;
+  }
+
+  .dns-record {
+    @apply border-2 border-ink;
+  }
+
+  .dns-record-row {
+    @apply grid min-w-0 grid-cols-1 gap-2 border-b-2 border-ink p-3 last:border-b-0 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center;
+  }
+
+  .dns-record-label {
+    @apply font-bold;
+  }
+
+  .dns-record-value {
+    @apply min-w-0 break-all font-mono;
+  }
+
+  .dns-record-row .copy-domain-value {
+    @apply w-full sm:w-auto;
+  }
+
+  .domain-actions {
+    @apply mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center;
+  }
+
+  .manage-domain {
+    @apply mt-6 border-t-2 border-ink pt-4;
+  }
+
+  .manage-domain > summary {
+    @apply w-fit cursor-pointer font-bold underline decoration-2 underline-offset-4 hover:decoration-4;
+  }
+
+  .manage-domain-content {
+    @apply mt-4 grid gap-6 bg-mist p-4 sm:p-5;
+  }
+
+  .manage-domain-content h4 {
+    @apply text-lg font-bold;
+  }
+
+  .domain-details {
+    @apply mt-3 grid min-w-0 grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-[10rem_minmax(0,1fr)];
+  }
+
+  .domain-details dt {
+    @apply font-bold;
+  }
+
+  .domain-quota {
+    @apply mt-6 text-sm text-rule;
   }
 }
 
