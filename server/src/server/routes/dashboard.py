@@ -108,13 +108,7 @@ async def site_detail(
             ),
         )
 
-    direct_domains_available = capability.status == "ready" and not domain_quota.error
-    cloudflare_diagnostics_available = bool(
-        capability.cloudflare_ready
-        and not domain_quota.error
-    )
-    custom_domain_can_add = direct_domains_available or cloudflare_diagnostics_available
-    automatic_domains_ready = capability.automatic_ready and not domain_quota.error
+    custom_domain_can_add = capability.automatic_ready and not domain_quota.error
     domain_routing_targets = [
         {
             "type": "A" if ipaddress.ip_address(address).version == 4 else "AAAA",
@@ -139,10 +133,6 @@ async def site_detail(
         "domain": domain,
         "custom_domains_available": custom_domains_available,
         "custom_domain_can_add": custom_domain_can_add,
-        "direct_domains_available": direct_domains_available,
-        "cloudflare_diagnostics_available": cloudflare_diagnostics_available,
-        "cloudflare_activation_enabled": config.CLOUDFLARE_ACTIVATION_ENABLED,
-        "automatic_domains_ready": automatic_domains_ready,
         "domain_routing_targets": domain_routing_targets,
         "custom_domain_quota": domain_quota,
         "domain_claims": domain_claims,

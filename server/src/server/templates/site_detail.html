@@ -293,22 +293,13 @@
     <div>
         <header>
             <h2>Add custom domain</h2>
-            {% if automatic_domains_ready %}<p>Enter one hostname. Buzz detects direct and Cloudflare connections automatically.</p>
-            {% else %}<p>Enter one hostname and choose how it connects to Buzz.</p>{% endif %}
+            <p>Enter one hostname. Buzz detects direct and Cloudflare connections automatically.</p>
         </header>
         <section>
             <form id="add-domain-form">
                 <label for="domain-hostname" class="font-bold">Domain</label>
                 <input id="domain-hostname" name="hostname" class="input mt-1" placeholder="www.example.com" autocomplete="off" spellcheck="false" required />
                 <p class="mt-2 text-rule">Enter the hostname only, without <span class="font-mono">https://</span>, a port, or a path.</p>
-                {% if cloudflare_diagnostics_available and not automatic_domains_ready %}
-                <label for="domain-mode" class="mt-4 block font-bold">Routing mode</label>
-                <select id="domain-mode" name="mode" class="input mt-1">
-                    {% if direct_domains_available %}<option value="direct">Direct to Buzz</option>{% endif %}
-                    <option value="cloudflare">Cloudflare proxy</option>
-                </select>
-                <p class="mt-2 text-rule"><strong>Direct</strong> points DNS to Buzz. <strong>Cloudflare</strong> keeps the hostname proxied through Cloudflare{% if not cloudflare_activation_enabled %}; Cloudflare activation is currently disabled by the operator{% endif %}.</p>
-                {% endif %}
                 <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="add-domain-error" role="alert"></p>
             </form>
         </section>
@@ -358,7 +349,6 @@
 {% block scripts %}
 <script>
 const SITE_NAME = {{ site.name | tojson }};
-const AUTOMATIC_DOMAINS_READY = {{ automatic_domains_ready | tojson }};
 let analyticsChart;
 window.onDeploySuccess = function() { setTimeout(() => location.reload(), 800); };
 
@@ -433,9 +423,6 @@ function initCustomDomains() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         hostname: form.elements.hostname.value,
-                        ...(AUTOMATIC_DOMAINS_READY ? {} : {
-                            mode: form.elements.mode ? form.elements.mode.value : 'direct',
-                        }),
                     }),
                 });
                 location.reload();

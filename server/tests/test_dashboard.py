@@ -226,6 +226,7 @@ class TestCustomDomains:
         client.app.state.custom_domains.range_state = type(
             "RangeState", (), {"error": None}
         )()
+        client.app.state.custom_domains.transition_coordinator = object()
         client.cookies.set(COOKIE_NAME, token)
 
         response = client.get("/dashboard/sites/my-site")
@@ -304,9 +305,8 @@ class TestCustomDomains:
         assert response.text.index("Manage domain") < response.text.index("Remove domain")
         assert "Cancel transition" not in response.text
         assert "Consecutive failures" not in response.text
-        assert 'name="mode"' in response.text
-        assert "Direct</strong> points DNS to Buzz" in response.text
-        assert "Cloudflare</strong> keeps the hostname proxied" in response.text
+        assert 'name="mode"' not in response.text
+        assert "Buzz detects direct and Cloudflare connections automatically" in response.text
         assert response.text.index("Analytics") < response.text.index("Custom domains")
         assert response.text.index("Files") < response.text.index("Custom domains")
         assert 'id="remove-domain-dialog"' in response.text
@@ -315,15 +315,6 @@ class TestCustomDomains:
         assert "removeDialog.close();\n                showDomainError" not in response.text
         assert "Add custom domain" in response.text
         assert "8 of 10 aliases used for this site" in response.text
-
-        client.app.state.custom_domains.automatic_admission_enabled = True
-        client.app.state.custom_domains.transition_coordinator = object()
-        monkeypatch.setattr("server.config.CLOUDFLARE_ACTIVATION_ENABLED", True)
-        automatic_response = client.get("/dashboard/sites/my-site")
-
-        assert "const AUTOMATIC_DOMAINS_READY = true;" in automatic_response.text
-        assert 'name="mode"' not in automatic_response.text
-        assert "Buzz detects direct and Cloudflare connections automatically" in automatic_response.text
 
 
 class TestLoginFlow:

@@ -83,18 +83,14 @@ export interface DomainCapability {
   detail: string | null;
   enabled: boolean;
   control_ready: boolean;
-  admission_enabled: boolean;
   routing_enabled: boolean;
   routing_targets: { type: "A" | "AAAA"; value: string }[];
   automatic?: {
-    admission_enabled: boolean;
     ready: boolean;
     detail: string | null;
   };
   cloudflare: {
-    admission_enabled: boolean;
-    activation_enabled: boolean;
-    ready: boolean;
+    supported: boolean;
     detail: string | null;
   };
 }
@@ -127,7 +123,6 @@ function isCapability(value: unknown): value is DomainCapability {
     ["disabled", "unready", "ready"].includes(capability.status ?? "") &&
     typeof capability.enabled === "boolean" &&
     typeof capability.control_ready === "boolean" &&
-    typeof capability.admission_enabled === "boolean" &&
     typeof capability.routing_enabled === "boolean" &&
     (capability.detail === null || typeof capability.detail === "string") &&
     Array.isArray(capability.routing_targets) &&
@@ -138,15 +133,11 @@ function isCapability(value: unknown): value is DomainCapability {
         typeof target.value === "string"
     ) &&
     (!capability.automatic ||
-      (typeof capability.automatic.admission_enabled === "boolean" &&
-        typeof capability.automatic.ready === "boolean" &&
+      (typeof capability.automatic.ready === "boolean" &&
         (capability.automatic.detail === null ||
           typeof capability.automatic.detail === "string"))) &&
     (!capability.cloudflare ||
-      (typeof capability.cloudflare.admission_enabled === "boolean" &&
-        (capability.cloudflare.activation_enabled === undefined ||
-          typeof capability.cloudflare.activation_enabled === "boolean") &&
-        typeof capability.cloudflare.ready === "boolean" &&
+      (typeof capability.cloudflare.supported === "boolean" &&
         (capability.cloudflare.detail === null ||
           typeof capability.cloudflare.detail === "string")))
   );
@@ -279,17 +270,10 @@ export async function getDomainCapability(
   }
   return {
     ...rawCapability,
-    cloudflare: rawCapability.cloudflare
-      ? {
-          ...rawCapability.cloudflare,
-          activation_enabled: rawCapability.cloudflare.activation_enabled ?? false,
-        }
-      : {
-          admission_enabled: false,
-          activation_enabled: false,
-          ready: false,
-          detail: "This Buzz server does not support Cloudflare proxy diagnostics",
-        },
+    cloudflare: rawCapability.cloudflare ?? {
+      supported: false,
+      detail: "This Buzz server does not support Cloudflare proxy diagnostics",
+    },
   };
 }
 
@@ -360,7 +344,6 @@ export function resolveDomainClaim(
 export async function createDomainClaim(
     siteName: string,
     hostname: string,
-    mode: DomainMode | undefined,
     cliOptions: CliOptions = {}
 ): Promise<DomainClaim> {
   const response = await domainRequest(
@@ -368,7 +351,7 @@ export async function createDomainClaim(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hostname, ...(mode ? { mode } : {}) }),
+      body: JSON.stringify({ hostname }),
     },
     cliOptions
   );

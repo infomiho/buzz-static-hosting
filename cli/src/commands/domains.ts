@@ -55,52 +55,31 @@ export async function listDomains(
 export async function addDomain(
   siteName: string,
   hostname: string,
-  options: { mode?: string } = {},
   cliOptions: CliOptions = {}
 ): Promise<void> {
   const capability = await getDomainCapability(cliOptions);
-  const automatic = !options.mode && capability.automatic?.ready === true;
-  const mode = options.mode ?? (automatic ? undefined : "direct");
-  if (mode && mode !== "direct" && mode !== "cloudflare") {
-    throw new CliError("Mode must be 'direct' or 'cloudflare'");
-  }
-  if (automatic) {
-    requireReady(capability);
-  } else if (mode === "direct") {
-    requireReady(capability);
-  } else if (!capability.cloudflare.ready) {
+  if (capability.automatic?.ready !== true) {
     throw new CliError(
-      capability.cloudflare.detail ?? "Cloudflare proxy routing is not ready"
+      capability.automatic?.detail ??
+        capability.detail ??
+        "Custom domains are not ready on this server"
     );
   }
-  const claim = await createDomainClaim(siteName, hostname, mode, cliOptions);
+  const claim = await createDomainClaim(siteName, hostname, cliOptions);
   console.log(`Added custom domain ${claim.hostname} to site '${siteName}'.\n`);
   console.log("Prove ownership by adding this DNS record:");
   console.log(`  Type:  ${claim.verification.type}`);
   console.log(`  Name:  ${claim.verification.name}`);
   console.log(`  Value: ${claim.verification.value}\n`);
-  if (automatic) {
-    console.log("Point this hostname to Buzz using direct DNS or supported Cloudflare proxying:");
-    for (const target of capability.routing_targets) {
-      console.log(`  ${target.type.padEnd(5)} ${claim.hostname} -> ${target.value}`);
-    }
-    console.log("Use DNS-only records for a direct connection. If you use Cloudflare, keep proxying enabled and use Full (strict).");
-  } else if (mode === "cloudflare") {
-    console.log("Keep Cloudflare proxying enabled and set SSL/TLS to Full (strict).");
-    if (!capability.cloudflare.activation_enabled) {
-      console.log("This server currently admits Cloudflare claims for diagnostics only.");
-    } else {
-      console.log("Buzz will activate the hostname after all proxy and origin checks pass.");
-    }
-    console.log(
-      "Bypass cache, redirects, WAF, Workers, Access, and challenges for the Buzz verification path."
-    );
-  } else {
-    console.log("Route the domain directly to this Buzz server:");
-    for (const target of capability.routing_targets) {
-      console.log(`  ${target.type.padEnd(5)} ${claim.hostname} -> ${target.value}`);
-    }
+  console.log(
+    "Point this hostname to Buzz using direct DNS or supported Cloudflare proxying:"
+  );
+  for (const target of capability.routing_targets) {
+    console.log(`  ${target.type.padEnd(5)} ${claim.hostname} -> ${target.value}`);
   }
+  console.log(
+    "Use DNS-only records for a direct connection. If you use Cloudflare, keep proxying enabled and use Full (strict)."
+  );
   console.log("\nBuzz does not change your DNS records.");
   console.log(`After the records propagate, run:\n  buzz domains check ${siteName} ${claim.hostname}`);
 }
@@ -200,9 +179,8 @@ export function registerDomainsCommand(program: Command): void {
   domains
     .command("add <site> <domain>")
     .description("Attach a custom domain to a site")
-    .option("--mode <mode>", "Deprecated: force direct or cloudflare routing")
-    .action((site: string, domain: string, options: { mode?: string }) =>
-      addDomain(site, domain, options, program.opts())
+    .action((site: string, domain: string) =>
+      addDomain(site, domain, program.opts())
     );
   domains
     .command("check <site> <domain>")
