@@ -53,7 +53,6 @@ class CustomDomainsRuntime:
             range_state=self.range_state,
             diagnostic_runtime_ready=self.runtime_ready,
             coordinator=self.transition_coordinator,
-            automatic_admission=self.automatic_admission_enabled,
         )
 
     # -- request-time lookups --------------------------------------------
@@ -178,17 +177,14 @@ class CustomDomainsRuntime:
         activator = DomainActivator(evidence_collector=evidence_collector)
         self.diagnostician = CloudflareDiagnostician(
             evidence_collector,
-            activation_enabled=config.cloudflare_activation_enabled,
+            activation_enabled=True,
             range_state=self.range_state,
         )
         self.transition_coordinator = DomainTransitionCoordinator(
             evidence_collector,
             self.diagnostician,
             admission_enabled=lambda: self.capabilities().automatic_ready,
-            cloudflare_target_enabled=lambda: bool(
-                self.capabilities().cloudflare_ready
-                and server_config.CLOUDFLARE_ACTIVATION_ENABLED
-            ),
+            cloudflare_target_enabled=lambda: self.capabilities().cloudflare_ready,
         )
         control_server.set_operator_handlers(
             self._active_handoffs,
@@ -242,26 +238,20 @@ class CustomDomainsRuntime:
     # -- internal --------------------------------------------------------
 
     def _refuse_unsafe_startup(self) -> None:
+        # State-based withdraw-before-disable guards: routers that still exist in
+        # the database must be safely withdrawable by the running runtime before
+        # the infrastructure that manages them is torn down.
         config = self._config
-        if not config.cloudflare_activation_enabled:
-            with self._connect() as conn:
-                if DomainClaimStore(conn).has_active_cloudflare_claim():
-                    raise RuntimeError(
-                        "Withdraw active Cloudflare routers before disabling Cloudflare activation"
-                    )
-        else:
-            with self._connect() as conn:
-                routed_cloudflare_claim = DomainClaimStore(
-                    conn
-                ).has_routed_cloudflare_claim()
-            if routed_cloudflare_claim and not (
-                config.custom_domains_enabled
-                and config.traefik_control_token
-                and config.traefik_api_url
-            ):
-                raise RuntimeError(
-                    "Active Cloudflare domains require the complete custom-domain runtime"
-                )
+        with self._connect() as conn:
+            routed_cloudflare_claim = DomainClaimStore(conn).has_routed_cloudflare_claim()
+        if routed_cloudflare_claim and not (
+            config.custom_domains_enabled
+            and config.traefik_control_token
+            and config.traefik_api_url
+        ):
+            raise RuntimeError(
+                "Active Cloudflare domains require the complete custom-domain runtime"
+            )
         if not config.custom_domains_enabled:
             with self._connect() as conn:
                 if DomainClaimStore(conn).has_routed_claim():

@@ -19,11 +19,7 @@ def _range_state(error=None):
 def _ready_config(monkeypatch):
     monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", True)
     monkeypatch.setattr(config, "TRAEFIK_CONTROL_TOKEN", "configured")
-    monkeypatch.setattr(config, "CUSTOM_DOMAIN_ADMISSION_ENABLED", True)
-    monkeypatch.setattr(config, "CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", True)
 
 
 def _capabilities(**overrides):
@@ -33,7 +29,6 @@ def _capabilities(**overrides):
         range_state=_range_state(),
         diagnostic_runtime_ready=False,
         coordinator=None,
-        automatic_admission=False,
     )
     defaults.update(overrides)
     return compute_capabilities(**defaults)
@@ -44,6 +39,7 @@ def test_disabled_when_custom_domains_off(monkeypatch):
     capability = _capabilities()
     assert capability.status == "disabled"
     assert capability.control_ready is False
+    assert capability.automatic_ready is False
 
 
 def test_unready_without_configured_control_plane(monkeypatch):
@@ -61,23 +57,44 @@ def test_unready_when_control_plane_not_ready(monkeypatch):
     assert capability.detail == "Custom domain control plane is not ready"
 
 
+def test_unready_without_ingress(monkeypatch):
+    _ready_config(monkeypatch)
+    monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset())
+    capability = _capabilities(control=ReadyControl(), diagnostic_runtime_ready=True)
+    assert capability.status == "unready"
+    assert "routing is not configured" in capability.detail
+
+
 def test_ready_when_fully_configured(monkeypatch):
     _ready_config(monkeypatch)
-    capability = _capabilities(control=ReadyControl(), diagnostic_runtime_ready=True)
+    capability = _capabilities(
+        control=ReadyControl(), diagnostic_runtime_ready=True, coordinator=object()
+    )
     assert capability.status == "ready"
     assert capability.control_ready is True
     assert capability.cloudflare_ready is True
+    assert capability.automatic_ready is True
 
 
-def test_automatic_ready_requires_admission_and_coordinator(monkeypatch):
+def test_automatic_ready_requires_coordinator(monkeypatch):
     _ready_config(monkeypatch)
     ready = dict(control=ReadyControl(), diagnostic_runtime_ready=True)
-    without_coordinator = _capabilities(**ready, automatic_admission=True)
-    assert without_coordinator.automatic_ready is False
-    with_coordinator = _capabilities(
-        **ready, automatic_admission=True, coordinator=object()
+    assert _capabilities(**ready, coordinator=None).automatic_ready is False
+    assert _capabilities(**ready, coordinator=object()).automatic_ready is True
+
+
+def test_automatic_ready_without_cloudflare(monkeypatch):
+    # The core decoupling: a server whose Cloudflare support is unavailable
+    # (stale/missing ranges) still offers automatic onboarding for direct domains.
+    _ready_config(monkeypatch)
+    capability = _capabilities(
+        control=ReadyControl(),
+        diagnostic_runtime_ready=True,
+        coordinator=object(),
+        range_state=_range_state("range_data_stale"),
     )
-    assert with_coordinator.automatic_ready is True
+    assert capability.cloudflare_ready is False
+    assert capability.automatic_ready is True
 
 
 def test_stale_range_data_blocks_cloudflare(monkeypatch):

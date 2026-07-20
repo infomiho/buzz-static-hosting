@@ -63,6 +63,7 @@ def domain_api(tmp_path, monkeypatch):
     app.state.custom_domains.control = ReadyControlPlane()
     app.state.custom_domains.runtime_ready = True
     app.state.custom_domains.range_state = type("RangeState", (), {"error": None})()
+    app.state.custom_domains.transition_coordinator = object()
     resolver = FakeTxtResolver()
     app.state.custom_domains.txt_resolver = resolver
     return TestClient(app), resolver
@@ -97,29 +98,18 @@ def test_domain_claim_lifecycle(domain_api):
     assert client.get("/sites/my-site/domains").json()[0]["status"] == "cancelled"
 
 
-def test_omitted_mode_requires_automatic_onboarding_readiness(
-    domain_api, monkeypatch
-):
+def test_add_domain_requires_automatic_readiness(domain_api):
     client, _ = domain_api
+    client.app.state.custom_domains.transition_coordinator = None
     unavailable = client.post(
         "/sites/my-site/domains", json={"hostname": "old.example.com"}
     )
-    explicit_compatibility = client.post(
-        "/sites/my-site/domains",
-        json={"hostname": "explicit.example.com", "mode": "direct"},
-    )
-    client.app.state.custom_domains.automatic_admission_enabled = True
     client.app.state.custom_domains.transition_coordinator = object()
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", True)
     automatic = client.post(
         "/sites/my-site/domains", json={"hostname": "new.example.com"}
     )
 
     assert unavailable.status_code == 503
-    assert explicit_compatibility.status_code == 201
-    assert explicit_compatibility.json()["mode"] == "direct"
-    assert explicit_compatibility.json()["effective_mode"] is None
     assert automatic.status_code == 201
     assert automatic.json()["mode"] == "direct"
     assert automatic.json()["connection_status"] == "waiting_for_dns"
@@ -128,7 +118,6 @@ def test_omitted_mode_requires_automatic_onboarding_readiness(
             "SELECT hostname, automatic_mode FROM custom_domain_claims ORDER BY id"
         ).fetchall()
     assert [(row["hostname"], row["automatic_mode"]) for row in rows] == [
-        ("explicit.example.com", 0),
         ("new.example.com", 1),
     ]
 
@@ -149,60 +138,42 @@ def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch)
         "detail": None,
         "enabled": True,
         "control_ready": True,
-        "admission_enabled": True,
         "routing_enabled": True,
         "routing_targets": [
             {"type": "A", "value": "8.8.8.8"},
             {"type": "AAAA", "value": "2001:4860:4860::8888"},
         ],
-        "automatic": {
-            "admission_enabled": False,
-            "ready": False,
-            "detail": "Automatic domain transitions are not enabled",
-        },
-        "cloudflare": {
-            "admission_enabled": False,
-            "activation_enabled": False,
-            "ready": False,
-            "detail": "Cloudflare proxy diagnostics admission is not enabled",
-        },
+        "automatic": {"ready": True, "detail": None},
+        "cloudflare": {"supported": True, "detail": None},
     }
 
 
-def test_custom_domain_capability_reports_automatic_runtime_readiness(
-    domain_api, monkeypatch
-):
+def test_custom_domain_capability_reports_automatic_runtime_readiness(domain_api):
     client, _ = domain_api
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", True)
-    client.app.state.custom_domains.automatic_admission_enabled = True
-
+    client.app.state.custom_domains.transition_coordinator = None
     unready = client.get("/capabilities/custom-domains").json()["automatic"]
     client.app.state.custom_domains.transition_coordinator = object()
     ready = client.get("/capabilities/custom-domains").json()["automatic"]
 
     assert unready == {
-        "admission_enabled": True,
         "ready": False,
         "detail": "Automatic domain transition runtime is not configured",
     }
-    assert ready == {"admission_enabled": True, "ready": True, "detail": None}
+    assert ready == {"ready": True, "detail": None}
 
 
-def test_automatic_readiness_requires_cloudflare_activation(domain_api, monkeypatch):
+def test_automatic_readiness_is_independent_of_cloudflare(domain_api):
     client, _ = domain_api
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", False)
-    client.app.state.custom_domains.automatic_admission_enabled = True
-    client.app.state.custom_domains.transition_coordinator = object()
+    # Cloudflare unsupported (stale ranges) must not block automatic onboarding
+    # of direct domains.
+    client.app.state.custom_domains.range_state = type(
+        "RangeState", (), {"error": "range_data_stale"}
+    )()
 
-    automatic = client.get("/capabilities/custom-domains").json()["automatic"]
+    capability = client.get("/capabilities/custom-domains").json()
 
-    assert automatic == {
-        "admission_enabled": True,
-        "ready": False,
-        "detail": "Cloudflare activation is not enabled for automatic transitions",
-    }
+    assert capability["automatic"]["ready"] is True
+    assert capability["cloudflare"]["supported"] is False
 
 
 def test_custom_domain_capability_distinguishes_disabled_and_unready(
@@ -221,114 +192,28 @@ def test_custom_domain_capability_distinguishes_disabled_and_unready(
     assert unready["detail"] == "Custom domain control plane is not ready"
 
 
-def test_custom_domain_capability_reports_closed_admission(domain_api, monkeypatch):
-    client, _ = domain_api
-    monkeypatch.setattr(config, "CUSTOM_DOMAIN_ADMISSION_ENABLED", False)
-
-    response = client.get("/capabilities/custom-domains")
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "unready"
-    assert response.json()["detail"] == (
-        "New custom domain claims are not enabled on this Buzz server"
-    )
-
-
-def test_cloudflare_diagnostic_claim_requires_explicit_operator_admission(
-    domain_api, monkeypatch
-):
-    client, _ = domain_api
-
-    disabled = client.post(
-        "/sites/my-site/domains",
-        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
-    )
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    enabled = client.post(
-        "/sites/my-site/domains",
-        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
-    )
-
-    assert disabled.status_code == 503
-    assert disabled.json()["detail"] == (
-        "Cloudflare proxy diagnostics admission is not enabled"
-    )
-    assert enabled.status_code == 201
-    assert enabled.json()["mode"] == "cloudflare"
-    assert enabled.json()["cloudflare_diagnostics"] is None
-
-
-def test_explicit_mode_keeps_released_cli_semantics_when_automatic_is_ready(
-    domain_api, monkeypatch
-):
-    client, _ = domain_api
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    client.app.state.custom_domains.automatic_admission_enabled = True
-    client.app.state.custom_domains.transition_coordinator = object()
-
-    direct = client.post(
-        "/sites/my-site/domains",
-        json={"hostname": "direct.example.com", "mode": "direct"},
-    )
-    cloudflare = client.post(
-        "/sites/my-site/domains",
-        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
-    )
-
-    assert direct.status_code == 201
-    assert cloudflare.status_code == 201
-    assert direct.json()["mode"] == "direct"
-    assert cloudflare.json()["mode"] == "cloudflare"
-    with db_module.db() as conn:
-        modes = conn.execute(
-            "SELECT claim_mode, automatic_mode FROM custom_domain_claims ORDER BY id"
-        ).fetchall()
-    assert [(row["claim_mode"], row["automatic_mode"]) for row in modes] == [
-        ("direct", 0),
-        ("cloudflare", 0),
-    ]
-
-
 def test_cloudflare_capability_is_independent_of_direct_ingress(
     domain_api, monkeypatch
 ):
     client, _ = domain_api
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
     monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset())
 
     capability = client.get("/capabilities/custom-domains").json()
 
     assert capability["status"] == "unready"
-    assert capability["cloudflare"] == {
-        "admission_enabled": True,
-        "activation_enabled": False,
-        "ready": True,
-        "detail": None,
-    }
+    assert capability["cloudflare"] == {"supported": True, "detail": None}
 
 
-def test_cloudflare_capability_requires_diagnostic_runtime(domain_api, monkeypatch):
+def test_cloudflare_capability_requires_diagnostic_runtime(domain_api):
     client, _ = domain_api
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
     client.app.state.custom_domains.runtime_ready = False
 
     capability = client.get("/capabilities/custom-domains").json()
 
     assert capability["cloudflare"] == {
-        "admission_enabled": True,
-        "activation_enabled": False,
-        "ready": False,
+        "supported": False,
         "detail": "Cloudflare diagnostic runtime is not configured",
     }
-
-    response = client.post(
-        "/sites/my-site/domains",
-        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
-    )
-    assert response.status_code == 503
-    assert response.json()["detail"] == (
-        "Cloudflare diagnostic runtime is not configured"
-    )
 
 
 def test_custom_domain_capability_rejects_deployment_tokens(domain_api):
@@ -668,14 +553,11 @@ def test_completed_transition_does_not_project_historical_paths(domain_api):
     assert response["transition_started_at"] is None
 
 
-def test_verified_ownership_check_returns_current_transition_and_diagnostic(
-    domain_api, monkeypatch
-):
+def test_verified_ownership_check_returns_current_transition_and_diagnostic(domain_api):
     client, resolver = domain_api
-    monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
     created = client.post(
         "/sites/my-site/domains",
-        json={"hostname": "proxy.example.com", "mode": "cloudflare"},
+        json={"hostname": "proxy.example.com"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
@@ -685,6 +567,11 @@ def test_verified_ownership_check_returns_current_transition_and_diagnostic(
         claims.mark_routed(claim.id, claim.route_generation)
         claim = claims.get(claim.id, "my-site")
         DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
+        # Make it an activated Cloudflare claim so a transition to direct is valid.
+        conn.execute(
+            "UPDATE custom_domain_claims SET claim_mode = 'cloudflare' WHERE id = ?",
+            (claim.id,),
+        )
         claim = claims.get(claim.id, "my-site")
         transition = DomainClaimStateMachine(conn).start(
             claim.id, claim.route_generation, "direct"

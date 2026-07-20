@@ -57,7 +57,6 @@ class SiteResponse(BaseModel):
 
 class CreateDomainClaimRequest(BaseModel):
     hostname: str
-    mode: Literal["direct", "cloudflare"] | None = None
 
 
 class DomainVerificationRecord(BaseModel):
@@ -140,7 +139,6 @@ class CustomDomainCapabilityResponse(BaseModel):
     detail: str | None
     enabled: bool
     control_ready: bool
-    admission_enabled: bool
     routing_enabled: bool
     routing_targets: list[CustomDomainRoutingTarget]
     automatic: "AutomaticDomainTransitionCapability"
@@ -148,15 +146,12 @@ class CustomDomainCapabilityResponse(BaseModel):
 
 
 class AutomaticDomainTransitionCapability(BaseModel):
-    admission_enabled: bool
     ready: bool
     detail: str | None
 
 
 class CloudflareCapability(BaseModel):
-    admission_enabled: bool
-    activation_enabled: bool
-    ready: bool
+    supported: bool
     detail: str | None
 
 

@@ -81,18 +81,22 @@ def test_openapi_documents_deployment_upload():
     }
 
 
-def test_openapi_documents_optional_mode_and_automatic_capability():
+def test_openapi_documents_automatic_capability():
     schema = create_app().openapi()
     request = schema["components"]["schemas"]["CreateDomainClaimRequest"]
     capability = schema["components"]["schemas"]["CustomDomainCapabilityResponse"]
 
     assert request["required"] == ["hostname"]
+    assert "mode" not in request["properties"]
     assert "automatic" in capability["properties"]
     assert set(
         schema["components"]["schemas"][
             "AutomaticDomainTransitionCapability"
         ]["required"]
-    ) == {"admission_enabled", "ready", "detail"}
+    ) == {"ready", "detail"}
+    assert set(
+        schema["components"]["schemas"]["CloudflareCapability"]["required"]
+    ) == {"supported", "detail"}
 
 
 def test_delete_operations_document_no_content():

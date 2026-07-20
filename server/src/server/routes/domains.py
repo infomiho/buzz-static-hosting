@@ -28,7 +28,6 @@ from ..custom_domains import (
 from ..db import db
 from ..dependencies import (
     Identity,
-    require_custom_domain_admission_enabled,
     require_custom_domain_control_ready,
     require_user,
 )
@@ -155,20 +154,14 @@ async def custom_domain_capability(
         "detail": capability.detail,
         "enabled": config.CUSTOM_DOMAINS_ENABLED,
         "control_ready": capability.control_ready,
-        "admission_enabled": config.CUSTOM_DOMAIN_ADMISSION_ENABLED,
         "routing_enabled": capability.routing_ready,
         "routing_targets": targets,
         "automatic": {
-            "admission_enabled": bool(
-                request.app.state.custom_domains.automatic_admission_enabled
-            ),
             "ready": capability.automatic_ready,
             "detail": capability.automatic_detail,
         },
         "cloudflare": {
-            "admission_enabled": config.CLOUDFLARE_DIAGNOSTICS_ENABLED,
-            "activation_enabled": config.CLOUDFLARE_ACTIVATION_ENABLED,
-            "ready": capability.cloudflare_ready,
+            "supported": capability.cloudflare_ready,
             "detail": capability.cloudflare_detail,
         },
     }
@@ -227,58 +220,21 @@ async def create_domain_claim(
         hostname = normalize_hostname(data.hostname, config.DOMAIN)
     except InvalidHostname as exc:
         raise BadRequest(str(exc))
-    runtime = request.app.state.custom_domains
-    capability = runtime.capabilities()
-    automatic = data.mode is None
-    if automatic and not capability.automatic_ready:
+    capability = request.app.state.custom_domains.capabilities()
+    if not capability.automatic_ready:
         raise HTTPException(
             status_code=503,
             detail=capability.automatic_detail
-            or "Automatic domain transitions are not ready",
+            or "Custom domains are not ready on this Buzz server",
         )
-    claim_mode = data.mode or "direct"
-    if claim_mode == "direct":
-        require_custom_domain_admission_enabled()
-    else:
-        if not config.CUSTOM_DOMAIN_ADMISSION_ENABLED:
-            raise HTTPException(
-                status_code=503,
-                detail="New custom domain claims are not enabled on this Buzz server",
-            )
-        if not config.CLOUDFLARE_DIAGNOSTICS_ENABLED:
-            raise HTTPException(
-                status_code=503,
-                detail="Cloudflare proxy diagnostics admission is not enabled",
-            )
-        if not runtime.runtime_ready:
-            raise HTTPException(
-                status_code=503,
-                detail="Cloudflare diagnostic runtime is not configured",
-            )
-        if not config.CUSTOM_DOMAIN_ROUTING_ENABLED:
-            raise HTTPException(
-                status_code=503,
-                detail="Custom domain routing is not configured",
-            )
-        diagnostician = runtime.diagnostician
-        range_error = (
-            diagnostician.range_error
-            if diagnostician
-            else runtime.range_state.error
-        )
-        if range_error:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Cloudflare diagnostics unavailable: {range_error}",
-            )
     with db() as conn:
         try:
             claim = DomainClaimStore(conn).create(
                 site_name,
                 hostname,
                 limits=domain_limits(),
-                claim_mode=claim_mode,
-                automatic_mode=automatic,
+                claim_mode="direct",
+                automatic_mode=True,
             )
         except DomainQuotaExceeded as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
