@@ -25,6 +25,7 @@ from ..custom_domains.cloudflare import (
     CloudflareDiagnostic,
     CloudflareDiagnosticStore,
 )
+from ..custom_domains.errors import ClaimConflict
 from ..db import db
 from ..custom_domains.capabilities import domain_capabilities
 from ..custom_domains.status import project_domain_connection
@@ -35,7 +36,7 @@ from ..dependencies import (
     require_custom_domain_control_ready,
     require_user,
 )
-from ..exceptions import BadRequest, Conflict
+from ..exceptions import BadRequest
 from ..site_store import SiteStore
 
 router = APIRouter(prefix="/sites/{site_name}/domains")
@@ -357,7 +358,7 @@ async def check_domain_claim(
     with db() as conn:
         try:
             claim = DomainClaimStore(conn).reserve_check(claim_id, site_name)
-        except Conflict as exc:
+        except ClaimConflict as exc:
             raise HTTPException(
                 status_code=429,
                 detail="Wait before checking this custom domain again",

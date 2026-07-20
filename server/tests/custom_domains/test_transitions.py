@@ -29,7 +29,7 @@ from server.custom_domains.evidence import (
     EvidenceResult,
 )
 from server.custom_domains.transitions import DomainClaimStateMachine, DomainTransitionCoordinator
-from server.exceptions import Conflict
+from server.custom_domains.errors import ClaimConflict
 
 
 @pytest.fixture
@@ -1148,7 +1148,7 @@ def test_retry_of_active_transition_is_conflict(transition_db):
         state = DomainClaimStateMachine(conn)
         state.start(claim.id, claim.route_generation, "direct")
 
-        with pytest.raises(Conflict, match="active transition"):
+        with pytest.raises(ClaimConflict, match="active transition"):
             state.retry(claim.id, claim.route_generation)
 
 
@@ -1221,7 +1221,7 @@ def test_active_cancellation_rejects_unhealthy_effective_path(transition_db):
         collector=UnhealthyCollector(),
     )
 
-    with pytest.raises(Conflict, match="effective domain path is not healthy"):
+    with pytest.raises(ClaimConflict, match="effective domain path is not healthy"):
         worker.cancel(claim.id, "my-site")
 
     with transition_db() as conn:

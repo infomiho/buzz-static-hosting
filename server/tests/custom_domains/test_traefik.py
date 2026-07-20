@@ -159,13 +159,13 @@ def test_operator_transition_cancellation_maps_results_and_errors():
     def cancel(claim_id):
         actions.append(claim_id)
         if claim_id == 8:
-            from server.exceptions import Conflict
+            from server.custom_domains.errors import ClaimConflict
 
-            raise Conflict("Transition changed")
+            raise ClaimConflict("Transition changed")
         if claim_id == 9:
-            from server.exceptions import NotFound
+            from server.custom_domains.errors import ClaimNotFound
 
-            raise NotFound("Custom domain claim not found")
+            raise ClaimNotFound("Custom domain claim not found")
         return {"claim_id": claim_id, "state": "cancelled"}
 
     server = TraefikControlServer(

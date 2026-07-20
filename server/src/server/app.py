@@ -42,6 +42,7 @@ from .config import (
 from .cookies import COOKIE_NAME
 from .custom_domains.cloudflare import CloudflareDiagnostician
 from .custom_domains.claims import DnsTxtResolver, DomainClaimStore
+from .custom_domains.errors import ClaimConflict, ClaimNotFound, UnsupportedClaimMode
 from .custom_domains.activation import DomainActivator
 from .custom_domains.capabilities import domain_capabilities
 from .custom_domains.routing import DomainRouteReconciler, build_traefik_snapshot
@@ -273,7 +274,7 @@ def create_app() -> FastAPI:
                                 (claim_id,),
                             ).fetchone()
                         if not row or not row["site_name"]:
-                            raise NotFound("Custom domain claim not found")
+                            raise ClaimNotFound("Custom domain claim not found")
                         transition_coordinator.cancel(claim_id, row["site_name"])
                         return {"claim_id": claim_id, "state": "cancelled"}
 
@@ -391,6 +392,18 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(NotFound)
     async def not_found_handler(request: Request, exc: NotFound):
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(UnsupportedClaimMode)
+    async def unsupported_claim_mode_handler(request: Request, exc: UnsupportedClaimMode):
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(ClaimConflict)
+    async def claim_conflict_handler(request: Request, exc: ClaimConflict):
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ClaimNotFound)
+    async def claim_not_found_handler(request: Request, exc: ClaimNotFound):
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     @app.exception_handler(PayloadTooLarge)

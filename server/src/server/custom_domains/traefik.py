@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from ..exceptions import Conflict, NotFound
+from .errors import ClaimConflict, ClaimNotFound
 
 EMPTY_SNAPSHOT = b"{}\n"
 MAX_SNAPSHOT_BYTES = 1024 * 1024
@@ -242,10 +242,10 @@ class TraefikControlServer:
                     return
                 try:
                     result = control._cancel_provider(claim_id)
-                except NotFound as exc:
+                except ClaimNotFound as exc:
                     self._send_error_json(404, str(exc))
                     return
-                except Conflict as exc:
+                except ClaimConflict as exc:
                     self._send_error_json(409, str(exc))
                     return
                 except Exception:

@@ -13,25 +13,20 @@ import dns.exception
 import dns.resolver
 import idna
 
-from ..exceptions import BadRequest, Conflict, NotFound
+from .errors import (
+    ClaimConflict,
+    ClaimNotFound,
+    DomainCheckUnavailable,
+    DomainQuotaExceeded,
+    InvalidHostname,
+    UnsupportedClaimMode,
+)
 
 CLAIM_TTL = timedelta(hours=24)
 CHECK_COOLDOWN = timedelta(seconds=60)
 HEALTH_FRESHNESS_SECONDS = 10 * 60
 ACTIVE_STATUSES = ("pending", "verified")
 logger = logging.getLogger(__name__)
-
-
-class InvalidHostname(ValueError):
-    pass
-
-
-class DomainCheckUnavailable(Exception):
-    pass
-
-
-class DomainQuotaExceeded(Exception):
-    pass
 
 
 @dataclass(frozen=True)
@@ -209,14 +204,14 @@ class DomainClaimStore:
             (site_name, hostname),
         ).fetchone()
         if duplicate:
-            raise Conflict("This hostname is already attached to this site")
+            raise ClaimConflict("This hostname is already attached to this site")
         if limits:
             quota = self.quota(site_name, limits)
             if quota.error:
                 raise DomainQuotaExceeded(quota.error)
         token = f"bdv_{secrets.token_urlsafe(32)}"
         if claim_mode not in {"direct", "cloudflare"}:
-            raise BadRequest("Unsupported custom-domain mode")
+            raise UnsupportedClaimMode("Unsupported custom-domain mode")
         try:
             cursor = self._conn.execute(
                 """INSERT INTO custom_domain_claims
@@ -234,7 +229,7 @@ class DomainClaimStore:
                 ),
             )
         except sqlite3.IntegrityError as exc:
-            raise Conflict("Could not create this custom domain claim") from exc
+            raise ClaimConflict("Could not create this custom domain claim") from exc
         return self.get(cursor.lastrowid, site_name)
 
     def quota(self, site_name: str, limits: DomainClaimLimits) -> DomainClaimQuota:
@@ -242,7 +237,7 @@ class DomainClaimStore:
             "SELECT owner_id FROM sites WHERE name = ?", (site_name,)
         ).fetchone()
         if not owner:
-            raise NotFound("Site not found")
+            raise ClaimNotFound("Site not found")
         site_usage = self._conn.execute(
             """SELECT COUNT(*) FROM custom_domain_claims
             WHERE site_name = ? AND status IN ('pending', 'verified')""",
@@ -276,7 +271,7 @@ class DomainClaimStore:
             (claim_id, site_name),
         ).fetchone()
         if not row:
-            raise NotFound("Custom domain claim not found")
+            raise ClaimNotFound("Custom domain claim not found")
         return self.from_row(row)
 
     def record_check(
@@ -291,7 +286,7 @@ class DomainClaimStore:
         if claim.status == "verified":
             return claim
         if claim.status != "pending":
-            raise Conflict("This custom domain claim is no longer pending")
+            raise ClaimConflict("This custom domain claim is no longer pending")
         if claim.verification_value not in found_values:
             self._conn.execute(
                 """UPDATE custom_domain_claims
@@ -307,7 +302,7 @@ class DomainClaimStore:
                 (now.isoformat(), now.isoformat(), claim_id),
             )
         except sqlite3.IntegrityError as exc:
-            raise Conflict("This hostname is already verified on this Buzz server") from exc
+            raise ClaimConflict("This hostname is already verified on this Buzz server") from exc
         return self.get(claim_id, site_name)
 
     def reserve_check(
@@ -329,7 +324,7 @@ class DomainClaimStore:
             return self.get(claim_id, site_name)
         claim = self.get(claim_id, site_name)
         if claim.status == "pending" and claim.check_retry_after(now):
-            raise Conflict("Wait before checking this custom domain again")
+            raise ClaimConflict("Wait before checking this custom domain again")
         return claim
 
     def record_check_error(

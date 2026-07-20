@@ -14,7 +14,7 @@ from server.custom_domains.claims import (
     InvalidHostname,
     normalize_hostname,
 )
-from server.exceptions import Conflict
+from server.custom_domains.errors import ClaimConflict
 
 
 def test_dns_resolver_rejects_non_ascii_txt_data(monkeypatch):
@@ -141,7 +141,7 @@ def test_duplicate_active_hostname_is_rejected_for_same_site(claim_db):
     with claim_db() as conn:
         store = DomainClaimStore(conn)
         store.create("site-one", "one.example.com")
-        with pytest.raises(Conflict, match="already attached"):
+        with pytest.raises(ClaimConflict, match="already attached"):
             store.create("site-one", "one.example.com")
 
 
@@ -205,7 +205,7 @@ def test_verification_acquires_global_hostname_claim(claim_db):
         verified = store.record_check(first.id, "site-one", (first.verification_value,))
         assert verified.status == "verified"
     with claim_db() as conn:
-        with pytest.raises(Conflict, match="already verified"):
+        with pytest.raises(ClaimConflict, match="already verified"):
             DomainClaimStore(conn).record_check(
                 second.id, "site-two", (second.verification_value,)
             )

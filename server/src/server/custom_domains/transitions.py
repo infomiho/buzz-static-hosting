@@ -19,7 +19,7 @@ from .claims import (
 from ..db import db
 from .evidence import DnsObservation, DomainPathEvidenceStore, EvidenceResult
 from .probes import MAX_CONCURRENT_CLAIM_CHECKS
-from ..exceptions import Conflict
+from .errors import ClaimConflict
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ class DomainClaimStateMachine:
         automatic_retarget: bool = False,
     ) -> DomainModeTransition:
         if target_mode not in {"direct", "cloudflare"}:
-            raise Conflict("Unsupported transition target")
+            raise ClaimConflict("Unsupported transition target")
         now = now or datetime.now(timezone.utc)
         if not self._conn.in_transaction:
             self._conn.execute("BEGIN IMMEDIATE")
@@ -206,13 +206,13 @@ class DomainClaimStateMachine:
             (claim_id, route_generation),
         ).fetchone()
         if not claim:
-            raise Conflict("This custom domain cannot transition")
+            raise ClaimConflict("This custom domain cannot transition")
         current = self.get(claim_id)
         if current and current.state in self.ACTIVE_STATES:
-            raise Conflict("This custom domain already has an active transition")
+            raise ClaimConflict("This custom domain already has an active transition")
         source_mode = claim["claim_mode"] if claim["activated_at"] else None
         if source_mode == target_mode:
-            raise Conflict("The target mode is already effective")
+            raise ClaimConflict("The target mode is already effective")
         mode_generation = claim["mode_generation"] + 1
         deadline = now + timedelta(hours=24) if source_mode else None
         self._conn.execute(
@@ -1187,9 +1187,9 @@ class DomainClaimStateMachine:
     ) -> DomainModeTransition:
         transition = self.get(claim_id)
         if transition and transition.state in self.ACTIVE_STATES:
-            raise Conflict("This custom domain already has an active transition")
+            raise ClaimConflict("This custom domain already has an active transition")
         if not transition or transition.state != "failed":
-            raise Conflict("This transition cannot be retried")
+            raise ClaimConflict("This transition cannot be retried")
         restarted = self.start(claim_id, route_generation, transition.target_mode, now)
         self._conn.execute(
             """UPDATE custom_domain_mode_transitions SET probe_generation = ?
@@ -1353,7 +1353,7 @@ class DomainTransitionCoordinator:
             if transition and transition.state == "cancelled":
                 return True
             if not transition or transition.state not in transitions.ACTIVE_STATES:
-                raise Conflict("This transition cannot be cancelled")
+                raise ClaimConflict("This transition cannot be cancelled")
             reservation = transitions.reserve_probe(
                 claim.id,
                 claim.route_generation,
@@ -1361,14 +1361,14 @@ class DomainTransitionCoordinator:
                 self._lease_owner,
             )
         if not reservation:
-            raise Conflict("This transition cannot be cancelled")
+            raise ClaimConflict("This transition cannot be cancelled")
         if reservation.source_mode is None:
             with self._database() as conn:
                 cancelled = DomainClaimStateMachine(conn).cancel_reserved(
                     claim, reservation
                 )
             if not cancelled:
-                raise Conflict("This transition changed while cancellation was validated")
+                raise ClaimConflict("This transition changed while cancellation was validated")
             return True
         evidence = self._evidence_collector.collect(claim, claim.claim_mode)
         with self._database() as conn:
@@ -1379,34 +1379,34 @@ class DomainTransitionCoordinator:
                 claim.claim_mode,
                 reservation,
             ):
-                raise Conflict("This transition changed while cancellation was validated")
+                raise ClaimConflict("This transition changed while cancellation was validated")
         with self._database() as conn:
             if not DomainClaimStateMachine(conn).renew_reservation(reservation):
-                raise Conflict("This transition changed while cancellation was validated")
+                raise ClaimConflict("This transition changed while cancellation was validated")
         common_error = evidence.common_error
         if common_error:
             with self._database() as conn:
                 DomainClaimStateMachine(conn).release_reservation(reservation)
-            raise Conflict("The effective domain path is not healthy")
+            raise ClaimConflict("The effective domain path is not healthy")
         observation = evidence.dns
         if observation.mode != claim.claim_mode:
             with self._database() as conn:
                 DomainClaimStateMachine(conn).release_reservation(reservation)
-            raise Conflict("The effective domain path is not healthy")
+            raise ClaimConflict("The effective domain path is not healthy")
         target_error = evidence.target_error(claim.claim_mode)
         if target_error:
             with self._database() as conn:
                 DomainClaimStateMachine(conn).release_reservation(reservation)
-            raise Conflict("The effective domain path is not healthy")
+            raise ClaimConflict("The effective domain path is not healthy")
         with self._database() as conn:
             if not DomainClaimStateMachine(conn).renew_reservation(reservation):
-                raise Conflict("This transition changed while cancellation was validated")
+                raise ClaimConflict("This transition changed while cancellation was validated")
         with self._database() as conn:
             cancelled = DomainClaimStateMachine(conn).cancel_reserved(
                 claim, reservation
             )
         if not cancelled:
-            raise Conflict("This transition changed while cancellation was validated")
+            raise ClaimConflict("This transition changed while cancellation was validated")
         return True
 
     def _process(self, claim: DomainClaim) -> None:
