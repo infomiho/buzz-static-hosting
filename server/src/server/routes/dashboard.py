@@ -25,7 +25,6 @@ from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
 from ..custom_domains.claims import DomainClaimLimits, DomainClaimStore
 from ..db import db
-from ..custom_domains.capabilities import domain_capabilities
 from ..dependencies import get_auth_service, require_user
 from ..custom_domains.views import claim_views_for_site
 from ..search_console import SearchConsoleError
@@ -83,7 +82,7 @@ async def site_detail(
     identity: Annotated[Identity, Depends(require_user)],
 ):
     domain = DOMAIN or "localhost:8080"
-    capability = domain_capabilities(request.app)
+    capability = request.app.state.custom_domains.capabilities()
     custom_domains_available = capability.control_ready
     with db() as conn:
         store = SiteStore(conn, SITES_DIR)

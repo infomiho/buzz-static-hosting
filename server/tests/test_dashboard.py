@@ -314,11 +314,11 @@ class TestCustomDomains:
         monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured")
         monkeypatch.setattr("server.config.CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
         monkeypatch.setattr("server.config.MAX_CUSTOM_DOMAINS_PER_SITE", 10)
-        client.app.state.traefik_control = type(
+        client.app.state.custom_domains.control = type(
             "ReadyControlPlane", (), {"is_ready": lambda self: True}
         )()
-        client.app.state.custom_domain_runtime_ready = True
-        client.app.state.cloudflare_range_state = type(
+        client.app.state.custom_domains.runtime_ready = True
+        client.app.state.custom_domains.range_state = type(
             "RangeState", (), {"error": None}
         )()
         client.cookies.set(COOKIE_NAME, token)
@@ -411,8 +411,8 @@ class TestCustomDomains:
         assert "Add custom domain" in response.text
         assert "8 of 10 aliases used for this site" in response.text
 
-        client.app.state.automatic_domain_transition_admission_enabled = True
-        client.app.state.domain_transition_coordinator = object()
+        client.app.state.custom_domains.automatic_admission_enabled = True
+        client.app.state.custom_domains.transition_coordinator = object()
         monkeypatch.setattr("server.config.CLOUDFLARE_ACTIVATION_ENABLED", True)
         automatic_response = client.get("/dashboard/sites/my-site")
 

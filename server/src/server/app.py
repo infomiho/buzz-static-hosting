@@ -1,6 +1,4 @@
-import asyncio
 import logging
-import random
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -17,42 +15,17 @@ from .auth_service import AuthService, Identity
 from .config import (
     ALLOW_REGISTRATION,
     ALLOWED_GITHUB_USERS,
-    AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED,
     CONTENT_TYPES,
-    CLOUDFLARE_ACTIVATION_ENABLED,
-    CLOUDFLARE_DIAGNOSTICS_ENABLED,
-    CUSTOM_DOMAIN_INGRESS_IPS,
-    CUSTOM_DOMAIN_OPERATOR_TOKEN,
-    CUSTOM_DOMAIN_ORIGIN_HOST,
-    CUSTOM_DOMAIN_RECONCILE_SECONDS,
-    CUSTOM_DOMAIN_ROUTING_ENABLED,
     CUSTOM_DOMAINS_ENABLED,
     DOMAIN,
     GITHUB_CLIENT_ID,
     MAX_ARCHIVE_BYTES,
     SITES_DIR,
-    TRAEFIK_API_AUTHORIZATION,
-    TRAEFIK_API_URL,
-    TRAEFIK_CERT_RESOLVER,
-    TRAEFIK_CONTROL_PORT,
-    TRAEFIK_CONTROL_TOKEN,
-    TRAEFIK_HTTPS_ENTRYPOINT,
-    TRAEFIK_SERVICE,
 )
 from .cookies import COOKIE_NAME
-from .custom_domains.cloudflare import CloudflareDiagnostician
-from .custom_domains.claims import DnsTxtResolver, DomainClaimStore
+from .custom_domains.config import CustomDomainsConfig
 from .custom_domains.errors import ClaimConflict, ClaimNotFound, UnsupportedClaimMode
-from .custom_domains.activation import DomainActivator
-from .custom_domains.capabilities import domain_capabilities
-from .custom_domains.routing import DomainRouteReconciler, build_traefik_snapshot
-from .custom_domains.transitions import (
-    DomainTransitionCoordinator,
-    TransitionValidationFailed,
-    DomainClaimStateMachine,
-)
-from .custom_domains.evidence import DomainDnsObserver, DomainEvidenceCollector
-from .custom_domains.probes import CloudflareRangeError, CloudflareRangeState, load_cloudflare_ranges
+from .custom_domains.runtime import CustomDomainsRuntime, DOMAIN_CHECK_PREFIX
 from .site_path import InvalidSubdomain, resolve_site_file
 from .db import db
 from .dependencies import get_identity
@@ -61,17 +34,10 @@ from .github import HttpGitHubClient
 from .routes import auth, dashboard, domains, sites, tokens
 from .search_console import create_search_console_client
 from .utils import extract_subdomain, is_control_host
-from .custom_domains.traefik import TraefikControlServer, TraefikRuntimeClient
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 MAX_DEPLOY_BODY_BYTES = MAX_ARCHIVE_BYTES + 1024 * 1024
-DOMAIN_CHECK_PREFIX = "/.well-known/buzz-domain-check/"
 logger = logging.getLogger(__name__)
-
-
-def _active_domain_handoffs() -> list[dict]:
-    with db() as conn:
-        return DomainClaimStateMachine(conn).active_handoffs()
 
 
 class DeploymentBodyLimitMiddleware:
@@ -136,169 +102,13 @@ def origin_matches_host(origin: str, host: str, scheme: str) -> bool:
 
 
 def create_app() -> FastAPI:
+    custom_domains = CustomDomainsRuntime(CustomDomainsConfig.from_config(), connect=db)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        control_server = None
-        reconciler_task = None
+        await custom_domains.start()
         analytics_started = False
-        stop_reconciler = asyncio.Event()
         try:
-            if not CLOUDFLARE_ACTIVATION_ENABLED:
-                with db() as conn:
-                    active_cloudflare_claim = DomainClaimStore(
-                        conn
-                    ).has_active_cloudflare_claim()
-                if active_cloudflare_claim:
-                    raise RuntimeError(
-                        "Withdraw active Cloudflare routers before disabling Cloudflare activation"
-                    )
-            else:
-                with db() as conn:
-                    routed_cloudflare_claim = DomainClaimStore(
-                        conn
-                    ).has_routed_cloudflare_claim()
-                if routed_cloudflare_claim and not (
-                    CUSTOM_DOMAINS_ENABLED and TRAEFIK_CONTROL_TOKEN and TRAEFIK_API_URL
-                ):
-                    raise RuntimeError(
-                        "Active Cloudflare domains require the complete custom-domain runtime"
-                    )
-            if not CUSTOM_DOMAINS_ENABLED:
-                with db() as conn:
-                    routed_claim = DomainClaimStore(conn).has_routed_claim()
-                if routed_claim:
-                    raise RuntimeError(
-                        "Withdraw all custom-domain routers before disabling custom domains"
-                    )
-            if CUSTOM_DOMAINS_ENABLED and TRAEFIK_CONTROL_TOKEN:
-                with db() as conn:
-                    DomainClaimStore(conn).prepare_routes(CUSTOM_DOMAIN_ROUTING_ENABLED)
-                runtime_client = None
-                if TRAEFIK_API_URL:
-                    runtime_client = TraefikRuntimeClient(
-                        TRAEFIK_API_URL,
-                        TRAEFIK_API_AUTHORIZATION,
-                        TRAEFIK_HTTPS_ENTRYPOINT,
-                        TRAEFIK_SERVICE,
-                    )
-                control_server = TraefikControlServer(
-                    TRAEFIK_CONTROL_TOKEN,
-                    TRAEFIK_CONTROL_PORT,
-                    runtime_client,
-                    snapshot_provider=lambda: build_traefik_snapshot(
-                        TRAEFIK_HTTPS_ENTRYPOINT,
-                        TRAEFIK_SERVICE,
-                        TRAEFIK_CERT_RESOLVER,
-                    ),
-                    operator_token=CUSTOM_DOMAIN_OPERATOR_TOKEN,
-                )
-                app.state.traefik_control = control_server
-                if runtime_client:
-                    app.state.custom_domain_runtime_ready = True
-                    try:
-                        transition_ranges = load_cloudflare_ranges()
-                        transition_range_error = None
-                    except CloudflareRangeError as exc:
-                        transition_ranges = None
-                        transition_range_error = exc.code
-                    cloudflare_range_state = CloudflareRangeState(
-                        transition_ranges, transition_range_error
-                    )
-                    app.state.cloudflare_range_state = cloudflare_range_state
-                    transition_observer = DomainDnsObserver(
-                        ingress_addresses=CUSTOM_DOMAIN_INGRESS_IPS,
-                        cloudflare_range_state=cloudflare_range_state,
-                    )
-                    reconciler = DomainRouteReconciler(
-                        runtime_client,
-                        TRAEFIK_HTTPS_ENTRYPOINT,
-                        TRAEFIK_SERVICE,
-                        TRAEFIK_CERT_RESOLVER,
-                        routing_enabled=lambda: CUSTOM_DOMAIN_ROUTING_ENABLED,
-                        withdrawal_snapshot_acknowledged=(
-                            control_server.withdrawal_snapshot_acknowledged
-                        ),
-                    )
-
-                    def validate_transition_router(claim) -> None:
-                        try:
-                            router = runtime_client.router(claim.route_name)
-                        except (OSError, ValueError) as exc:
-                            raise TransitionValidationFailed(
-                                "runtime_api_unavailable", transient=True
-                            ) from exc
-                        if router is None:
-                            raise TransitionValidationFailed("router_not_observed")
-                        if not reconciler.matches_expected_router(claim, router):
-                            raise TransitionValidationFailed(
-                                "router_configuration_mismatch"
-                            )
-
-                    evidence_collector = DomainEvidenceCollector(
-                        transition_observer,
-                        CUSTOM_DOMAIN_ORIGIN_HOST,
-                        validate_transition_router,
-                        cloudflare_range_state=cloudflare_range_state,
-                    )
-                    activator = DomainActivator(
-                        evidence_collector=evidence_collector,
-                    )
-                    cloudflare_diagnostician = CloudflareDiagnostician(
-                        evidence_collector,
-                        activation_enabled=CLOUDFLARE_ACTIVATION_ENABLED,
-                        range_state=cloudflare_range_state,
-                    )
-                    app.state.cloudflare_diagnostician = cloudflare_diagnostician
-                    transition_coordinator = DomainTransitionCoordinator(
-                        evidence_collector,
-                        cloudflare_diagnostician,
-                        admission_enabled=lambda: domain_capabilities(app).automatic_ready,
-                        cloudflare_target_enabled=lambda: bool(
-                            domain_capabilities(app).cloudflare_ready
-                            and CLOUDFLARE_ACTIVATION_ENABLED
-                        ),
-                    )
-                    app.state.domain_transition_coordinator = transition_coordinator
-
-                    def cancel_operator_transition(claim_id: int) -> dict:
-                        with db() as conn:
-                            site_name = DomainClaimStore(conn).site_name_for(claim_id)
-                        if not site_name:
-                            raise ClaimNotFound("Custom domain claim not found")
-                        transition_coordinator.cancel(claim_id, site_name)
-                        return {"claim_id": claim_id, "state": "cancelled"}
-
-                    control_server.set_operator_handlers(
-                        _active_domain_handoffs,
-                        cancel_operator_transition,
-                    )
-
-                    async def reconcile_routes() -> None:
-                        while not stop_reconciler.is_set():
-                            started_at = asyncio.get_running_loop().time()
-                            try:
-                                await asyncio.to_thread(control_server.refresh_readiness)
-                                await asyncio.to_thread(reconciler.run_once)
-                                await asyncio.to_thread(transition_coordinator.run_once)
-                                await asyncio.to_thread(activator.run_once)
-                                await asyncio.to_thread(cloudflare_diagnostician.run_once)
-                            except Exception:
-                                logger.exception("Custom domain reconciliation failed")
-                            try:
-                                elapsed = asyncio.get_running_loop().time() - started_at
-                                interval = (
-                                    random.uniform(0.8, 1.2)
-                                    * CUSTOM_DOMAIN_RECONCILE_SECONDS
-                                )
-                                await asyncio.wait_for(
-                                    stop_reconciler.wait(),
-                                    timeout=max(0, interval - elapsed),
-                                )
-                            except TimeoutError:
-                                pass
-
-                    reconciler_task = asyncio.create_task(reconcile_routes())
-                control_server.start()
             app.state.analytics.start()
             analytics_started = True
             yield
@@ -308,19 +118,7 @@ def create_app() -> FastAPI:
                     await app.state.analytics.stop()
                 except Exception:
                     logger.exception("Analytics shutdown failed")
-            if reconciler_task:
-                stop_reconciler.set()
-                try:
-                    await reconciler_task
-                except Exception:
-                    logger.exception("Custom domain reconciler shutdown failed")
-            if control_server:
-                try:
-                    control_server.stop()
-                finally:
-                    app.state.traefik_control = None
-                    app.state.custom_domain_runtime_ready = False
-                    app.state.domain_transition_coordinator = None
+            await custom_domains.stop()
 
     app = FastAPI(
         title="Buzz",
@@ -358,15 +156,7 @@ def create_app() -> FastAPI:
     )
     app.state.analytics = AnalyticsRecorder(db)
     app.state.search_console = create_search_console_client()
-    app.state.domain_txt_resolver = DnsTxtResolver()
-    app.state.traefik_control = None
-    app.state.custom_domain_runtime_ready = False
-    app.state.cloudflare_range_state = CloudflareRangeState(load_error="range_data_missing")
-    app.state.cloudflare_diagnostician = None
-    app.state.automatic_domain_transition_admission_enabled = (
-        AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED
-    )
-    app.state.domain_transition_coordinator = None
+    app.state.custom_domains = custom_domains
 
     @app.exception_handler(BadRequest)
     async def bad_request_handler(request: Request, exc: BadRequest):
@@ -408,7 +198,7 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def dispatch_by_host(request: Request, call_next):
         host = request.headers.get("host")
-        challenge = resolve_custom_domain_challenge(request.url.hostname, request.url.path)
+        challenge = custom_domains.resolve_challenge(request.url.hostname, request.url.path)
         if challenge:
             if request.method not in {"GET", "HEAD"}:
                 return Response(
@@ -445,7 +235,7 @@ def create_app() -> FastAPI:
             return await serve_static(request, subdomain, request.url.path)
 
         if not is_control_host(host):
-            site_name = resolve_activated_custom_domain(request.url.hostname)
+            site_name = custom_domains.activated_site(request.url.hostname)
             if site_name:
                 if request.method not in {"GET", "HEAD"}:
                     return Response(
@@ -519,38 +309,6 @@ def create_app() -> FastAPI:
     return app
 
 
-def resolve_custom_domain_challenge(
-    hostname: str | None,
-    path: str,
-) -> tuple[int, str, str] | None:
-    if (
-        not CUSTOM_DOMAINS_ENABLED
-        or not CUSTOM_DOMAIN_ROUTING_ENABLED
-        or not hostname
-        or not path.startswith(DOMAIN_CHECK_PREFIX)
-    ):
-        return None
-    token = path.removeprefix(DOMAIN_CHECK_PREFIX)
-    if not token or "/" in token:
-        return None
-    with db() as conn:
-        store = DomainClaimStore(conn)
-        claim = store.find_challenge(hostname.lower().rstrip("."), token)
-        if claim:
-            store.mark_challenge_seen(claim.id, claim.route_generation)
-    if not claim or not claim.site_name:
-        return None
-    return claim.id, claim.site_name, token
-
-
-def resolve_activated_custom_domain(hostname: str | None) -> str | None:
-    if not CUSTOM_DOMAINS_ENABLED or not CUSTOM_DOMAIN_ROUTING_ENABLED or not hostname:
-        return None
-    with db() as conn:
-        claim = DomainClaimStore(conn).find_activated(hostname.lower().rstrip("."))
-    return claim.site_name if claim else None
-
-
 async def serve_static(request: Request, subdomain: str, path: str) -> Response:
     try:
         filepath = resolve_site_file(SITES_DIR, subdomain, path)
@@ -595,10 +353,9 @@ def record_analytics(
         return
     if CUSTOM_DOMAINS_ENABLED and event.referrer:
         try:
-            with db() as conn:
-                internal_hosts.update(
-                    DomainClaimStore(conn).activated_hostnames_for_site(subdomain)
-                )
+            internal_hosts.update(
+                request.app.state.custom_domains.activated_hostnames_for_site(subdomain)
+            )
             event = build_analytics_event(
                 request,
                 subdomain,

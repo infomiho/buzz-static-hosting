@@ -60,11 +60,11 @@ def domain_api(tmp_path, monkeypatch):
             "INSERT INTO sites (name, owner_id) VALUES ('my-site', 1), ('other-site', 2)"
         )
     app = create_app()
-    app.state.traefik_control = ReadyControlPlane()
-    app.state.custom_domain_runtime_ready = True
-    app.state.cloudflare_range_state = type("RangeState", (), {"error": None})()
+    app.state.custom_domains.control = ReadyControlPlane()
+    app.state.custom_domains.runtime_ready = True
+    app.state.custom_domains.range_state = type("RangeState", (), {"error": None})()
     resolver = FakeTxtResolver()
-    app.state.domain_txt_resolver = resolver
+    app.state.custom_domains.txt_resolver = resolver
     return TestClient(app), resolver
 
 
@@ -108,8 +108,8 @@ def test_omitted_mode_requires_automatic_onboarding_readiness(
         "/sites/my-site/domains",
         json={"hostname": "explicit.example.com", "mode": "direct"},
     )
-    client.app.state.automatic_domain_transition_admission_enabled = True
-    client.app.state.domain_transition_coordinator = object()
+    client.app.state.custom_domains.automatic_admission_enabled = True
+    client.app.state.custom_domains.transition_coordinator = object()
     monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
     monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", True)
     automatic = client.post(
@@ -175,10 +175,10 @@ def test_custom_domain_capability_reports_automatic_runtime_readiness(
     client, _ = domain_api
     monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
     monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", True)
-    client.app.state.automatic_domain_transition_admission_enabled = True
+    client.app.state.custom_domains.automatic_admission_enabled = True
 
     unready = client.get("/capabilities/custom-domains").json()["automatic"]
-    client.app.state.domain_transition_coordinator = object()
+    client.app.state.custom_domains.transition_coordinator = object()
     ready = client.get("/capabilities/custom-domains").json()["automatic"]
 
     assert unready == {
@@ -193,8 +193,8 @@ def test_automatic_readiness_requires_cloudflare_activation(domain_api, monkeypa
     client, _ = domain_api
     monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
     monkeypatch.setattr(config, "CLOUDFLARE_ACTIVATION_ENABLED", False)
-    client.app.state.automatic_domain_transition_admission_enabled = True
-    client.app.state.domain_transition_coordinator = object()
+    client.app.state.custom_domains.automatic_admission_enabled = True
+    client.app.state.custom_domains.transition_coordinator = object()
 
     automatic = client.get("/capabilities/custom-domains").json()["automatic"]
 
@@ -212,7 +212,7 @@ def test_custom_domain_capability_distinguishes_disabled_and_unready(
     monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", False)
     disabled = client.get("/capabilities/custom-domains").json()
     monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", True)
-    client.app.state.traefik_control = UnreadyControlPlane()
+    client.app.state.custom_domains.control = UnreadyControlPlane()
     unready = client.get("/capabilities/custom-domains").json()
 
     assert disabled["status"] == "disabled"
@@ -263,8 +263,8 @@ def test_explicit_mode_keeps_released_cli_semantics_when_automatic_is_ready(
 ):
     client, _ = domain_api
     monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    client.app.state.automatic_domain_transition_admission_enabled = True
-    client.app.state.domain_transition_coordinator = object()
+    client.app.state.custom_domains.automatic_admission_enabled = True
+    client.app.state.custom_domains.transition_coordinator = object()
 
     direct = client.post(
         "/sites/my-site/domains",
@@ -310,7 +310,7 @@ def test_cloudflare_capability_is_independent_of_direct_ingress(
 def test_cloudflare_capability_requires_diagnostic_runtime(domain_api, monkeypatch):
     client, _ = domain_api
     monkeypatch.setattr(config, "CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
-    client.app.state.custom_domain_runtime_ready = False
+    client.app.state.custom_domains.runtime_ready = False
 
     capability = client.get("/capabilities/custom-domains").json()
 
@@ -405,7 +405,7 @@ def test_domain_quota_returns_actionable_response(domain_api, monkeypatch):
 
 def test_domain_admission_requires_live_control_plane_readiness(domain_api):
     client, _ = domain_api
-    client.app.state.traefik_control = UnreadyControlPlane()
+    client.app.state.custom_domains.control = UnreadyControlPlane()
 
     response = client.post(
         "/sites/my-site/domains",
@@ -555,7 +555,7 @@ def test_transition_cancel_endpoint_retains_valid_effective_mode(domain_api):
         (),
         {"record_transition": lambda *_args: True, "record_health": lambda *_args: True},
     )()
-    client.app.state.domain_transition_coordinator = DomainTransitionCoordinator(
+    client.app.state.custom_domains.transition_coordinator = DomainTransitionCoordinator(
         collector,
         diagnostic_recorder,
         admission_enabled=lambda: False,

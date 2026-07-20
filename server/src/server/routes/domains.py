@@ -23,7 +23,6 @@ from ..custom_domains.claims import (
 from ..custom_domains.cloudflare import CloudflareDiagnostic
 from ..custom_domains.errors import ClaimConflict
 from ..db import db
-from ..custom_domains.capabilities import domain_capabilities
 from ..custom_domains.views import ClaimView, build_claim_view, claim_views_for_site
 from ..dependencies import (
     Identity,
@@ -138,7 +137,7 @@ async def custom_domain_capability(
     request: Request,
     _identity: Annotated[Identity, Depends(require_user)],
 ):
-    capability = domain_capabilities(request.app)
+    capability = request.app.state.custom_domains.capabilities()
     targets = [
         {
             "type": "A" if ipaddress.ip_address(address).version == 4 else "AAAA",
@@ -159,11 +158,7 @@ async def custom_domain_capability(
         "routing_targets": targets,
         "automatic": {
             "admission_enabled": bool(
-                getattr(
-                    request.app.state,
-                    "automatic_domain_transition_admission_enabled",
-                    False,
-                )
+                request.app.state.custom_domains.automatic_admission_enabled
             ),
             "ready": capability.automatic_ready,
             "detail": capability.automatic_detail,
@@ -230,7 +225,8 @@ async def create_domain_claim(
         hostname = normalize_hostname(data.hostname, config.DOMAIN)
     except InvalidHostname as exc:
         raise BadRequest(str(exc))
-    capability = domain_capabilities(request.app)
+    runtime = request.app.state.custom_domains
+    capability = runtime.capabilities()
     automatic = data.mode is None
     if automatic and not capability.automatic_ready:
         raise HTTPException(
@@ -252,7 +248,7 @@ async def create_domain_claim(
                 status_code=503,
                 detail="Cloudflare proxy diagnostics admission is not enabled",
             )
-        if not getattr(request.app.state, "custom_domain_runtime_ready", False):
+        if not runtime.runtime_ready:
             raise HTTPException(
                 status_code=503,
                 detail="Cloudflare diagnostic runtime is not configured",
@@ -262,11 +258,11 @@ async def create_domain_claim(
                 status_code=503,
                 detail="Custom domain routing is not configured",
             )
-        diagnostician = getattr(request.app.state, "cloudflare_diagnostician", None)
+        diagnostician = runtime.diagnostician
         range_error = (
             diagnostician.range_error
             if diagnostician
-            else request.app.state.cloudflare_range_state.error
+            else runtime.range_state.error
         )
         if range_error:
             raise HTTPException(
@@ -329,7 +325,7 @@ async def check_domain_claim(
                 detail="Wait before checking this custom domain again",
                 headers={"Retry-After": "60"},
             ) from exc
-    resolver: DnsTxtResolver = request.app.state.domain_txt_resolver
+    resolver: DnsTxtResolver = request.app.state.custom_domains.txt_resolver
     try:
         values = await run_in_threadpool(resolver.lookup, claim.verification_name)
     except DomainCheckUnavailable:
@@ -371,7 +367,7 @@ async def cancel_domain_claim(
 
 
 def transition_coordinator(request: Request):
-    coordinator = getattr(request.app.state, "domain_transition_coordinator", None)
+    coordinator = request.app.state.custom_domains.transition_coordinator
     if not coordinator:
         raise HTTPException(
             status_code=503, detail="Automatic domain transitions are not configured"

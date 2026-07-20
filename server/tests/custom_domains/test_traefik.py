@@ -352,9 +352,9 @@ def test_disabled_custom_domains_do_not_start_control_listener(tmp_path, monkeyp
         def __init__(self, *args, **kwargs):
             raise AssertionError("control listener started while custom domains were disabled")
 
-    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", False)
-    monkeypatch.setattr("server.app.TRAEFIK_CONTROL_TOKEN", "configured-but-disabled")
-    monkeypatch.setattr("server.app.TraefikControlServer", UnexpectedControlServer)
+    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", False)
+    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured-but-disabled")
+    monkeypatch.setattr("server.custom_domains.runtime.TraefikControlServer", UnexpectedControlServer)
     monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
     db_module.init_db()
 
@@ -378,7 +378,7 @@ def test_disabling_control_plane_is_rejected_while_routes_remain(tmp_path, monke
                     '2026-07-16T00:00:00+00:00', '2026-07-17T00:00:00+00:00',
                     'routed', 1)"""
         )
-    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", False)
+    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", False)
 
     with pytest.raises(RuntimeError, match="Withdraw all custom-domain routers"):
         with TestClient(create_app()):
@@ -400,7 +400,7 @@ def test_disabling_cloudflare_activation_is_rejected_while_active_route_remains(
                     '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
                     'routed', 1, 'cloudflare', '2026-07-16T00:00:00+00:00')"""
         )
-    monkeypatch.setattr("server.app.CLOUDFLARE_ACTIVATION_ENABLED", False)
+    monkeypatch.setattr("server.config.CLOUDFLARE_ACTIVATION_ENABLED", False)
 
     with pytest.raises(RuntimeError, match="Withdraw active Cloudflare routers"):
         with TestClient(create_app()):
@@ -426,10 +426,10 @@ def test_active_cloudflare_claim_requires_complete_runtime(
                     '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
                     'routed', 1, 'cloudflare', '2026-07-16T00:00:00+00:00')"""
         )
-    monkeypatch.setattr("server.app.CLOUDFLARE_ACTIVATION_ENABLED", True)
-    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.app.TRAEFIK_CONTROL_TOKEN", control_token)
-    monkeypatch.setattr("server.app.TRAEFIK_API_URL", api_url)
+    monkeypatch.setattr("server.config.CLOUDFLARE_ACTIVATION_ENABLED", True)
+    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", control_token)
+    monkeypatch.setattr("server.config.TRAEFIK_API_URL", api_url)
 
     with pytest.raises(RuntimeError, match="complete custom-domain runtime"):
         with TestClient(create_app()):
@@ -460,11 +460,11 @@ def test_enabled_custom_domains_start_and_stop_control_listener(tmp_path, monkey
         def stop(self):
             events.append("stopped")
 
-    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.app.TRAEFIK_CONTROL_TOKEN", "secret")
-    monkeypatch.setattr("server.app.TRAEFIK_CONTROL_PORT", 8081)
-    monkeypatch.setattr("server.app.TRAEFIK_API_URL", None)
-    monkeypatch.setattr("server.app.TraefikControlServer", FakeControlServer)
+    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "secret")
+    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_PORT", 8081)
+    monkeypatch.setattr("server.config.TRAEFIK_API_URL", None)
+    monkeypatch.setattr("server.custom_domains.runtime.TraefikControlServer", FakeControlServer)
     monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
     db_module.init_db()
 
@@ -514,18 +514,18 @@ def test_lifespan_runs_transition_detection_before_legacy_validators(tmp_path, m
 
     monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
     db_module.init_db()
-    monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.app.TRAEFIK_CONTROL_TOKEN", "secret")
-    monkeypatch.setattr("server.app.TRAEFIK_API_URL", "http://traefik/api")
-    monkeypatch.setattr("server.app.TraefikRuntimeClient", Runtime)
-    monkeypatch.setattr("server.app.TraefikControlServer", Control)
-    monkeypatch.setattr("server.app.DomainRouteReconciler", lambda *a, **k: Loop("route"))
-    monkeypatch.setattr("server.app.DomainActivator", lambda *a, **k: Loop("direct"))
+    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
+    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "secret")
+    monkeypatch.setattr("server.config.TRAEFIK_API_URL", "http://traefik/api")
+    monkeypatch.setattr("server.custom_domains.runtime.TraefikRuntimeClient", Runtime)
+    monkeypatch.setattr("server.custom_domains.runtime.TraefikControlServer", Control)
+    monkeypatch.setattr("server.custom_domains.runtime.DomainRouteReconciler", lambda *a, **k: Loop("route"))
+    monkeypatch.setattr("server.custom_domains.runtime.DomainActivator", lambda *a, **k: Loop("direct"))
     monkeypatch.setattr(
-        "server.app.CloudflareDiagnostician", lambda *a, **k: Loop("cloudflare")
+        "server.custom_domains.runtime.CloudflareDiagnostician", lambda *a, **k: Loop("cloudflare")
     )
     monkeypatch.setattr(
-        "server.app.DomainTransitionCoordinator", lambda *a, **k: Loop("transition")
+        "server.custom_domains.runtime.DomainTransitionCoordinator", lambda *a, **k: Loop("transition")
     )
 
     with TestClient(create_app()):

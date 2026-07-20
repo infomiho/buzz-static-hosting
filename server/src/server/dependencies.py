@@ -73,7 +73,7 @@ def require_custom_domain_control_ready(request: Request) -> None:
             status_code=503,
             detail="Custom domains are not enabled on this Buzz server",
         )
-    control = getattr(request.app.state, "traefik_control", None)
+    control = request.app.state.custom_domains.control
     if not config.TRAEFIK_CONTROL_TOKEN or control is None:
         raise HTTPException(
             status_code=503,

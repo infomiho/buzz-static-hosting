@@ -17,8 +17,15 @@ class DomainCapabilities:
     automatic_detail: str | None
 
 
-def domain_capabilities(app) -> DomainCapabilities:
-    control = getattr(app.state, "traefik_control", None)
+def compute_capabilities(
+    *,
+    control,
+    diagnostician,
+    range_state,
+    diagnostic_runtime_ready: bool,
+    coordinator,
+    automatic_admission: bool,
+) -> DomainCapabilities:
     runtime_ready = bool(control and control.is_ready())
     control_ready = bool(
         config.CUSTOM_DOMAINS_ENABLED
@@ -48,8 +55,6 @@ def domain_capabilities(app) -> DomainCapabilities:
         status = "ready"
         detail = None
 
-    diagnostician = getattr(app.state, "cloudflare_diagnostician", None)
-    range_state = getattr(app.state, "cloudflare_range_state", None)
     range_error = (
         diagnostician.range_error
         if diagnostician
@@ -71,16 +76,11 @@ def domain_capabilities(app) -> DomainCapabilities:
         cloudflare_detail = "Custom domain routing is not configured"
     elif not control_ready:
         cloudflare_detail = detail
-    elif not getattr(app.state, "custom_domain_runtime_ready", False):
+    elif not diagnostic_runtime_ready:
         cloudflare_detail = "Cloudflare diagnostic runtime is not configured"
     cloudflare_ready = cloudflare_detail is None
 
-    automatic_admission = bool(
-        getattr(app.state, "automatic_domain_transition_admission_enabled", False)
-    )
-    coordinator_ready = bool(
-        getattr(app.state, "domain_transition_coordinator", None)
-    )
+    coordinator_ready = bool(coordinator)
     cloudflare_target_ready = bool(
         cloudflare_ready and config.CLOUDFLARE_ACTIVATION_ENABLED
     )

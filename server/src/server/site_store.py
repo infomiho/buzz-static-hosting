@@ -9,7 +9,7 @@ import tempfile
 import threading
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from sqlite3 import Connection, OperationalError, Row
 from typing import BinaryIO
