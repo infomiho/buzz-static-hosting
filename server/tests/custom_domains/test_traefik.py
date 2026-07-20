@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from server import db as db_module
 from server.app import create_app
-from server.traefik_control import (
+from server.custom_domains.traefik import (
     EMPTY_SNAPSHOT,
     TraefikControlServer,
     TraefikRuntimeClient,
@@ -301,7 +301,7 @@ def test_readiness_rejects_stale_provider_poll(monkeypatch):
             pass
         server.refresh_readiness()
         monkeypatch.setattr(
-            "server.traefik_control.PROVIDER_POLL_MAX_AGE", timedelta(seconds=-1)
+            "server.custom_domains.traefik.PROVIDER_POLL_MAX_AGE", timedelta(seconds=-1)
         )
         assert not server.is_ready()
     finally:

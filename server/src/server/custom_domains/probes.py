@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, TypeVar
 
-from .custom_domains import DomainClaim
+from .claims import DomainClaim
 
 MAX_RESPONSE_BYTES = 16 * 1024
 PROBE_TIMEOUT_SECONDS = 3

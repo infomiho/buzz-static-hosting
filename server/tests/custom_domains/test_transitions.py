@@ -7,11 +7,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from server import db as db_module
-from server.cloudflare_diagnostics import (
+from server.custom_domains.cloudflare import (
     CloudflareDiagnostician,
     CloudflareDiagnosticStore,
 )
-from server.domain_probes import (
+from server.custom_domains.probes import (
     MAX_CONCURRENT_CLAIM_CHECKS,
     MAX_RESOLVED_ADDRESSES,
     CloudflareRanges,
@@ -19,8 +19,8 @@ from server.domain_probes import (
     EdgeProbeResult,
     ProbeExecutor,
 )
-from server.custom_domains import DomainClaimStore
-from server.domain_evidence import (
+from server.custom_domains.claims import DomainClaimStore
+from server.custom_domains.evidence import (
     AddressAnswer,
     ClaimEvidence,
     DnsObservation,
@@ -28,7 +28,7 @@ from server.domain_evidence import (
     DomainEvidenceCollector,
     EvidenceResult,
 )
-from server.domain_transitions import DomainClaimStateMachine, DomainTransitionCoordinator
+from server.custom_domains.transitions import DomainClaimStateMachine, DomainTransitionCoordinator
 from server.exceptions import Conflict
 
 
@@ -261,7 +261,7 @@ def test_dns_observer_rejects_bounded_and_unsupported_answers(
 def test_evidence_collection_enforces_its_phase_deadline(
     transition_db, monkeypatch
 ):
-    monkeypatch.setattr("server.domain_evidence.PROBE_PHASE_SECONDS", 0.05)
+    monkeypatch.setattr("server.custom_domains.evidence.PROBE_PHASE_SECONDS", 0.05)
     with transition_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
 
@@ -286,7 +286,7 @@ def test_evidence_collection_enforces_its_phase_deadline(
 
 
 def test_complete_evidence_sample_shares_one_deadline(transition_db, monkeypatch):
-    monkeypatch.setattr("server.domain_evidence.PROBE_PHASE_SECONDS", 0.08)
+    monkeypatch.setattr("server.custom_domains.evidence.PROBE_PHASE_SECONDS", 0.08)
     with transition_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
 
@@ -1280,7 +1280,7 @@ def test_scheduler_runs_at_most_twenty_claims_concurrently(transition_db):
 def test_scheduler_returns_at_deadline_when_collection_blocks(
     transition_db, monkeypatch
 ):
-    monkeypatch.setattr("server.domain_transitions.COORDINATOR_PASS_SECONDS", 0.05)
+    monkeypatch.setattr("server.custom_domains.transitions.COORDINATOR_PASS_SECONDS", 0.05)
     with transition_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
         activate(conn, claim)

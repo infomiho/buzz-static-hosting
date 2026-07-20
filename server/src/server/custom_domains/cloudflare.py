@@ -7,17 +7,17 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Callable
 
-from .custom_domains import (
+from .claims import (
     DomainClaim,
     DomainClaimStore,
 )
-from .db import db
-from .domain_evidence import (
+from ..db import db
+from .evidence import (
     ClaimEvidence,
     DomainEvidenceCollector,
     DomainPathEvidenceStore,
 )
-from .domain_probes import (
+from .probes import (
     MAX_RESPONSE_BYTES,
     PROBE_TIMEOUT_SECONDS,
     CloudflareRangeState,
@@ -25,10 +25,10 @@ from .domain_probes import (
     probe_cloudflare_edge,
     probe_origin,
 )
-from .domain_transitions import DomainClaimStateMachine
+from .transitions import DomainClaimStateMachine
 
 if TYPE_CHECKING:
-    from .domain_transitions import ProbeReservation
+    from .transitions import ProbeReservation
 
 DIAGNOSTIC_INTERVAL = timedelta(seconds=60)
 MAX_CANDIDATES_PER_PASS = 10

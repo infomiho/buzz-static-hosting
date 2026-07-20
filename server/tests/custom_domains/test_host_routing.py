@@ -3,8 +3,8 @@ from fastapi.testclient import TestClient
 from server import db as db_module
 from server.app import create_app
 from server.cookies import COOKIE_NAME
-from server.custom_domains import DomainClaimStore
-from server.domain_transitions import DomainClaimStateMachine
+from server.custom_domains.claims import DomainClaimStore
+from server.custom_domains.transitions import DomainClaimStateMachine
 
 
 class StubAuth:

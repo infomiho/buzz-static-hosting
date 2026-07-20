@@ -7,15 +7,15 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from server import db as db_module
-from server.cloudflare_diagnostics import (
+from server.custom_domains.cloudflare import (
     CloudflareDiagnostician,
     CloudflareDiagnosticStore,
     HttpForwardProbeResult,
     probe_cloudflare_http_forwarding,
 )
-from server.custom_domains import DomainClaimStore
-from server.domain_evidence import AddressAnswer, DomainDnsObserver, DomainEvidenceCollector
-from server.domain_probes import (
+from server.custom_domains.claims import DomainClaimStore
+from server.custom_domains.evidence import AddressAnswer, DomainDnsObserver, DomainEvidenceCollector
+from server.custom_domains.probes import (
     MAX_RANGE_AGE,
     ActivationFailed,
     CloudflareRangeError,

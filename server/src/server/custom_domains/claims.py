@@ -13,7 +13,7 @@ import dns.exception
 import dns.resolver
 import idna
 
-from .exceptions import BadRequest, Conflict, NotFound
+from ..exceptions import BadRequest, Conflict, NotFound
 
 CLAIM_TTL = timedelta(hours=24)
 CHECK_COOLDOWN = timedelta(seconds=60)

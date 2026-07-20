@@ -4,9 +4,9 @@ import json
 import logging
 from collections.abc import Callable
 
-from .custom_domains import DomainClaim, DomainClaimStore
-from .db import db
-from .traefik_control import TraefikRuntimeClient
+from .claims import DomainClaim, DomainClaimStore
+from ..db import db
+from .traefik import TraefikRuntimeClient
 
 logger = logging.getLogger(__name__)
 

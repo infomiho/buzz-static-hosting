@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import config
+from .. import config
 
 
 @dataclass(frozen=True)

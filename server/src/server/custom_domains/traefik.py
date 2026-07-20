@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from .exceptions import Conflict, NotFound
+from ..exceptions import Conflict, NotFound
 
 EMPTY_SNAPSHOT = b"{}\n"
 MAX_SNAPSHOT_BYTES = 1024 * 1024

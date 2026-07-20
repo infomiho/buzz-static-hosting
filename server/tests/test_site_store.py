@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from server import db as db_module
-from server.custom_domains import DomainClaimStore
+from server.custom_domains.claims import DomainClaimStore
 from server.exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
 from server.site_store import DeploymentLimits, SiteStore
 

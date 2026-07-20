@@ -23,13 +23,13 @@ from ..auth_service import (
 )
 from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
-from ..custom_domains import DomainClaimLimits, DomainClaimStore
-from ..cloudflare_diagnostics import CloudflareDiagnosticStore
+from ..custom_domains.claims import DomainClaimLimits, DomainClaimStore
+from ..custom_domains.cloudflare import CloudflareDiagnosticStore
 from ..db import db
-from ..domain_capabilities import domain_capabilities
+from ..custom_domains.capabilities import domain_capabilities
 from ..dependencies import get_auth_service, require_user
-from ..domain_status import project_domain_connection, project_domain_task
-from ..domain_transitions import DomainClaimStateMachine
+from ..custom_domains.status import project_domain_connection, project_domain_task
+from ..custom_domains.transitions import DomainClaimStateMachine
 from ..search_console import SearchConsoleError
 from ..site_store import SiteStore
 

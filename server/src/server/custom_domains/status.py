@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from .custom_domains import DomainClaim
-from .domain_transitions import DomainClaimStateMachine, DomainModeTransition
+from .claims import DomainClaim
+from .transitions import DomainClaimStateMachine, DomainModeTransition
 
 TRANSIENT_DNS_ERRORS = {
     "dns_answer_changed",

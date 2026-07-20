@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from .custom_domains import DomainClaim, DomainClaimStore
-from .db import db
-from .domain_evidence import DomainEvidenceCollector, DomainPathEvidenceStore
-from .domain_transitions import DomainClaimStateMachine
+from .claims import DomainClaim, DomainClaimStore
+from ..db import db
+from .evidence import DomainEvidenceCollector, DomainPathEvidenceStore
+from .transitions import DomainClaimStateMachine
 
 MAX_CANDIDATES_PER_PASS = 10
 logger = logging.getLogger(__name__)

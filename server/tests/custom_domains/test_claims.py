@@ -5,7 +5,7 @@ from threading import Barrier
 import pytest
 
 from server import db as db_module
-from server.custom_domains import (
+from server.custom_domains.claims import (
     DnsTxtResolver,
     DomainCheckUnavailable,
     DomainClaimLimits,

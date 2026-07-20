@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from server.domain_status import DomainConnection, project_domain_task
+from server.custom_domains.status import DomainConnection, project_domain_task
 
 
 def connection(status: str, *, can_retry: bool = False) -> DomainConnection:

@@ -3,10 +3,10 @@ import ssl
 import pytest
 
 from server import db as db_module
-from server.custom_domains import DomainClaimStore
-from server.domain_evidence import AddressAnswer, DomainDnsObserver, DomainEvidenceCollector
-from server.domain_activation import DomainActivator
-from server.domain_probes import MAX_RESPONSE_BYTES, ActivationFailed, probe_origin
+from server.custom_domains.claims import DomainClaimStore
+from server.custom_domains.evidence import AddressAnswer, DomainDnsObserver, DomainEvidenceCollector
+from server.custom_domains.activation import DomainActivator
+from server.custom_domains.probes import MAX_RESPONSE_BYTES, ActivationFailed, probe_origin
 
 
 @pytest.fixture

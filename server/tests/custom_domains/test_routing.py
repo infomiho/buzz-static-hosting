@@ -3,9 +3,9 @@ import json
 import pytest
 
 from server import db as db_module
-from server.custom_domains import DomainClaimStore
-from server.domain_transitions import DomainClaimStateMachine
-from server.domain_routing import DomainRouteReconciler, build_traefik_snapshot
+from server.custom_domains.claims import DomainClaimStore
+from server.custom_domains.transitions import DomainClaimStateMachine
+from server.custom_domains.routing import DomainRouteReconciler, build_traefik_snapshot
 
 
 @pytest.fixture

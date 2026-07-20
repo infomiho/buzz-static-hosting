@@ -11,15 +11,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from .custom_domains import (
+from .claims import (
     HEALTH_FRESHNESS_SECONDS,
     DomainClaim,
     DomainClaimStore,
 )
-from .db import db
-from .domain_evidence import DnsObservation, DomainPathEvidenceStore, EvidenceResult
-from .domain_probes import MAX_CONCURRENT_CLAIM_CHECKS
-from .exceptions import Conflict
+from ..db import db
+from .evidence import DnsObservation, DomainPathEvidenceStore, EvidenceResult
+from .probes import MAX_CONCURRENT_CLAIM_CHECKS
+from ..exceptions import Conflict
 
 logger = logging.getLogger(__name__)
 

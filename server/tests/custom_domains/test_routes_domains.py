@@ -8,12 +8,12 @@ from server import db as db_module
 from server.app import create_app
 from server.auth_service import Identity, User
 from server.dependencies import get_identity
-from server.custom_domains import DomainClaimStore
-from server.domain_transitions import (
+from server.custom_domains.claims import DomainClaimStore
+from server.custom_domains.transitions import (
     DomainClaimStateMachine,
     DomainTransitionCoordinator,
 )
-from server.domain_evidence import DnsObservation
+from server.custom_domains.evidence import DnsObservation
 
 
 class FakeTxtResolver:

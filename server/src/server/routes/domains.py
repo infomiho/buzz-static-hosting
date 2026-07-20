@@ -11,7 +11,7 @@ from ..api_models import (
     DomainClaimResponse,
     ErrorResponse,
 )
-from ..custom_domains import (
+from ..custom_domains.claims import (
     DnsTxtResolver,
     DomainCheckUnavailable,
     DomainClaim,
@@ -21,14 +21,14 @@ from ..custom_domains import (
     InvalidHostname,
     normalize_hostname,
 )
-from ..cloudflare_diagnostics import (
+from ..custom_domains.cloudflare import (
     CloudflareDiagnostic,
     CloudflareDiagnosticStore,
 )
 from ..db import db
-from ..domain_capabilities import domain_capabilities
-from ..domain_status import project_domain_connection
-from ..domain_transitions import DomainClaimStateMachine, DomainModeTransition
+from ..custom_domains.capabilities import domain_capabilities
+from ..custom_domains.status import project_domain_connection
+from ..custom_domains.transitions import DomainClaimStateMachine, DomainModeTransition
 from ..dependencies import (
     Identity,
     require_custom_domain_admission_enabled,

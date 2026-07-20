@@ -40,18 +40,18 @@ from .config import (
     TRAEFIK_SERVICE,
 )
 from .cookies import COOKIE_NAME
-from .cloudflare_diagnostics import CloudflareDiagnostician
-from .custom_domains import DnsTxtResolver, DomainClaimStore
-from .domain_activation import DomainActivator
-from .domain_capabilities import domain_capabilities
-from .domain_routing import DomainRouteReconciler, build_traefik_snapshot
-from .domain_transitions import (
+from .custom_domains.cloudflare import CloudflareDiagnostician
+from .custom_domains.claims import DnsTxtResolver, DomainClaimStore
+from .custom_domains.activation import DomainActivator
+from .custom_domains.capabilities import domain_capabilities
+from .custom_domains.routing import DomainRouteReconciler, build_traefik_snapshot
+from .custom_domains.transitions import (
     DomainTransitionCoordinator,
     TransitionValidationFailed,
     DomainClaimStateMachine,
 )
-from .domain_evidence import DomainDnsObserver, DomainEvidenceCollector
-from .domain_probes import CloudflareRangeError, CloudflareRangeState, load_cloudflare_ranges
+from .custom_domains.evidence import DomainDnsObserver, DomainEvidenceCollector
+from .custom_domains.probes import CloudflareRangeError, CloudflareRangeState, load_cloudflare_ranges
 from .site_path import InvalidSubdomain, resolve_site_file
 from .db import db
 from .dependencies import get_identity
@@ -60,7 +60,7 @@ from .github import HttpGitHubClient
 from .routes import auth, dashboard, domains, sites, tokens
 from .search_console import create_search_console_client
 from .utils import extract_subdomain, is_control_host
-from .traefik_control import TraefikControlServer, TraefikRuntimeClient
+from .custom_domains.traefik import TraefikControlServer, TraefikRuntimeClient
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 MAX_DEPLOY_BODY_BYTES = MAX_ARCHIVE_BYTES + 1024 * 1024

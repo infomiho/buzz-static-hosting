@@ -12,7 +12,7 @@ import dns.exception
 import dns.rdatatype
 import dns.resolver
 
-from .domain_probes import (
+from .probes import (
     ADDRESS_FAMILIES,
     ActivationFailed,
     CloudflareRangeState,
@@ -24,7 +24,7 @@ from .domain_probes import (
     probe_cloudflare_edge,
     probe_origin,
 )
-from .custom_domains import DnsTxtResolver, DomainCheckUnavailable, DomainClaim
+from .claims import DnsTxtResolver, DomainCheckUnavailable, DomainClaim
 
 MAX_CNAME_DEPTH = 8
 PROBE_PHASE_SECONDS = 5
