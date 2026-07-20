@@ -20,7 +20,9 @@ from .config import (
     MAX_SITE_BYTES,
     MAX_SITE_FILES,
 )
-from .exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
+from .custom_domains.claims import DomainClaimStore
+from .custom_domains.errors import ClaimConflict
+from .exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
 
 
 _ARCHIVE_CHUNK_BYTES = 1024 * 1024
@@ -128,7 +130,10 @@ class SiteStore:
                 self._begin_write()
                 transaction_started = True
                 self._require_access(name, owner_id)
-                self._ensure_no_active_custom_domain(name)
+                if DomainClaimStore(self._conn).has_active_claim(name):
+                    raise ClaimConflict(
+                        "Remove all of the site's custom domains before deleting the site"
+                    )
 
                 if site_dir.exists() or site_dir.is_symlink():
                     backup_dir = self._backup_path(name)
@@ -633,16 +638,3 @@ class SiteStore:
                 if "no such table" not in str(exc).lower():
                     raise
 
-    def _ensure_no_active_custom_domain(self, name: str) -> None:
-        self._conn.execute(
-            """UPDATE custom_domain_claims SET status = 'expired'
-            WHERE status = 'pending' AND expires_at <= ?""",
-            (datetime.now(timezone.utc).isoformat(),),
-        )
-        claim = self._conn.execute(
-            """SELECT 1 FROM custom_domain_claims
-            WHERE site_name = ? AND status IN ('pending', 'verified') LIMIT 1""",
-            (name,),
-        ).fetchone()
-        if claim:
-            raise Conflict("Remove all of the site's custom domains before deleting the site")

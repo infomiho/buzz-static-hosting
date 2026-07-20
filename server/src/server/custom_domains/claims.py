@@ -569,6 +569,36 @@ class DomainClaimStore:
         ).fetchone()
         return row is not None
 
+    def has_active_cloudflare_claim(self) -> bool:
+        row = self._conn.execute(
+            """SELECT 1 FROM custom_domain_claims
+            WHERE claim_mode = 'cloudflare' AND activated_at IS NOT NULL
+              AND route_status IN ('publishing', 'routed', 'removing') LIMIT 1"""
+        ).fetchone()
+        return row is not None
+
+    def has_routed_cloudflare_claim(self) -> bool:
+        row = self._conn.execute(
+            """SELECT 1 FROM custom_domain_claims
+            WHERE claim_mode = 'cloudflare' AND activated_at IS NOT NULL
+              AND route_status = 'routed' LIMIT 1"""
+        ).fetchone()
+        return row is not None
+
+    def has_routed_claim(self) -> bool:
+        row = self._conn.execute(
+            """SELECT 1 FROM custom_domain_claims
+            WHERE route_status IN ('publishing', 'routed', 'removing') LIMIT 1"""
+        ).fetchone()
+        return row is not None
+
+    def site_name_for(self, claim_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT site_name FROM custom_domain_claims WHERE id = ?",
+            (claim_id,),
+        ).fetchone()
+        return row["site_name"] if row else None
+
     def expire_pending(self, now: datetime | None = None) -> None:
         now = now or datetime.now(timezone.utc)
         self._conn.execute(

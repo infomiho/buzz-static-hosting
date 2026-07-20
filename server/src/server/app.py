@@ -145,23 +145,19 @@ def create_app() -> FastAPI:
         try:
             if not CLOUDFLARE_ACTIVATION_ENABLED:
                 with db() as conn:
-                    active_cloudflare_claim = conn.execute(
-                        """SELECT 1 FROM custom_domain_claims
-                        WHERE claim_mode = 'cloudflare' AND activated_at IS NOT NULL
-                          AND route_status IN ('publishing', 'routed', 'removing') LIMIT 1"""
-                    ).fetchone()
+                    active_cloudflare_claim = DomainClaimStore(
+                        conn
+                    ).has_active_cloudflare_claim()
                 if active_cloudflare_claim:
                     raise RuntimeError(
                         "Withdraw active Cloudflare routers before disabling Cloudflare activation"
                     )
             else:
                 with db() as conn:
-                    active_cloudflare_claim = conn.execute(
-                        """SELECT 1 FROM custom_domain_claims
-                        WHERE claim_mode = 'cloudflare' AND activated_at IS NOT NULL
-                          AND route_status = 'routed' LIMIT 1"""
-                    ).fetchone()
-                if active_cloudflare_claim and not (
+                    routed_cloudflare_claim = DomainClaimStore(
+                        conn
+                    ).has_routed_cloudflare_claim()
+                if routed_cloudflare_claim and not (
                     CUSTOM_DOMAINS_ENABLED and TRAEFIK_CONTROL_TOKEN and TRAEFIK_API_URL
                 ):
                     raise RuntimeError(
@@ -169,10 +165,7 @@ def create_app() -> FastAPI:
                     )
             if not CUSTOM_DOMAINS_ENABLED:
                 with db() as conn:
-                    routed_claim = conn.execute(
-                        """SELECT 1 FROM custom_domain_claims
-                        WHERE route_status IN ('publishing', 'routed', 'removing') LIMIT 1"""
-                    ).fetchone()
+                    routed_claim = DomainClaimStore(conn).has_routed_claim()
                 if routed_claim:
                     raise RuntimeError(
                         "Withdraw all custom-domain routers before disabling custom domains"
@@ -269,13 +262,10 @@ def create_app() -> FastAPI:
 
                     def cancel_operator_transition(claim_id: int) -> dict:
                         with db() as conn:
-                            row = conn.execute(
-                                "SELECT site_name FROM custom_domain_claims WHERE id = ?",
-                                (claim_id,),
-                            ).fetchone()
-                        if not row or not row["site_name"]:
+                            site_name = DomainClaimStore(conn).site_name_for(claim_id)
+                        if not site_name:
                             raise ClaimNotFound("Custom domain claim not found")
-                        transition_coordinator.cancel(claim_id, row["site_name"])
+                        transition_coordinator.cancel(claim_id, site_name)
                         return {"claim_id": claim_id, "state": "cancelled"}
 
                     control_server.set_operator_handlers(

@@ -9,7 +9,8 @@ import pytest
 
 from server import db as db_module
 from server.custom_domains.claims import DomainClaimStore
-from server.exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
+from server.custom_domains.errors import ClaimConflict
+from server.exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
 from server.site_store import DeploymentLimits, SiteStore
 
 
@@ -353,7 +354,7 @@ class TestDelete:
         )
         conn.commit()
 
-        with pytest.raises(Conflict, match="Remove all of the site's custom domains"):
+        with pytest.raises(ClaimConflict, match="Remove all of the site's custom domains"):
             store.delete("my-site", owner_id=1)
 
         assert (tmp_path / "my-site" / "index.html").read_text() == "content"
@@ -399,14 +400,14 @@ class TestDelete:
             domain_store.cancel(claims[0].id, "my-site")
 
         with db_module.db() as conn:
-            with pytest.raises(Conflict):
+            with pytest.raises(ClaimConflict):
                 SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
         with db_module.db() as conn:
             domain_store = DomainClaimStore(conn)
             first = domain_store.get(claims[0].id, "my-site")
             domain_store.finish_withdrawal(first.id, first.route_generation)
         with db_module.db() as conn:
-            with pytest.raises(Conflict):
+            with pytest.raises(ClaimConflict):
                 SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
 
         with db_module.db() as conn:
