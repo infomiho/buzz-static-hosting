@@ -20,8 +20,7 @@ from .config import (
     MAX_SITE_BYTES,
     MAX_SITE_FILES,
 )
-from .custom_domains.claims import DomainClaimStore
-from .custom_domains.errors import ClaimConflict
+from .custom_domains import ClaimConflict, DomainClaimStore
 from .exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
 
 

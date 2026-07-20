@@ -23,10 +23,9 @@ from ..auth_service import (
 )
 from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
-from ..custom_domains.claims import DomainClaimLimits, DomainClaimStore
+from ..custom_domains import DomainClaimLimits, DomainClaimStore, claim_views_for_site
 from ..db import db
 from ..dependencies import get_auth_service, require_user
-from ..custom_domains.views import claim_views_for_site
 from ..search_console import SearchConsoleError
 from ..site_store import SiteStore
 

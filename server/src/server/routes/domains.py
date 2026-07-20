@@ -11,19 +11,21 @@ from ..api_models import (
     DomainClaimResponse,
     ErrorResponse,
 )
-from ..custom_domains.claims import (
+from ..custom_domains import (
+    ClaimConflict,
+    ClaimView,
+    CloudflareDiagnostic,
     DnsTxtResolver,
     DomainCheckUnavailable,
     DomainClaimLimits,
     DomainClaimStore,
     DomainQuotaExceeded,
     InvalidHostname,
+    build_claim_view,
+    claim_views_for_site,
     normalize_hostname,
 )
-from ..custom_domains.cloudflare import CloudflareDiagnostic
-from ..custom_domains.errors import ClaimConflict
 from ..db import db
-from ..custom_domains.views import ClaimView, build_claim_view, claim_views_for_site
 from ..dependencies import (
     Identity,
     require_custom_domain_admission_enabled,
