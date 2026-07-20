@@ -213,11 +213,8 @@ class TestCustomDomains:
         monkeypatch.setattr("server.routes.dashboard.db", db)
         monkeypatch.setattr("server.routes.dashboard.SITES_DIR", tmp_path)
         monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
-        monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ADMISSION_ENABLED", True)
-        monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
         monkeypatch.setattr("server.config.CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
         monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured")
-        monkeypatch.setattr("server.config.CLOUDFLARE_DIAGNOSTICS_ENABLED", True)
         monkeypatch.setattr("server.config.MAX_CUSTOM_DOMAINS_PER_SITE", 10)
         client.app.state.custom_domains.control = type(
             "ReadyControlPlane", (), {"is_ready": lambda self: True}

@@ -28,10 +28,6 @@
       },
       "AutomaticDomainTransitionCapability": {
         "properties": {
-          "admission_enabled": {
-            "title": "Admission Enabled",
-            "type": "boolean"
-          },
           "detail": {
             "anyOf": [
               {
@@ -49,7 +45,6 @@
           }
         },
         "required": [
-          "admission_enabled",
           "ready",
           "detail"
         ],
@@ -58,14 +53,6 @@
       },
       "CloudflareCapability": {
         "properties": {
-          "activation_enabled": {
-            "title": "Activation Enabled",
-            "type": "boolean"
-          },
-          "admission_enabled": {
-            "title": "Admission Enabled",
-            "type": "boolean"
-          },
           "detail": {
             "anyOf": [
               {
@@ -77,15 +64,13 @@
             ],
             "title": "Detail"
           },
-          "ready": {
-            "title": "Ready",
+          "supported": {
+            "title": "Supported",
             "type": "boolean"
           }
         },
         "required": [
-          "admission_enabled",
-          "activation_enabled",
-          "ready",
+          "supported",
           "detail"
         ],
         "title": "CloudflareCapability",
@@ -302,21 +287,6 @@
           "hostname": {
             "title": "Hostname",
             "type": "string"
-          },
-          "mode": {
-            "anyOf": [
-              {
-                "enum": [
-                  "direct",
-                  "cloudflare"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mode"
           }
         },
         "required": [
@@ -374,10 +344,6 @@
       },
       "CustomDomainCapabilityResponse": {
         "properties": {
-          "admission_enabled": {
-            "title": "Admission Enabled",
-            "type": "boolean"
-          },
           "automatic": {
             "$ref": "#/components/schemas/AutomaticDomainTransitionCapability"
           },
@@ -429,7 +395,6 @@
           "detail",
           "enabled",
           "control_ready",
-          "admission_enabled",
           "routing_enabled",
           "routing_targets",
           "automatic",

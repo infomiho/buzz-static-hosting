@@ -404,7 +404,6 @@ def test_active_cloudflare_claim_requires_complete_runtime(
                     '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
                     'routed', 1, 'cloudflare', '2026-07-16T00:00:00+00:00')"""
         )
-    monkeypatch.setattr("server.config.CLOUDFLARE_ACTIVATION_ENABLED", True)
     monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
     monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", control_token)
     monkeypatch.setattr("server.config.TRAEFIK_API_URL", api_url)

@@ -38,12 +38,7 @@ def test_environment_registry_covers_server_and_deployment_settings():
         "BUZZ_TRAEFIK_API_AUTHORIZATION",
         "BUZZ_TRAEFIK_HTTPS_ENTRYPOINT",
         "BUZZ_TRAEFIK_SERVICE",
-        "BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED",
-        "BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED",
-            "BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED",
-            "BUZZ_CLOUDFLARE_ACTIVATION_ENABLED",
-            "BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED",
-            "BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN",
+        "BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN",
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE",
         "BUZZ_MAX_CUSTOM_DOMAINS_PER_USER",
         "BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE",
@@ -109,36 +104,6 @@ def test_allow_registration_defaults_to_true(monkeypatch):
 def test_custom_domains_default_to_disabled(monkeypatch):
     monkeypatch.delenv("BUZZ_CUSTOM_DOMAINS_ENABLED", raising=False)
     assert ENVIRONMENT_BY_NAME["BUZZ_CUSTOM_DOMAINS_ENABLED"].read() is False
-
-
-def test_custom_domain_routing_defaults_to_disabled(monkeypatch):
-    monkeypatch.delenv("BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED", raising=False)
-    assert ENVIRONMENT_BY_NAME["BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED"].read() is False
-
-
-def test_custom_domain_admission_defaults_to_disabled(monkeypatch):
-    monkeypatch.delenv("BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED", raising=False)
-    assert ENVIRONMENT_BY_NAME["BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED"].read() is False
-
-
-def test_cloudflare_diagnostics_default_to_disabled(monkeypatch):
-    monkeypatch.delenv("BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED", raising=False)
-    assert ENVIRONMENT_BY_NAME["BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED"].read() is False
-
-
-def test_cloudflare_activation_defaults_to_disabled(monkeypatch):
-    monkeypatch.delenv("BUZZ_CLOUDFLARE_ACTIVATION_ENABLED", raising=False)
-    assert ENVIRONMENT_BY_NAME["BUZZ_CLOUDFLARE_ACTIVATION_ENABLED"].read() is False
-
-
-def test_automatic_domain_transition_admission_defaults_to_disabled(monkeypatch):
-    monkeypatch.delenv(
-        "BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED", raising=False
-    )
-    assert (
-        ENVIRONMENT_BY_NAME["BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED"].read()
-        is False
-    )
 
 
 def test_public_ingress_ips_are_normalized_and_must_be_global():

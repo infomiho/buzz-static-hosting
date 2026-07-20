@@ -40,7 +40,6 @@ class CustomDomainsRuntime:
         self.range_state = CloudflareRangeState(load_error="range_data_missing")
         self.diagnostician: CloudflareDiagnostician | None = None
         self.transition_coordinator: DomainTransitionCoordinator | None = None
-        self.automatic_admission_enabled = config.automatic_admission_enabled
         self._reconciler_task: asyncio.Task | None = None
         self._stop_reconciler = asyncio.Event()
 
@@ -62,7 +61,6 @@ class CustomDomainsRuntime:
     ) -> tuple[int, str, str] | None:
         if (
             not server_config.CUSTOM_DOMAINS_ENABLED
-            or not server_config.CUSTOM_DOMAIN_ROUTING_ENABLED
             or not hostname
             or not path.startswith(DOMAIN_CHECK_PREFIX)
         ):
@@ -80,11 +78,7 @@ class CustomDomainsRuntime:
         return claim.id, claim.site_name, token
 
     def activated_site(self, hostname: str | None) -> str | None:
-        if (
-            not server_config.CUSTOM_DOMAINS_ENABLED
-            or not server_config.CUSTOM_DOMAIN_ROUTING_ENABLED
-            or not hostname
-        ):
+        if not server_config.CUSTOM_DOMAINS_ENABLED or not hostname:
             return None
         with self._connect() as conn:
             claim = DomainClaimStore(conn).find_activated(hostname.lower().rstrip("."))
@@ -102,7 +96,7 @@ class CustomDomainsRuntime:
         if not (config.custom_domains_enabled and config.traefik_control_token):
             return
         with self._connect() as conn:
-            DomainClaimStore(conn).prepare_routes(config.custom_domain_routing_enabled)
+            DomainClaimStore(conn).prepare_routes(True)
         runtime_client = None
         if config.traefik_api_url:
             runtime_client = TraefikRuntimeClient(
@@ -150,7 +144,7 @@ class CustomDomainsRuntime:
             config.traefik_https_entrypoint,
             config.traefik_service,
             config.traefik_cert_resolver,
-            routing_enabled=lambda: server_config.CUSTOM_DOMAIN_ROUTING_ENABLED,
+            routing_enabled=lambda: True,
             withdrawal_snapshot_acknowledged=(
                 control_server.withdrawal_snapshot_acknowledged
             ),

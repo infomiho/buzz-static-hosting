@@ -134,7 +134,6 @@ def test_challenge_token_is_bound_to_its_verified_hostname(tmp_path, monkeypatch
         store.record_check(claim.id, "my-site", (claim.verification_value,))
         claim = store.prepare_routes(True)[0]
     monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     client = make_client(tmp_path, monkeypatch)
 
     expected = client.get(claim.challenge_path, headers={"host": claim.hostname})
@@ -166,7 +165,6 @@ def test_activated_custom_domain_serves_canonical_site_identity(tmp_path, monkey
         claim = store.get(claim.id, "my-site")
         DomainClaimStateMachine(conn).apply_activation_decision(claim, None)
     monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     client = make_client(tmp_path, monkeypatch)
     headers = {"host": "www.example.com"}
 
@@ -203,7 +201,6 @@ def test_multiple_aliases_serve_independently(tmp_path, monkeypatch):
             current = store.get(claim.id, "my-site")
             DomainClaimStateMachine(conn).apply_activation_decision(current, None)
     monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.config.CUSTOM_DOMAIN_ROUTING_ENABLED", True)
     client = make_client(tmp_path, monkeypatch)
 
     assert client.get("/", headers={"host": "one.example.com"}).text == "shared content"
