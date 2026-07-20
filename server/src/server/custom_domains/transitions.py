@@ -1457,18 +1457,19 @@ class DomainTransitionCoordinator:
                 and observation.mode == "cloudflare"
                 and not self._cloudflare_target_enabled()
             )
-            with self._database() as conn:
-                DomainClaimStore(conn).set_onboarding_error(
-                    claim.id,
-                    claim.route_generation,
-                    "cloudflare_unsupported" if unsupported else None,
-                )
+            onboarding_error = "cloudflare_unsupported" if unsupported else None
+            if claim.last_error != onboarding_error:
+                with self._database() as conn:
+                    DomainClaimStore(conn).set_onboarding_error(
+                        claim.id, claim.route_generation, onboarding_error
+                    )
             self._apply_stable_health(claim, evidence)
             return
         with self._database() as conn:
-            DomainClaimStore(conn).set_onboarding_error(
-                claim.id, claim.route_generation, None
-            )
+            if claim.last_error is not None:
+                DomainClaimStore(conn).set_onboarding_error(
+                    claim.id, claim.route_generation, None
+                )
             DomainClaimStateMachine(conn).start(
                 claim.id,
                 claim.route_generation,

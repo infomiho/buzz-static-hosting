@@ -900,6 +900,30 @@ def test_automatic_onboarding_completes_after_ttl_separated_observations(transit
     assert path["confirmation_fingerprint"] == "stable"
 
 
+def test_onboarding_flags_cloudflare_when_unsupported_and_clears_on_repoint(transition_db):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        conn.execute(
+            "UPDATE custom_domain_claims SET automatic_mode = 1 WHERE id = ?", (claim.id,)
+        )
+    cloudflare = DnsObservation("cloudflare", ("104.16.0.1",), 60, "cf")
+    coordinator(transition_db, cloudflare, cloudflare_target=False).run_once()
+
+    with transition_db() as conn:
+        stuck = DomainClaimStore(conn).get(claim.id, "my-site")
+    assert stuck.activated_at is None
+    assert stuck.last_error == "cloudflare_unsupported"
+
+    direct = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
+    coordinator(transition_db, direct).run_once()
+
+    with transition_db() as conn:
+        cleared = DomainClaimStore(conn).get(claim.id, "my-site")
+        transition = DomainClaimStateMachine(conn).get(claim.id)
+    assert cleared.last_error is None
+    assert transition is not None and transition.target_mode == "direct"
+
+
 def test_automatic_onboarding_retargets_after_stable_supported_mismatch(transition_db):
     with transition_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]

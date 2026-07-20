@@ -582,14 +582,6 @@ class DomainClaimStore:
         ).fetchone()
         return row is not None
 
-    def has_active_cloudflare_claim(self) -> bool:
-        row = self._conn.execute(
-            """SELECT 1 FROM custom_domain_claims
-            WHERE claim_mode = 'cloudflare' AND activated_at IS NOT NULL
-              AND route_status IN ('publishing', 'routed', 'removing') LIMIT 1"""
-        ).fetchone()
-        return row is not None
-
     def has_routed_cloudflare_claim(self) -> bool:
         row = self._conn.execute(
             """SELECT 1 FROM custom_domain_claims
