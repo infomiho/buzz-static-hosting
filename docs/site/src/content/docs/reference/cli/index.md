@@ -210,7 +210,7 @@ Options:
 
 Commands:
   list [site]                        List custom domains and lifecycle status
-  add [options] <site> <domain>      Attach a custom domain to a site
+  add <site> <domain>                Attach a custom domain to a site
   check <site> <domain>              Check custom-domain ownership and
                                      activation
   retry <site> <domain>              Retry a failed connection transition
@@ -239,8 +239,7 @@ Usage: buzz domains add [options] <site> <domain>
 Attach a custom domain to a site
 
 Options:
-  --mode <mode>  Deprecated: force direct or cloudflare routing
-  -h, --help     display help for command
+  -h, --help  display help for command
 ```
 
 ## buzz domains check
