@@ -44,6 +44,7 @@ def test_domain_task_projects_one_user_phase_and_next_action(
         status=claim_status,
         route_status=route_status,
         activation_error=None,
+        last_error=None,
     )
 
     task = project_domain_task(
@@ -61,6 +62,7 @@ def test_domain_task_requires_dns_update_when_observed_path_misses_target():
         status="verified",
         route_status="routed",
         activation_error=None,
+        last_error=None,
     )
     current = DomainConnection(
         status="securing",
@@ -85,6 +87,7 @@ def test_domain_task_does_not_blame_configuration_for_transient_dns_failure():
         status="verified",
         route_status="routed",
         activation_error="dns_unavailable",
+        last_error=None,
     )
 
     task = project_domain_task(claim, connection("securing"))
@@ -92,3 +95,18 @@ def test_domain_task_does_not_blame_configuration_for_transient_dns_failure():
     assert task.phase == "action_needed"
     assert task.next_action == "wait"
     assert task.summary == "Buzz could not check DNS right now. It will retry automatically."
+
+
+def test_domain_task_points_directly_when_cloudflare_unsupported():
+    claim = SimpleNamespace(
+        status="verified",
+        route_status="routed",
+        activation_error=None,
+        last_error="cloudflare_unsupported",
+    )
+
+    task = project_domain_task(claim, connection("securing"))
+
+    assert task.phase == "configure_dns"
+    assert task.label == "Point the domain directly to Buzz"
+    assert task.next_action == "configure_dns"

@@ -1450,13 +1450,26 @@ class DomainTransitionCoordinator:
             return
         observation = evidence.dns
         self._refresh_common_health(claim)
+        target_mode = self._proposed_target(claim, observation)
+        if not target_mode:
+            unsupported = (
+                not claim.activated_at
+                and observation.mode == "cloudflare"
+                and not self._cloudflare_target_enabled()
+            )
+            with self._database() as conn:
+                DomainClaimStore(conn).set_onboarding_error(
+                    claim.id,
+                    claim.route_generation,
+                    "cloudflare_unsupported" if unsupported else None,
+                )
+            self._apply_stable_health(claim, evidence)
+            return
         with self._database() as conn:
-            transitions = DomainClaimStateMachine(conn)
-            target_mode = self._proposed_target(claim, observation)
-            if not target_mode:
-                self._apply_stable_health(claim, evidence)
-                return
-            transitions.start(
+            DomainClaimStore(conn).set_onboarding_error(
+                claim.id, claim.route_generation, None
+            )
+            DomainClaimStateMachine(conn).start(
                 claim.id,
                 claim.route_generation,
                 target_mode,

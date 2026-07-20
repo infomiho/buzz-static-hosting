@@ -345,6 +345,19 @@ class DomainClaimStore:
         )
         return self.get(claim_id, site_name)
 
+    def set_onboarding_error(
+        self, claim_id: int, route_generation: int, error: str | None
+    ) -> None:
+        # Surface a pre-activation onboarding signal (e.g. Cloudflare detected on
+        # a server that cannot validate it) on a verified, routed, not-yet-activated
+        # claim, without disturbing claims in any other state.
+        self._conn.execute(
+            """UPDATE custom_domain_claims SET last_error = ?
+            WHERE id = ? AND route_generation = ? AND status = 'verified'
+              AND route_status = 'routed' AND activated_at IS NULL""",
+            (error, claim_id, route_generation),
+        )
+
     def cancel(
         self,
         claim_id: int,

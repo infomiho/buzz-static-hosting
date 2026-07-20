@@ -82,6 +82,15 @@ def project_domain_task(claim: DomainClaim, connection: DomainConnection) -> Dom
             "check_ownership",
             True,
         )
+    if claim.last_error == "cloudflare_unsupported":
+        return DomainTask(
+            "configure_dns",
+            "Point the domain directly to Buzz",
+            "This server can't connect Cloudflare-proxied domains right now. "
+            "Point DNS directly to Buzz using the records below.",
+            "configure_dns",
+            True,
+        )
     if connection.status == "waiting_for_dns" and claim.route_status == "routed":
         return DomainTask(
             "configure_dns",
