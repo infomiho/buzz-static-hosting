@@ -4,7 +4,7 @@ Self-hosted static site hosting with CLI deployment.
 
 ## Project Structure
 
-- `server/` - Python 3.12+ FastAPI server, dependencies managed with uv. Jinja2 templates (`src/server/templates/`) use the Achroma visual system; `src/server/static/` holds built CSS/JS assets (Tailwind, built via the server's `package.json`).
+- `server/` - Python 3.12+ FastAPI server, dependencies managed with uv. Jinja2 templates (`src/server/templates/`) use the Achroma visual system; `src/server/static/` holds built CSS/JS assets (Tailwind, built via the server's `package.json`). Custom-domain logic lives in the `src/server/custom_domains/` internal package: `CustomDomainsRuntime` owns wiring, the reconcile loop, startup guards, and capabilities; `ClaimView` is the single claim read interface; the package ships its own schema (`schema.py`) and errors. The host imports only names re-exported from the package root; the claim state machine and other collaborators are internal.
 - `cli/` - TypeScript CLI (Commander.js + Archiver), published to npm as `buzz-cli`.
 - `docs/site/` - Starlight docs site. `reference/configuration.md`, `server/.env.example`, and `public/openapi.json` are generated from `server/src/server/environment.py` via `npm run generate:server` in `docs/site`; the Docs CI job fails if they are stale.
 - `docs/agents/` - instructions for agent skills.
