@@ -14,22 +14,17 @@ from ..api_models import (
 from ..custom_domains.claims import (
     DnsTxtResolver,
     DomainCheckUnavailable,
-    DomainClaim,
     DomainClaimLimits,
     DomainClaimStore,
     DomainQuotaExceeded,
     InvalidHostname,
     normalize_hostname,
 )
-from ..custom_domains.cloudflare import (
-    CloudflareDiagnostic,
-    CloudflareDiagnosticStore,
-)
+from ..custom_domains.cloudflare import CloudflareDiagnostic
 from ..custom_domains.errors import ClaimConflict
 from ..db import db
 from ..custom_domains.capabilities import domain_capabilities
-from ..custom_domains.status import project_domain_connection
-from ..custom_domains.transitions import DomainClaimStateMachine, DomainModeTransition
+from ..custom_domains.views import ClaimView, build_claim_view, claim_views_for_site
 from ..dependencies import (
     Identity,
     require_custom_domain_admission_enabled,
@@ -89,12 +84,9 @@ def cloudflare_diagnostic_response(diagnostic: CloudflareDiagnostic | None) -> d
     }
 
 
-def domain_response(
-    claim: DomainClaim,
-    diagnostic: CloudflareDiagnostic | None = None,
-    transition: DomainModeTransition | None = None,
-) -> dict:
-    connection = project_domain_connection(claim, transition)
+def domain_response(view: ClaimView) -> dict:
+    claim = view.claim
+    connection = view.connection
     return {
         "id": claim.id,
         "hostname": claim.hostname,
@@ -128,7 +120,7 @@ def domain_response(
         "transition_started_at": connection.transition_started_at,
         "transition_deadline_at": connection.transition_deadline_at,
         "transition_error": connection.transition_error,
-        "cloudflare_diagnostics": cloudflare_diagnostic_response(diagnostic),
+        "cloudflare_diagnostics": cloudflare_diagnostic_response(view.diagnostic),
     }
 
 
@@ -206,25 +198,7 @@ async def list_domain_claims(
 ):
     require_owned_site(site_name, identity.user.id)
     with db() as conn:
-        claims = DomainClaimStore(conn).list_for_site(site_name)
-        diagnostic_store = CloudflareDiagnosticStore(conn)
-        transition_store = DomainClaimStateMachine(conn)
-        return [
-            domain_response(
-                claim,
-                diagnostic_store.get(
-                    claim.id, claim.route_generation, claim.mode_generation
-                )
-                if (
-                    claim.claim_mode == "cloudflare"
-                    or transition_store.get(claim.id)
-                    and transition_store.get(claim.id).target_mode == "cloudflare"
-                )
-                else None,
-                transition_store.get(claim.id),
-            )
-            for claim in claims
-        ]
+        return [domain_response(view) for view in claim_views_for_site(conn, site_name)]
 
 
 @router.post(
@@ -310,7 +284,7 @@ async def create_domain_claim(
             )
         except DomainQuotaExceeded as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
-        return domain_response(claim)
+        return domain_response(build_claim_view(conn, claim))
 
 
 @router.post(
@@ -338,16 +312,7 @@ async def check_domain_claim(
         claim = DomainClaimStore(conn).get(claim_id, site_name)
     if claim.status == "verified":
         with db() as conn:
-            diagnostic_store = CloudflareDiagnosticStore(conn)
-            return domain_response(
-                claim,
-                diagnostic_store.get(
-                    claim.id, claim.route_generation, claim.mode_generation
-                )
-                if claim.claim_mode == "cloudflare"
-                else None,
-                DomainClaimStateMachine(conn).get(claim.id),
-            )
+            return domain_response(build_claim_view(conn, claim))
     retry_after = claim.check_retry_after()
     if retry_after:
         raise HTTPException(
@@ -372,19 +337,10 @@ async def check_domain_claim(
             checked = DomainClaimStore(conn).record_check_error(
                 claim_id, site_name, "dns_unavailable"
             )
-        return domain_response(checked)
+            return domain_response(build_claim_view(conn, checked))
     with db() as conn:
         claim = DomainClaimStore(conn).record_check(claim_id, site_name, values)
-        diagnostic_store = CloudflareDiagnosticStore(conn)
-        return domain_response(
-            claim,
-            diagnostic_store.get(
-                claim.id, claim.route_generation, claim.mode_generation
-            )
-            if claim.claim_mode == "cloudflare"
-            else None,
-            DomainClaimStateMachine(conn).get(claim.id),
-        )
+        return domain_response(build_claim_view(conn, claim))
 
 
 @router.delete(
@@ -445,8 +401,7 @@ async def retry_domain_transition(
     await run_in_threadpool(coordinator.retry, claim_id, site_name)
     with db() as conn:
         claim = DomainClaimStore(conn).get(claim_id, site_name)
-        transition = DomainClaimStateMachine(conn).get(claim_id)
-    return domain_response(claim, transition=transition)
+        return domain_response(build_claim_view(conn, claim))
 
 
 @router.post(
@@ -471,5 +426,4 @@ async def cancel_domain_transition(
     await run_in_threadpool(coordinator.cancel, claim_id, site_name)
     with db() as conn:
         claim = DomainClaimStore(conn).get(claim_id, site_name)
-        transition = DomainClaimStateMachine(conn).get(claim_id)
-    return domain_response(claim, transition=transition)
+        return domain_response(build_claim_view(conn, claim))

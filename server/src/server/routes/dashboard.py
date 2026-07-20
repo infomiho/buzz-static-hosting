@@ -24,12 +24,10 @@ from ..auth_service import (
 from ..config import DOMAIN, SITES_DIR
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
 from ..custom_domains.claims import DomainClaimLimits, DomainClaimStore
-from ..custom_domains.cloudflare import CloudflareDiagnosticStore
 from ..db import db
 from ..custom_domains.capabilities import domain_capabilities
 from ..dependencies import get_auth_service, require_user
-from ..custom_domains.status import project_domain_connection, project_domain_task
-from ..custom_domains.transitions import DomainClaimStateMachine
+from ..custom_domains.views import claim_views_for_site
 from ..search_console import SearchConsoleError
 from ..site_store import SiteStore
 
@@ -92,30 +90,16 @@ async def site_detail(
         site = store.get_by_name(name, identity.user.id)
         files = store.list_files(name, identity.user.id)
         claim_store = DomainClaimStore(conn)
-        domain_claims = [
-            claim
-            for claim in claim_store.list_for_site(name)
-            if claim.status in {"pending", "verified"}
-        ]
-        diagnostic_store = CloudflareDiagnosticStore(conn)
-        transition_store = DomainClaimStateMachine(conn)
-        domain_connections = {
-            claim.id: project_domain_connection(claim, transition_store.get(claim.id))
-            for claim in domain_claims
-        }
-        domain_tasks = {
-            claim.id: project_domain_task(claim, domain_connections[claim.id])
-            for claim in domain_claims
-        }
+        views = claim_views_for_site(
+            conn, name, statuses=frozenset({"pending", "verified"})
+        )
+        domain_claims = [view.claim for view in views]
+        domain_connections = {view.claim.id: view.connection for view in views}
+        domain_tasks = {view.claim.id: view.task for view in views}
         cloudflare_diagnostics = {
-            claim.id: diagnostic_store.get(
-                claim.id, claim.route_generation, claim.mode_generation
-            )
-            for claim in domain_claims
-            if (
-                domain_connections[claim.id].has_cloudflare_path
-                or claim.claim_mode == "cloudflare"
-            )
+            view.claim.id: view.diagnostic
+            for view in views
+            if view.diagnostic is not None
         }
         domain_quota = claim_store.quota(
             name,
