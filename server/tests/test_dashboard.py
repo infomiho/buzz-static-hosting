@@ -8,45 +8,11 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from server.analytics import init_analytics_schema
 from server.app import create_app
 from server.auth_service import AuthService
 from server.cookies import COOKIE_NAME
+from server.db import MIGRATIONS
 from server.github import FakeGitHubClient
-
-
-SCHEMA = """
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    github_id INTEGER UNIQUE NOT NULL,
-    github_login TEXT NOT NULL,
-    github_name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE sessions (
-    id TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE deployment_tokens (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    site_name TEXT NOT NULL,
-    user_id INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME,
-    last_used_at DATETIME,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE sites (
-    name TEXT PRIMARY KEY,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    size_bytes INTEGER,
-    owner_id INTEGER
-);
-"""
 
 
 def _hash(token: str) -> str:
@@ -56,9 +22,10 @@ def _hash(token: str) -> str:
 @pytest.fixture
 def test_db():
     conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    init_analytics_schema(conn)
+    for migration in MIGRATIONS:
+        migration(conn)
 
     @contextmanager
     def db():
@@ -168,12 +135,6 @@ class TestCustomDomains:
             "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('my-site', ?, 0)",
             (user_id,),
         )
-        conn.execute("""CREATE TABLE custom_domain_claims (
-            id INTEGER PRIMARY KEY,
-            site_name TEXT,
-            status TEXT,
-            expires_at TEXT
-        )""")
         conn.commit()
         (tmp_path / "my-site").mkdir()
         monkeypatch.setattr("server.routes.dashboard.db", db)
@@ -198,63 +159,6 @@ class TestCustomDomains:
             "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('my-site', ?, 0)",
             (user_id,),
         )
-        conn.execute("""CREATE TABLE custom_domain_claims (
-            id INTEGER PRIMARY KEY,
-            hostname TEXT NOT NULL,
-            site_name TEXT,
-            verification_token TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            verified_at TEXT,
-            last_checked_at TEXT,
-            last_error TEXT,
-            challenge_token TEXT,
-            route_status TEXT NOT NULL DEFAULT 'not_routed',
-            route_generation INTEGER NOT NULL DEFAULT 0,
-            route_error TEXT,
-            route_updated_at TEXT,
-            removal_requested_at TEXT,
-            withdrawn_at TEXT,
-            challenge_seen_at TEXT,
-            activated_at TEXT,
-            activation_checked_at TEXT,
-            activation_error TEXT,
-            claim_mode TEXT NOT NULL DEFAULT 'direct',
-            mode_generation INTEGER NOT NULL DEFAULT 0,
-            automatic_mode INTEGER NOT NULL DEFAULT 0,
-            health_checked_at TEXT,
-            health_failure_count INTEGER NOT NULL DEFAULT 0,
-            common_failure_count INTEGER NOT NULL DEFAULT 0
-        )""")
-        conn.execute("""CREATE TABLE custom_domain_mode_transitions (
-            claim_id INTEGER PRIMARY KEY,
-            mode_generation INTEGER NOT NULL,
-            probe_generation INTEGER NOT NULL DEFAULT 0,
-            source_mode TEXT,
-            target_mode TEXT NOT NULL,
-            state TEXT NOT NULL,
-            started_at TEXT NOT NULL,
-            deadline_at TEXT,
-            checked_at TEXT,
-            completed_at TEXT,
-            answer_fingerprint TEXT,
-            stable_observation_count INTEGER NOT NULL DEFAULT 0,
-            first_target_observed_at TEXT,
-            last_target_observed_at TEXT,
-            observed_mode TEXT,
-            observed_ttl INTEGER,
-            error TEXT,
-            lease_owner TEXT,
-            lease_expires_at TEXT,
-            automatic_retarget INTEGER NOT NULL DEFAULT 0
-        )""")
-        conn.execute("""CREATE TABLE custom_domain_cloudflare_diagnostics (
-            claim_id INTEGER,
-            route_generation INTEGER,
-            mode_generation INTEGER,
-            probe_generation INTEGER
-        )""")
         conn.execute("""INSERT INTO custom_domain_claims
             (id, hostname, site_name, verification_token, status, created_at, expires_at,
              last_error)
@@ -295,14 +199,15 @@ class TestCustomDomains:
                'direct', NULL, NULL, NULL)""")
         conn.execute("""INSERT INTO custom_domain_mode_transitions
             (claim_id, mode_generation, source_mode, target_mode, state, started_at,
-             observed_mode, error)
+             deadline_at, observed_mode, error)
             VALUES
               (3, 0, NULL, 'cloudflare', 'observing',
-               '2026-07-16T01:00:00+00:00', 'direct', NULL),
+               '2026-07-16T01:00:00+00:00', NULL, 'direct', NULL),
               (4, 0, NULL, 'direct', 'failed',
-               '2026-07-16T01:00:00+00:00', 'direct', 'origin_unavailable'),
+               '2026-07-16T01:00:00+00:00', NULL, 'direct', 'origin_unavailable'),
               (6, 0, 'direct', 'cloudflare', 'observing',
-               '2026-07-16T01:00:00+00:00', 'cloudflare', NULL)""")
+               '2026-07-16T01:00:00+00:00', '2099-07-17T00:00:00+00:00',
+               'cloudflare', NULL)""")
         conn.commit()
         (tmp_path / "my-site").mkdir()
         monkeypatch.setattr("server.routes.dashboard.db", db)
