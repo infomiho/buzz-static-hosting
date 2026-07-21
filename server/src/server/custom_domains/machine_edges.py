@@ -10,6 +10,7 @@ table and those triggers agree on the active states.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -39,7 +40,7 @@ PRE_DEADLINE_STATE_ORDER: tuple[TransitionState, ...] = ACTIVE_STATE_ORDER[:3]
 ACTIVE_STATES: frozenset[str] = frozenset(state.value for state in ACTIVE_STATE_ORDER)
 
 
-def state_in(states, column: str = "state") -> str:
+def state_in(states: Iterable[TransitionState], column: str = "state") -> str:
     joined = ", ".join(f"'{state.value}'" for state in states)
     return f"{column} IN ({joined})"
 
@@ -84,7 +85,9 @@ def claim_routed_exists(*, route_generation: bool = True) -> str:
     )
 
 
-def reserved_transition_exists(*, extra: str = "", states=ACTIVE_STATE_ORDER) -> str:
+def reserved_transition_exists(
+    *, extra: str = "", states: Iterable[TransitionState] = ACTIVE_STATE_ORDER
+) -> str:
     """EXISTS gate proving a claim-row UPDATE still owns its reserved probe.
 
     ``extra`` carries any per-edge transition predicate (a source_mode match)
@@ -153,12 +156,16 @@ class Edge:
 
 _ROUTED = "claim_routed"
 _LEASE = "lease_held"
-_ACTIVATED = "claim_activated"
 _ONBOARDING = "claim_onboarding"
+_HANDOFF = "claim_handoff"
+_NOT_ACTIVATED = "claim_not_activated"
+_MATCHES_ACTIVATION = "activation_matches_source"
 _AUTOMATIC = "automatic_retarget"
 _STABLE = "stable_target"
 _CONFIRMED = "confirmed_answer"
+_DIAGNOSED = "cloudflare_diagnosed_for_cloudflare_target"
 _ALLOW_REMOVAL = "allow_removal"
+_DEADLINE_DUE = "deadline_due"
 
 EDGES: tuple[Edge, ...] = (
     Edge(
@@ -190,14 +197,14 @@ EDGES: tuple[Edge, ...] = (
         "complete",
         ACTIVE_STATE_ORDER,
         TransitionState.COMPLETED,
-        guards=(_ROUTED, _LEASE, _STABLE, _CONFIRMED),
+        guards=(_ROUTED, _LEASE, _STABLE, _CONFIRMED, _DIAGNOSED),
         clears_lease=True,
     ),
     Edge(
         "cancel",
         ACTIVE_STATE_ORDER,
         TransitionState.CANCELLED,
-        guards=(_ROUTED, _LEASE),
+        guards=(_ROUTED, _LEASE, _MATCHES_ACTIVATION),
         bumps_mode_generation=True,
         clears_lease=True,
     ),
@@ -212,7 +219,7 @@ EDGES: tuple[Edge, ...] = (
         "preserve_target",
         ACTIVE_STATE_ORDER,
         TransitionState.OBSERVING,
-        guards=(_ROUTED, _LEASE, _ONBOARDING),
+        guards=(_ROUTED, _LEASE, _HANDOFF, _NOT_ACTIVATED),
         bumps_mode_generation=True,
         clears_lease=True,
     ),
@@ -220,7 +227,7 @@ EDGES: tuple[Edge, ...] = (
         "retarget",
         PRE_DEADLINE_STATE_ORDER,
         TransitionState.OBSERVING,
-        guards=(_ROUTED, _LEASE, _ONBOARDING, _AUTOMATIC, _STABLE),
+        guards=(_ROUTED, _LEASE, _ONBOARDING, _NOT_ACTIVATED, _AUTOMATIC, _STABLE),
         bumps_mode_generation=True,
         clears_lease=True,
     ),
@@ -228,7 +235,7 @@ EDGES: tuple[Edge, ...] = (
         "enter_deadline_evaluation",
         PRE_DEADLINE_STATE_ORDER,
         TransitionState.DEADLINE_EVALUATION,
-        guards=(_ROUTED, _LEASE),
+        guards=(_ROUTED, _LEASE, _DEADLINE_DUE),
     ),
 )
 

@@ -107,6 +107,14 @@ function notFoundError(errors: ApiErrors): CliError | undefined {
     : errors.notFound;
 }
 
+async function httpError(response: Response, errors: ApiErrors): Promise<CliError> {
+  if (response.status === 404) {
+    const mapped = notFoundError(errors);
+    if (mapped) return mapped;
+  }
+  return failure(response, errors.fallback ?? "Unknown error");
+}
+
 export async function apiFetch(
   path: string,
   init: RequestInit = {},
@@ -162,14 +170,8 @@ export async function requestJson<T>(
   opts: ApiOptions = {}
 ): Promise<T> {
   const response = await apiFetch(path, init, opts);
-  const errors = opts.errors ?? {};
-
-  if (response.status === 404) {
-    const mapped = notFoundError(errors);
-    if (mapped) throw mapped;
-  }
   if (!response.ok) {
-    throw await failure(response, errors.fallback ?? "Unknown error");
+    throw await httpError(response, opts.errors ?? {});
   }
 
   const raw: unknown = await response.json();
@@ -180,21 +182,16 @@ export async function requestJson<T>(
   return value;
 }
 
-export async function requestEmpty(
+export async function requestEmpty<S extends number>(
   path: string,
-  okStatuses: number[],
+  okStatuses: readonly S[],
   init: RequestInit = {},
   opts: ApiOptions = {}
-): Promise<number> {
+): Promise<S> {
   const response = await apiFetch(path, init, opts);
-  if (okStatuses.includes(response.status)) {
-    return response.status;
+  const matched = okStatuses.find((status) => status === response.status);
+  if (matched !== undefined) {
+    return matched;
   }
-
-  const errors = opts.errors ?? {};
-  if (response.status === 404) {
-    const mapped = notFoundError(errors);
-    if (mapped) throw mapped;
-  }
-  throw await failure(response, errors.fallback ?? "Unknown error");
+  throw await httpError(response, opts.errors ?? {});
 }

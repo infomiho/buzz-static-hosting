@@ -1,4 +1,5 @@
 import dataclasses
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -6,6 +7,15 @@ from fastapi.testclient import TestClient
 from server.app import create_app
 from server.db import Database
 from server.settings import Settings
+
+
+@pytest.fixture(autouse=True)
+def scrub_environment(monkeypatch):
+    """Keep Settings.from_environment() deterministic: a developer's exported
+    BUZZ_* or GitHub OAuth variables must not leak into test settings."""
+    for name in list(os.environ):
+        if name.startswith("BUZZ_") or name.startswith("GITHUB_CLIENT"):
+            monkeypatch.delenv(name)
 
 
 @pytest.fixture

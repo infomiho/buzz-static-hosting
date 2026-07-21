@@ -152,13 +152,12 @@ export async function cancelDomainClaim(
   claimId: number,
   cliOptions: CliOptions = {}
 ): Promise<202 | 204> {
-  const status = await requestEmpty(
+  return requestEmpty(
     domainPath(siteName, `/${claimId}`),
-    [202, 204],
+    [202, 204] as const,
     { method: "DELETE" },
     { cliOptions, errors: { ...domainErrors, fallback: "Could not remove custom domain" } }
   );
-  return status as 202 | 204;
 }
 
 async function updateDomainTransition(
