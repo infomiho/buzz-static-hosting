@@ -25,6 +25,7 @@ from .probes import (
     probe_origin,
 )
 from .claims import DnsTxtResolver, DomainCheckUnavailable, DomainClaim
+from .observation import DnsObservation
 
 MAX_CNAME_DEPTH = 8
 PROBE_PHASE_SECONDS = 5
@@ -48,15 +49,6 @@ class AddressAnswer:
     @classmethod
     def cname(cls, target: str, ttl: int) -> AddressAnswer:
         return cls("cname", ttl=ttl, target=target.lower().rstrip("."))
-
-
-@dataclass(frozen=True)
-class DnsObservation:
-    mode: str
-    addresses: tuple[str, ...] = ()
-    ttl: int = 0
-    fingerprint: str | None = None
-    error: str | None = None
 
 
 def lookup_address_family(name: str, family: str) -> AddressAnswer:

@@ -17,6 +17,12 @@ from .claims import (
     DomainClaimStore,
 )
 from .evidence import DnsObservation, DomainPathEvidenceStore, EvidenceResult
+from .observation import (
+    STABLE_OBSERVATIONS_REQUIRED,
+    TrackedObservation,
+    advance,
+    parse_timestamp,
+)
 from .probes import MAX_CONCURRENT_CLAIM_CHECKS
 from .errors import ClaimConflict
 
@@ -322,56 +328,36 @@ class DomainClaimStateMachine:
         fingerprint: str | None,
         ttl: int,
         error: str | None = None,
-        release_lease: bool = True,
     ) -> bool:
         transition = self.get(claim_id)
         if not transition:
             return False
-        target_observed = observed_mode == transition.target_mode and fingerprint is not None
-        tracked_observation = target_observed or bool(
-            transition.automatic_retarget
-            and observed_mode in {"direct", "cloudflare"}
-            and fingerprint is not None
-        )
-        same_answer = bool(
-            tracked_observation
-            and observed_mode == transition.observed_mode
-            and fingerprint == transition.answer_fingerprint
-        )
         database_now = self._conn.execute(
             "SELECT strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
         ).fetchone()[0]
-        separated = False
-        if same_answer and transition.last_target_observed_at:
-            last_observed = datetime.fromisoformat(transition.last_target_observed_at)
-            if last_observed.tzinfo is None:
-                last_observed = last_observed.replace(tzinfo=timezone.utc)
-            separated = datetime.fromisoformat(database_now) - last_observed >= timedelta(
-                seconds=max(60, ttl, transition.max_target_ttl)
-            )
-        stable_increment = same_answer and separated
-        accepted_target_sample = tracked_observation and (
-            not same_answer or stable_increment
+        observation = DnsObservation(
+            observed_mode, ttl=ttl, fingerprint=fingerprint, error=error
         )
-        state = "validating" if target_observed else "observing"
+        tracked = TrackedObservation(
+            target_mode=transition.target_mode,
+            automatic_retarget=transition.automatic_retarget,
+            observed_mode=transition.observed_mode,
+            answer_fingerprint=transition.answer_fingerprint,
+            stable_observation_count=transition.stable_observation_count,
+            max_target_ttl=transition.max_target_ttl,
+            first_target_observed_at=transition.first_target_observed_at,
+            last_target_observed_at=transition.last_target_observed_at,
+        )
+        decision = advance(tracked, observation, parse_timestamp(database_now))
+        # Flat SET is safe only because the WHERE guard proves the row is
+        # unchanged since get(); a mismatched row updates zero rows and the
+        # decision is discarded, never retried.
         cursor = self._conn.execute(
             """UPDATE custom_domain_mode_transitions
             SET checked_at = ?, observed_mode = ?, observed_ttl = ?,
-                answer_fingerprint = CASE WHEN ? THEN ? ELSE answer_fingerprint END,
-                max_target_ttl = CASE
-                    WHEN ? AND ? THEN MAX(max_target_ttl, ?)
-                    WHEN ? THEN ? ELSE max_target_ttl END,
-                error = ?, state = ?,
-                stable_observation_count = CASE
-                    WHEN ? THEN stable_observation_count + 1
-                    WHEN ? THEN 1 ELSE stable_observation_count END,
-                first_target_observed_at = CASE
-                    WHEN ? AND ? THEN COALESCE(first_target_observed_at, ?)
-                    WHEN ? THEN ? ELSE first_target_observed_at END,
-                last_target_observed_at = CASE WHEN ? THEN ?
-                    ELSE last_target_observed_at END,
-                lease_owner = CASE WHEN ? THEN NULL ELSE lease_owner END,
-                lease_expires_at = CASE WHEN ? THEN NULL ELSE lease_expires_at END
+                answer_fingerprint = ?, max_target_ttl = ?, error = ?, state = ?,
+                stable_observation_count = ?,
+                first_target_observed_at = ?, last_target_observed_at = ?
             WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
               AND lease_owner = ? AND lease_expires_at > datetime('now')
               AND EXISTS (SELECT 1 FROM custom_domain_claims
@@ -382,26 +368,17 @@ class DomainClaimStateMachine:
                 database_now,
                 observed_mode,
                 ttl,
-                tracked_observation,
-                fingerprint,
-                tracked_observation,
-                same_answer,
-                ttl,
-                tracked_observation,
-                ttl,
+                fingerprint if decision.record_answer else transition.answer_fingerprint,
+                decision.max_target_ttl,
                 error,
-                state,
-                stable_increment,
-                tracked_observation,
-                tracked_observation,
-                same_answer,
-                database_now,
-                tracked_observation,
-                database_now,
-                accepted_target_sample,
-                database_now,
-                release_lease,
-                release_lease,
+                decision.state,
+                decision.stable_observation_count,
+                database_now
+                if decision.start_target_run
+                else transition.first_target_observed_at,
+                database_now
+                if decision.accept_target_sample
+                else transition.last_target_observed_at,
                 claim_id,
                 mode_generation,
                 probe_generation,
@@ -429,7 +406,6 @@ class DomainClaimStateMachine:
             observation.fingerprint,
             observation.ttl,
             observation.error,
-            release_lease=False,
         )
 
     def _set_action_needed(
@@ -485,11 +461,12 @@ class DomainClaimStateMachine:
         if not observation.fingerprint:
             return False
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET confirmed_fingerprint = ?, confirmed_at = CURRENT_TIMESTAMP
             WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
               AND target_mode = ? AND observed_mode = target_mode
-              AND answer_fingerprint = ? AND stable_observation_count >= 2
+              AND answer_fingerprint = ?
+              AND stable_observation_count >= {STABLE_OBSERVATIONS_REQUIRED}
               AND lease_owner = ? AND lease_expires_at > datetime('now')
               AND EXISTS (SELECT 1 FROM custom_domain_claims
                 WHERE id = ? AND route_generation = ? AND mode_generation = ?
@@ -1126,7 +1103,7 @@ class DomainClaimStateMachine:
             return False
         new_generation = reservation.mode_generation + 1
         cursor = self._conn.execute(
-            """UPDATE custom_domain_claims SET mode_generation = ?
+            f"""UPDATE custom_domain_claims SET mode_generation = ?
             WHERE id = ? AND route_generation = ? AND mode_generation = ?
               AND automatic_mode = 1 AND activated_at IS NULL
               AND status = 'verified' AND route_status = 'routed'
@@ -1136,7 +1113,8 @@ class DomainClaimStateMachine:
                   AND source_mode IS NULL AND target_mode <> ?
                   AND automatic_retarget = 1 AND observed_mode = ?
                   AND answer_fingerprint IS NOT NULL
-                  AND stable_observation_count >= 2 AND lease_owner = ?
+                  AND stable_observation_count >= {STABLE_OBSERVATIONS_REQUIRED}
+                  AND lease_owner = ?
                   AND lease_expires_at > datetime('now')
                   AND state IN ('observing', 'validating', 'action_needed'))""",
             (
@@ -1215,7 +1193,7 @@ class DomainClaimStateMachine:
         if not transition:
             return False
         cursor = self._conn.execute(
-            """UPDATE custom_domain_claims
+            f"""UPDATE custom_domain_claims
             SET claim_mode = ?, activated_at = COALESCE(activated_at, ?),
                 activation_checked_at = ?, activation_error = NULL,
                 health_checked_at = ?, health_failure_count = 0,
@@ -1230,7 +1208,7 @@ class DomainClaimStateMachine:
                   AND transition.answer_fingerprint IS NOT NULL
                   AND transition.confirmed_fingerprint = transition.answer_fingerprint
                   AND transition.confirmed_at IS NOT NULL
-                  AND transition.stable_observation_count >= 2
+                  AND transition.stable_observation_count >= {STABLE_OBSERVATIONS_REQUIRED}
                   AND transition.lease_owner = ?
                   AND transition.lease_expires_at > datetime('now')
                   AND transition.state IN
@@ -1595,7 +1573,7 @@ class DomainTransitionCoordinator:
                 recorded
                 and recorded.source_mode is None
                 and observation.mode != recorded.target_mode
-                and recorded.stable_observation_count >= 2
+                and recorded.stable_observation_count >= STABLE_OBSERVATIONS_REQUIRED
                 and (
                     observation.mode != "cloudflare"
                     or self._cloudflare_target_enabled()
@@ -1633,7 +1611,7 @@ class DomainTransitionCoordinator:
                     DomainClaimStateMachine(conn).release_reservation(reservation)
                 return
             target_healthy = bool(
-                recorded.stable_observation_count >= 2
+                recorded.stable_observation_count >= STABLE_OBSERVATIONS_REQUIRED
                 and observation.mode == recorded.target_mode
                 and observed_healthy
             )
@@ -1660,7 +1638,7 @@ class DomainTransitionCoordinator:
         if (
             not recorded
             or observation.mode != recorded.target_mode
-            or recorded.stable_observation_count < 2
+            or recorded.stable_observation_count < STABLE_OBSERVATIONS_REQUIRED
         ):
             if recorded:
                 with self._database() as conn:
