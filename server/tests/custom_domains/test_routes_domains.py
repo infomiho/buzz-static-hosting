@@ -1,11 +1,6 @@
-from contextlib import contextmanager
-
 import pytest
 from fastapi.testclient import TestClient
 
-from server import config
-from server import db as db_module
-from server.app import create_app
 from server.auth_service import Identity, User
 from server.dependencies import get_identity
 from server.custom_domains.claims import DomainClaimStore
@@ -37,37 +32,41 @@ class UnreadyControlPlane:
 
 
 @pytest.fixture
-def domain_api(tmp_path, monkeypatch):
-    path = tmp_path / "data.db"
-    monkeypatch.setattr(db_module, "DB_PATH", path)
-    monkeypatch.setattr(config, "DEV_MODE", True)
-    monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset({"8.8.8.8"}))
-    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_SITE", 5)
-    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_USER", 20)
-    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_SERVER_WIDE", 1000)
-    monkeypatch.setattr(config, "TRAEFIK_CONTROL_TOKEN", "configured")
-    monkeypatch.setattr(config, "DOMAIN", "buzz.example.com")
-    db_module.init_db()
-    with db_module.db() as conn:
+def domain_api(make_app, database):
+    with database.connect() as conn:
         conn.execute(
             "INSERT INTO users (id, github_id, github_login) VALUES (1, 1, 'dev'), (2, 2, 'other')"
         )
         conn.execute(
             "INSERT INTO sites (name, owner_id) VALUES ('my-site', 1), ('other-site', 2)"
         )
-    app = create_app()
-    app.state.custom_domains.control = ReadyControlPlane()
-    app.state.custom_domains.runtime_ready = True
-    app.state.custom_domains.range_state = type("RangeState", (), {"error": None})()
-    app.state.custom_domains.transition_coordinator = object()
-    resolver = FakeTxtResolver()
-    app.state.custom_domains.txt_resolver = resolver
-    return TestClient(app), resolver
+
+    def _make(**overrides):
+        settings = dict(
+            dev_mode=True,
+            custom_domains_enabled=True,
+            custom_domain_ingress_ips=frozenset({"8.8.8.8"}),
+            max_custom_domains_per_site=5,
+            max_custom_domains_per_user=20,
+            max_custom_domains_server_wide=1000,
+            traefik_control_token="configured",
+            domain="buzz.example.com",
+        )
+        settings.update(overrides)
+        app = make_app(**settings)
+        app.state.custom_domains.control = ReadyControlPlane()
+        app.state.custom_domains.runtime_ready = True
+        app.state.custom_domains.range_state = type("RangeState", (), {"error": None})()
+        app.state.custom_domains.transition_coordinator = object()
+        resolver = FakeTxtResolver()
+        app.state.custom_domains.txt_resolver = resolver
+        return TestClient(app, base_url="http://buzz.example.com"), resolver
+
+    return _make
 
 
 def test_domain_claim_lifecycle(domain_api):
-    client, resolver = domain_api
+    client, resolver = domain_api()
 
     created = client.post(
         "/sites/my-site/domains",
@@ -95,8 +94,8 @@ def test_domain_claim_lifecycle(domain_api):
     assert client.get("/sites/my-site/domains").json()[0]["status"] == "cancelled"
 
 
-def test_add_domain_requires_automatic_readiness(domain_api):
-    client, _ = domain_api
+def test_add_domain_requires_automatic_readiness(domain_api, database):
+    client, _ = domain_api()
     client.app.state.custom_domains.transition_coordinator = None
     unavailable = client.post(
         "/sites/my-site/domains", json={"hostname": "old.example.com"}
@@ -110,7 +109,7 @@ def test_add_domain_requires_automatic_readiness(domain_api):
     assert automatic.status_code == 201
     assert automatic.json()["mode"] == "direct"
     assert automatic.json()["connection_status"] == "waiting_for_dns"
-    with db_module.db() as conn:
+    with database.connect() as conn:
         rows = conn.execute(
             "SELECT hostname, automatic_mode FROM custom_domain_claims ORDER BY id"
         ).fetchall()
@@ -119,12 +118,9 @@ def test_add_domain_requires_automatic_readiness(domain_api):
     ]
 
 
-def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch):
-    client, _ = domain_api
-    monkeypatch.setattr(
-        config,
-        "CUSTOM_DOMAIN_INGRESS_IPS",
-        frozenset({"2001:4860:4860::8888", "8.8.8.8"}),
+def test_custom_domain_capability_reports_ready_targets(domain_api):
+    client, _ = domain_api(
+        custom_domain_ingress_ips=frozenset({"2001:4860:4860::8888", "8.8.8.8"})
     )
 
     response = client.get("/capabilities/custom-domains")
@@ -146,7 +142,7 @@ def test_custom_domain_capability_reports_ready_targets(domain_api, monkeypatch)
 
 
 def test_custom_domain_capability_reports_automatic_runtime_readiness(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     client.app.state.custom_domains.transition_coordinator = None
     unready = client.get("/capabilities/custom-domains").json()["automatic"]
     client.app.state.custom_domains.transition_coordinator = object()
@@ -160,7 +156,7 @@ def test_custom_domain_capability_reports_automatic_runtime_readiness(domain_api
 
 
 def test_automatic_readiness_is_independent_of_cloudflare(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     # Cloudflare unsupported (stale ranges) must not block automatic onboarding
     # of direct domains.
     client.app.state.custom_domains.range_state = type(
@@ -173,15 +169,13 @@ def test_automatic_readiness_is_independent_of_cloudflare(domain_api):
     assert capability["cloudflare"]["supported"] is False
 
 
-def test_custom_domain_capability_distinguishes_disabled_and_unready(
-    domain_api, monkeypatch
-):
-    client, _ = domain_api
-    monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", False)
-    disabled = client.get("/capabilities/custom-domains").json()
-    monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", True)
-    client.app.state.custom_domains.control = UnreadyControlPlane()
-    unready = client.get("/capabilities/custom-domains").json()
+def test_custom_domain_capability_distinguishes_disabled_and_unready(domain_api):
+    disabled_client, _ = domain_api(custom_domains_enabled=False)
+    disabled = disabled_client.get("/capabilities/custom-domains").json()
+
+    unready_client, _ = domain_api()
+    unready_client.app.state.custom_domains.control = UnreadyControlPlane()
+    unready = unready_client.get("/capabilities/custom-domains").json()
 
     assert disabled["status"] == "disabled"
     assert disabled["detail"] == "Custom domains are not enabled on this Buzz server"
@@ -189,11 +183,8 @@ def test_custom_domain_capability_distinguishes_disabled_and_unready(
     assert unready["detail"] == "Custom domain control plane is not ready"
 
 
-def test_cloudflare_capability_is_independent_of_direct_ingress(
-    domain_api, monkeypatch
-):
-    client, _ = domain_api
-    monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset())
+def test_cloudflare_capability_is_independent_of_direct_ingress(domain_api):
+    client, _ = domain_api(custom_domain_ingress_ips=frozenset())
 
     capability = client.get("/capabilities/custom-domains").json()
 
@@ -202,7 +193,7 @@ def test_cloudflare_capability_is_independent_of_direct_ingress(
 
 
 def test_cloudflare_capability_requires_diagnostic_runtime(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     client.app.state.custom_domains.runtime_ready = False
 
     capability = client.get("/capabilities/custom-domains").json()
@@ -214,26 +205,24 @@ def test_cloudflare_capability_requires_diagnostic_runtime(domain_api):
 
 
 def test_custom_domain_capability_rejects_deployment_tokens(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     identity = Identity(
         user=User(id=1, github_login="dev", github_name="Dev"),
         token_type="deploy",
         site_name="my-site",
     )
     client.app.dependency_overrides[get_identity] = lambda: identity
-    config.DEV_MODE = False
     try:
         response = client.get("/capabilities/custom-domains")
     finally:
         client.app.dependency_overrides.clear()
-        config.DEV_MODE = True
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Deploy tokens cannot perform this operation"
 
 
 def test_failed_txt_check_returns_actionable_state(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     created = client.post(
         "/sites/my-site/domains",
         json={"hostname": "www.example.com", "mode": "direct"},
@@ -251,7 +240,7 @@ def test_failed_txt_check_returns_actionable_state(domain_api):
 
 
 def test_multiple_aliases_can_be_created_and_removed_independently(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     first = client.post(
         "/sites/my-site/domains", json={"hostname": "one.example.com", "mode": "direct"}
     ).json()
@@ -269,9 +258,8 @@ def test_multiple_aliases_can_be_created_and_removed_independently(domain_api):
     }
 
 
-def test_domain_quota_returns_actionable_response(domain_api, monkeypatch):
-    client, _ = domain_api
-    monkeypatch.setattr(config, "MAX_CUSTOM_DOMAINS_PER_SITE", 1)
+def test_domain_quota_returns_actionable_response(domain_api):
+    client, _ = domain_api(max_custom_domains_per_site=1)
     client.post("/sites/my-site/domains", json={"hostname": "one.example.com", "mode": "direct"})
 
     response = client.post(
@@ -286,7 +274,7 @@ def test_domain_quota_returns_actionable_response(domain_api, monkeypatch):
 
 
 def test_domain_admission_requires_live_control_plane_readiness(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     client.app.state.custom_domains.control = UnreadyControlPlane()
 
     response = client.post(
@@ -298,11 +286,8 @@ def test_domain_admission_requires_live_control_plane_readiness(domain_api):
     assert response.json()["detail"] == "Custom domain control plane is not ready"
 
 
-def test_domain_admission_requires_production_routing_configuration(
-    domain_api, monkeypatch
-):
-    client, _ = domain_api
-    monkeypatch.setattr(config, "CUSTOM_DOMAIN_INGRESS_IPS", frozenset())
+def test_domain_admission_requires_production_routing_configuration(domain_api):
+    client, _ = domain_api(custom_domain_ingress_ips=frozenset())
 
     response = client.post(
         "/sites/my-site/domains",
@@ -314,7 +299,7 @@ def test_domain_admission_requires_production_routing_configuration(
 
 
 def test_domain_claim_requires_site_ownership(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
 
     response = client.post(
         "/sites/other-site/domains",
@@ -325,29 +310,24 @@ def test_domain_claim_requires_site_ownership(domain_api):
 
 
 def test_domain_claim_rejects_deployment_token(domain_api):
-    client, _ = domain_api
+    client, _ = domain_api()
     identity = Identity(
         user=User(id=1, github_login="dev", github_name="Dev"),
         token_type="deploy",
         site_name="my-site",
     )
     client.app.dependency_overrides[get_identity] = lambda: identity
-    config.DEV_MODE = False
     try:
         response = client.get("/sites/my-site/domains")
     finally:
         client.app.dependency_overrides.clear()
-        config.DEV_MODE = True
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Deploy tokens cannot perform this operation"
 
 
-def test_existing_domain_claims_remain_available_when_operator_disables_them(
-    domain_api, monkeypatch
-):
-    client, _ = domain_api
-    monkeypatch.setattr(config, "CUSTOM_DOMAINS_ENABLED", False)
+def test_existing_domain_claims_remain_available_when_operator_disables_them(domain_api):
+    client, _ = domain_api(custom_domains_enabled=False)
 
     response = client.get("/sites/my-site/domains")
 
@@ -361,15 +341,15 @@ def test_existing_domain_claims_remain_available_when_operator_disables_them(
     assert create_response.json()["detail"] == "Custom domains are not enabled on this Buzz server"
 
 
-def test_routed_domain_removal_waits_for_traefik_withdrawal(domain_api):
-    client, resolver = domain_api
+def test_routed_domain_removal_waits_for_traefik_withdrawal(domain_api, database):
+    client, resolver = domain_api()
     created = client.post(
         "/sites/my-site/domains",
         json={"hostname": "www.example.com", "mode": "direct"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
-    with db_module.db() as conn:
+    with database.connect() as conn:
         conn.execute(
             """UPDATE custom_domain_claims
             SET route_status = 'routed', route_generation = 1,
@@ -385,15 +365,15 @@ def test_routed_domain_removal_waits_for_traefik_withdrawal(domain_api):
     assert claim["route_status"] == "removing"
 
 
-def test_transition_cancel_endpoint_retains_valid_effective_mode(domain_api):
-    client, resolver = domain_api
+def test_transition_cancel_endpoint_retains_valid_effective_mode(domain_api, database):
+    client, resolver = domain_api()
     created = client.post(
         "/sites/my-site/domains",
         json={"hostname": "www.example.com", "mode": "direct"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
-    with db_module.db() as conn:
+    with database.connect() as conn:
         claims = DomainClaimStore(conn)
         claim = claims.prepare_routes(True)[0]
         claims.mark_routed(claim.id, claim.route_generation)
@@ -442,7 +422,7 @@ def test_transition_cancel_endpoint_retains_valid_effective_mode(domain_api):
         diagnostic_recorder,
         admission_enabled=lambda: False,
         cloudflare_target_enabled=lambda: False,
-        database=db_module.db,
+        database=database.connect,
     )
 
     response = client.post(
@@ -455,15 +435,15 @@ def test_transition_cancel_endpoint_retains_valid_effective_mode(domain_api):
     assert response.json()["transition_error"] is None
 
 
-def test_api_does_not_report_stale_activated_claim_as_connected(domain_api):
-    client, resolver = domain_api
+def test_api_does_not_report_stale_activated_claim_as_connected(domain_api, database):
+    client, resolver = domain_api()
     created = client.post(
         "/sites/my-site/domains",
         json={"hostname": "stale.example.com", "mode": "direct"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
-    with db_module.db() as conn:
+    with database.connect() as conn:
         claims = DomainClaimStore(conn)
         claim = claims.prepare_routes(True)[0]
         claims.mark_routed(claim.id, claim.route_generation)
@@ -481,15 +461,15 @@ def test_api_does_not_report_stale_activated_claim_as_connected(domain_api):
     assert response["effective_mode"] is None
 
 
-def test_api_does_not_report_withdrawn_claim_as_connected(domain_api):
-    client, resolver = domain_api
+def test_api_does_not_report_withdrawn_claim_as_connected(domain_api, database):
+    client, resolver = domain_api()
     created = client.post(
         "/sites/my-site/domains",
         json={"hostname": "withdrawn.example.com", "mode": "direct"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
-    with db_module.db() as conn:
+    with database.connect() as conn:
         claims = DomainClaimStore(conn)
         claim = claims.prepare_routes(True)[0]
         claims.mark_routed(claim.id, claim.route_generation)
@@ -510,15 +490,15 @@ def test_api_does_not_report_withdrawn_claim_as_connected(domain_api):
     assert response["effective_mode"] is None
 
 
-def test_completed_transition_does_not_project_historical_paths(domain_api):
-    client, resolver = domain_api
+def test_completed_transition_does_not_project_historical_paths(domain_api, database):
+    client, resolver = domain_api()
     created = client.post(
         "/sites/my-site/domains",
         json={"hostname": "complete.example.com", "mode": "direct"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
-    with db_module.db() as conn:
+    with database.connect() as conn:
         claims = DomainClaimStore(conn)
         claim = claims.prepare_routes(True)[0]
         claims.mark_routed(claim.id, claim.route_generation)
@@ -550,15 +530,15 @@ def test_completed_transition_does_not_project_historical_paths(domain_api):
     assert response["transition_started_at"] is None
 
 
-def test_verified_ownership_check_returns_current_transition_and_diagnostic(domain_api):
-    client, resolver = domain_api
+def test_verified_ownership_check_returns_current_transition_and_diagnostic(domain_api, database):
+    client, resolver = domain_api()
     created = client.post(
         "/sites/my-site/domains",
         json={"hostname": "proxy.example.com"},
     ).json()
     resolver.values = (created["verification"]["value"],)
     client.post(f"/sites/my-site/domains/{created['id']}/check")
-    with db_module.db() as conn:
+    with database.connect() as conn:
         claims = DomainClaimStore(conn)
         claim = claims.prepare_routes(True)[0]
         claims.mark_routed(claim.id, claim.route_generation)

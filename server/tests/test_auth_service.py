@@ -1,7 +1,5 @@
 import hashlib
 import secrets
-import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import pytest
@@ -14,61 +12,6 @@ from server.auth_service import (
 from server.github import FakeGitHubClient
 
 
-SCHEMA = """
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    github_id INTEGER UNIQUE NOT NULL,
-    github_login TEXT NOT NULL,
-    github_name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE sessions (
-    id TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE deployment_tokens (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    site_name TEXT NOT NULL,
-    user_id INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME,
-    last_used_at DATETIME,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE sites (
-    name TEXT PRIMARY KEY,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    size_bytes INTEGER,
-    owner_id INTEGER
-);
-"""
-
-_test_conn: sqlite3.Connection | None = None
-
-
-def make_test_db():
-    global _test_conn
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    _test_conn = conn
-
-    @contextmanager
-    def db():
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-
-    return db
-
-
 def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -78,7 +21,6 @@ def _insert_user(conn, github_id=42, login="alice", name="Alice") -> int:
         "INSERT INTO users (github_id, github_login, github_name) VALUES (?, ?, ?)",
         (github_id, login, name),
     )
-    conn.commit()
     return cursor.lastrowid
 
 
@@ -87,7 +29,13 @@ def _insert_session(conn, token: str, user_id: int, expires_at: datetime) -> Non
         "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)",
         (_hash(token), user_id, expires_at.isoformat()),
     )
-    conn.commit()
+
+
+def _insert_site(conn, name: str, owner_id: int) -> None:
+    conn.execute(
+        "INSERT INTO sites (name, owner_id, size_bytes) VALUES (?, ?, ?)",
+        (name, owner_id, 1024),
+    )
 
 
 def _insert_deploy_token(conn, token: str, user_id: int, site_name: str, expires_at=None) -> None:
@@ -95,17 +43,16 @@ def _insert_deploy_token(conn, token: str, user_id: int, site_name: str, expires
         "INSERT INTO deployment_tokens (id, name, site_name, user_id, expires_at) VALUES (?, ?, ?, ?, ?)",
         (_hash(token), "test token", site_name, user_id, expires_at.isoformat() if expires_at else None),
     )
-    conn.commit()
 
 
 class TestAuthenticate:
-    def test_valid_session_token(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_valid_session_token(self, database):
         token = "buzz_sess_" + secrets.token_urlsafe(32)
-        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_session(conn, token, user_id, datetime.now() + timedelta(days=30))
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         identity = auth.authenticate(f"Bearer {token}")
 
         assert identity is not None
@@ -114,22 +61,23 @@ class TestAuthenticate:
         assert identity.token_type == "session"
         assert identity.site_name is None
 
-    def test_expired_session_returns_none(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_expired_session_returns_none(self, database):
         token = "buzz_sess_" + secrets.token_urlsafe(32)
-        _insert_session(_test_conn, token, user_id, datetime.now() - timedelta(days=1))
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_session(conn, token, user_id, datetime.now() - timedelta(days=1))
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         assert auth.authenticate(f"Bearer {token}") is None
 
-    def test_valid_deploy_token(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_valid_deploy_token(self, database):
         token = "buzz_deploy_" + secrets.token_urlsafe(32)
-        _insert_deploy_token(_test_conn, token, user_id, "my-site")
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
+            _insert_deploy_token(conn, token, user_id, "my-site")
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         identity = auth.authenticate(f"Bearer {token}")
 
         assert identity is not None
@@ -137,43 +85,43 @@ class TestAuthenticate:
         assert identity.token_type == "deploy"
         assert identity.site_name == "my-site"
 
-    def test_expired_deploy_token_returns_none(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_expired_deploy_token_returns_none(self, database):
         token = "buzz_deploy_" + secrets.token_urlsafe(32)
-        _insert_deploy_token(_test_conn, token, user_id, "my-site", expires_at=datetime.now() - timedelta(days=1))
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
+            _insert_deploy_token(conn, token, user_id, "my-site", expires_at=datetime.now() - timedelta(days=1))
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         assert auth.authenticate(f"Bearer {token}") is None
 
-    def test_deploy_token_updates_last_used(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_deploy_token_updates_last_used(self, database):
         token = "buzz_deploy_" + secrets.token_urlsafe(32)
-        _insert_deploy_token(_test_conn, token, user_id, "my-site")
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
+            _insert_deploy_token(conn, token, user_id, "my-site")
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         auth.authenticate(f"Bearer {token}")
 
-        row = _test_conn.execute(
-            "SELECT last_used_at FROM deployment_tokens WHERE id = ?", (_hash(token),)
-        ).fetchone()
+        with database.connect() as conn:
+            row = conn.execute(
+                "SELECT last_used_at FROM deployment_tokens WHERE id = ?", (_hash(token),)
+            ).fetchone()
         assert row["last_used_at"] is not None
 
-    def test_no_token_returns_none(self):
-        db = make_test_db()
-        auth = AuthService(db=db)
+    def test_no_token_returns_none(self, database):
+        auth = AuthService(db=database.connect)
         assert auth.authenticate(None) is None
         assert auth.authenticate("") is None
 
-    def test_unknown_prefix_returns_none(self):
-        db = make_test_db()
-        auth = AuthService(db=db)
+    def test_unknown_prefix_returns_none(self, database):
+        auth = AuthService(db=database.connect)
         assert auth.authenticate("Bearer unknown_prefix_abc123") is None
 
-    def test_bearer_only_returns_none(self):
-        db = make_test_db()
-        auth = AuthService(db=db)
+    def test_bearer_only_returns_none(self, database):
+        auth = AuthService(db=database.connect)
         assert auth.authenticate("Bearer ") is None
 
 
@@ -204,15 +152,14 @@ class TestCanDeployTo:
 
 
 class TestDeviceFlow:
-    def _make_auth(self, db, **github_overrides):
+    def _make_auth(self, connect, **github_overrides):
         github = FakeGitHubClient()
         for k, v in github_overrides.items():
             setattr(github, k, v)
-        return AuthService(db=db, github=github, github_client_id="test-client-id")
+        return AuthService(db=connect, github=github, github_client_id="test-client-id")
 
-    def test_full_login_flow(self):
-        db = make_test_db()
-        auth = self._make_auth(db)
+    def test_full_login_flow(self, database):
+        auth = self._make_auth(database.connect)
 
         start = auth.start_device_flow()
         assert "device_code" in start
@@ -227,51 +174,46 @@ class TestDeviceFlow:
         assert identity is not None
         assert identity.user.github_login == "alice"
 
-    def test_poll_pending(self):
-        db = make_test_db()
-        auth = self._make_auth(db, poll_response={"error": "authorization_pending"})
+    def test_poll_pending(self, database):
+        auth = self._make_auth(database.connect, poll_response={"error": "authorization_pending"})
 
         start = auth.start_device_flow()
         with pytest.raises(DeviceFlowPending):
             auth.poll_device_flow(start["device_code"])
 
-    def test_poll_slow_down(self):
-        db = make_test_db()
-        auth = self._make_auth(db, poll_response={"error": "slow_down", "interval": 10})
+    def test_poll_slow_down(self, database):
+        auth = self._make_auth(database.connect, poll_response={"error": "slow_down", "interval": 10})
 
         start = auth.start_device_flow()
         with pytest.raises(DeviceFlowSlowDown) as exc_info:
             auth.poll_device_flow(start["device_code"])
         assert exc_info.value.interval == 10
 
-    def test_poll_expired(self):
-        db = make_test_db()
-        auth = self._make_auth(db, poll_response={"error": "expired_token"})
+    def test_poll_expired(self, database):
+        auth = self._make_auth(database.connect, poll_response={"error": "expired_token"})
 
         start = auth.start_device_flow()
         with pytest.raises(DeviceFlowExpired):
             auth.poll_device_flow(start["device_code"])
 
-    def test_poll_denied(self):
-        db = make_test_db()
-        auth = self._make_auth(db, poll_response={"error": "access_denied"})
+    def test_poll_denied(self, database):
+        auth = self._make_auth(database.connect, poll_response={"error": "access_denied"})
 
         start = auth.start_device_flow()
         with pytest.raises(DeviceFlowDenied):
             auth.poll_device_flow(start["device_code"])
 
-    def test_poll_unknown_device_code(self):
-        db = make_test_db()
-        auth = self._make_auth(db)
+    def test_poll_unknown_device_code(self, database):
+        auth = self._make_auth(database.connect)
 
         with pytest.raises(DeviceFlowExpired):
             auth.poll_device_flow("nonexistent")
 
-    def test_upserts_existing_user(self):
-        db = make_test_db()
-        _insert_user(_test_conn, github_id=42, login="old_login", name="Old Name")
+    def test_upserts_existing_user(self, database):
+        with database.connect() as conn:
+            _insert_user(conn, github_id=42, login="old_login", name="Old Name")
 
-        auth = self._make_auth(db, user={"id": 42, "login": "new_login", "name": "New Name"})
+        auth = self._make_auth(database.connect, user={"id": 42, "login": "new_login", "name": "New Name"})
 
         start = auth.start_device_flow()
         result = auth.poll_device_flow(start["device_code"])
@@ -279,63 +221,54 @@ class TestDeviceFlow:
         assert result.user.github_login == "new_login"
         assert result.user.github_name == "New Name"
 
-        row = _test_conn.execute("SELECT github_login FROM users WHERE github_id = 42").fetchone()
+        with database.connect() as conn:
+            row = conn.execute("SELECT github_login FROM users WHERE github_id = 42").fetchone()
         assert row["github_login"] == "new_login"
 
-    def test_creates_new_user(self):
-        db = make_test_db()
-        auth = self._make_auth(db, user={"id": 99, "login": "newuser", "name": "New"})
+    def test_creates_new_user(self, database):
+        auth = self._make_auth(database.connect, user={"id": 99, "login": "newuser", "name": "New"})
 
         start = auth.start_device_flow()
         result = auth.poll_device_flow(start["device_code"])
 
         assert result.user.github_login == "newuser"
 
-        row = _test_conn.execute("SELECT id FROM users WHERE github_id = 99").fetchone()
+        with database.connect() as conn:
+            row = conn.execute("SELECT id FROM users WHERE github_id = 99").fetchone()
         assert row is not None
 
 
-def _insert_site(conn, name: str, owner_id: int) -> None:
-    conn.execute(
-        "INSERT INTO sites (name, owner_id, size_bytes) VALUES (?, ?, ?)",
-        (name, owner_id, 1024),
-    )
-    conn.commit()
-
-
 class TestLogout:
-    def test_logout_invalidates_session(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_logout_invalidates_session(self, database):
         token = "buzz_sess_" + secrets.token_urlsafe(32)
-        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_session(conn, token, user_id, datetime.now() + timedelta(days=30))
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         assert auth.authenticate(f"Bearer {token}") is not None
 
         auth.logout(f"Bearer {token}")
         assert auth.authenticate(f"Bearer {token}") is None
 
-    def test_logout_invalid_token_raises(self):
-        db = make_test_db()
-        auth = AuthService(db=db)
+    def test_logout_invalid_token_raises(self, database):
+        auth = AuthService(db=database.connect)
         with pytest.raises(InvalidSession):
             auth.logout("Bearer buzz_deploy_abc")
 
-    def test_logout_empty_raises(self):
-        db = make_test_db()
-        auth = AuthService(db=db)
+    def test_logout_empty_raises(self, database):
+        auth = AuthService(db=database.connect)
         with pytest.raises(InvalidSession):
             auth.logout("")
 
 
 class TestDeployTokenCrud:
-    def test_create_and_list(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
-        _insert_site(_test_conn, "my-site", user_id)
+    def test_create_and_list(self, database):
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         created = auth.create_deploy_token(user_id, "my-site", "CI deploy")
 
         assert created.raw_token.startswith("buzz_deploy_")
@@ -347,50 +280,50 @@ class TestDeployTokenCrud:
         assert tokens[0].site_name == "my-site"
         assert tokens[0].name == "CI deploy"
 
-    def test_create_site_not_found(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
-        auth = AuthService(db=db)
+    def test_create_site_not_found(self, database):
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+        auth = AuthService(db=database.connect)
 
         with pytest.raises(SiteNotFound):
             auth.create_deploy_token(user_id, "nonexistent", "token")
 
-    def test_create_not_owner(self):
-        db = make_test_db()
-        owner_id = _insert_user(_test_conn, github_id=1, login="owner")
-        other_id = _insert_user(_test_conn, github_id=2, login="other")
-        _insert_site(_test_conn, "my-site", owner_id)
+    def test_create_not_owner(self, database):
+        with database.connect() as conn:
+            owner_id = _insert_user(conn, github_id=1, login="owner")
+            other_id = _insert_user(conn, github_id=2, login="other")
+            _insert_site(conn, "my-site", owner_id)
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         with pytest.raises(NotSiteOwner):
             auth.create_deploy_token(other_id, "my-site", "token")
 
-    def test_delete(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
-        _insert_site(_test_conn, "my-site", user_id)
+    def test_delete(self, database):
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         created = auth.create_deploy_token(user_id, "my-site")
         assert len(auth.list_deploy_tokens(user_id)) == 1
 
         auth.delete_deploy_token(user_id, created.id_prefix)
         assert len(auth.list_deploy_tokens(user_id)) == 0
 
-    def test_delete_not_found(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
-        auth = AuthService(db=db)
+    def test_delete_not_found(self, database):
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+        auth = AuthService(db=database.connect)
 
         with pytest.raises(TokenNotFound):
             auth.delete_deploy_token(user_id, "nonexistent")
 
-    def test_created_token_authenticates(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
-        _insert_site(_test_conn, "my-site", user_id)
+    def test_created_token_authenticates(self, database):
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
 
-        auth = AuthService(db=db)
+        auth = AuthService(db=database.connect)
         created = auth.create_deploy_token(user_id, "my-site")
 
         identity = auth.authenticate(f"Bearer {created.raw_token}")
@@ -400,12 +333,12 @@ class TestDeployTokenCrud:
 
 
 class TestAccessControl:
-    def _make_auth(self, db, allow_registration=True, allowed_github_users=None, **github_overrides):
+    def _make_auth(self, connect, allow_registration=True, allowed_github_users=None, **github_overrides):
         github = FakeGitHubClient()
         for k, v in github_overrides.items():
             setattr(github, k, v)
         return AuthService(
-            db=db,
+            db=connect,
             github=github,
             github_client_id="test-client-id",
             allow_registration=allow_registration,
@@ -416,48 +349,46 @@ class TestAccessControl:
         start = auth.start_device_flow()
         return auth.poll_device_flow(start["device_code"])
 
-    def test_registration_off_keeps_existing_user(self):
-        db = make_test_db()
-        _insert_user(_test_conn)
+    def test_registration_off_keeps_existing_user(self, database):
+        with database.connect() as conn:
+            _insert_user(conn)
 
-        auth = self._make_auth(db, allow_registration=False)
+        auth = self._make_auth(database.connect, allow_registration=False)
         result = self._login(auth)
 
         assert result.user.github_login == "alice"
 
-    def test_registration_off_denies_new_user(self):
-        db = make_test_db()
-        auth = self._make_auth(db, allow_registration=False)
+    def test_registration_off_denies_new_user(self, database):
+        auth = self._make_auth(database.connect, allow_registration=False)
 
         with pytest.raises(AccessDenied):
             self._login(auth)
 
-        count = _test_conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        with database.connect() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         assert count == 0
 
-    def test_allowlist_wins_over_disabled_registration(self):
-        db = make_test_db()
+    def test_allowlist_wins_over_disabled_registration(self, database):
         auth = self._make_auth(
-            db, allow_registration=False, allowed_github_users=frozenset({"alice"})
+            database.connect, allow_registration=False, allowed_github_users=frozenset({"alice"})
         )
 
         result = self._login(auth)
 
         assert result.user.github_login == "alice"
-        count = _test_conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        with database.connect() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         assert count == 1
 
-    def test_allowlist_denies_unlisted_new_user(self):
-        db = make_test_db()
-        auth = self._make_auth(db, allowed_github_users=frozenset({"bob"}))
+    def test_allowlist_denies_unlisted_new_user(self, database):
+        auth = self._make_auth(database.connect, allowed_github_users=frozenset({"bob"}))
 
         with pytest.raises(AccessDenied):
             self._login(auth)
 
-    def test_allowlist_matches_case_insensitively(self):
-        db = make_test_db()
+    def test_allowlist_matches_case_insensitively(self, database):
         auth = self._make_auth(
-            db,
+            database.connect,
             allowed_github_users=frozenset({"alice"}),
             user={"id": 42, "login": "AlIcE", "name": "Alice"},
         )
@@ -466,54 +397,54 @@ class TestAccessControl:
 
         assert result.user.github_login == "AlIcE"
 
-    def test_allowlist_revokes_existing_session(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_allowlist_revokes_existing_session(self, database):
         token = "buzz_sess_" + secrets.token_urlsafe(32)
-        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_session(conn, token, user_id, datetime.now() + timedelta(days=30))
 
-        auth = AuthService(db=db, allowed_github_users=frozenset({"bob"}))
+        auth = AuthService(db=database.connect, allowed_github_users=frozenset({"bob"}))
 
         with pytest.raises(AccessDenied):
             auth.authenticate(f"Bearer {token}")
 
-    def test_allowlist_revokes_existing_deploy_token(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_allowlist_revokes_existing_deploy_token(self, database):
         token = "buzz_deploy_" + secrets.token_urlsafe(32)
-        _insert_deploy_token(_test_conn, token, user_id, "my-site")
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
+            _insert_deploy_token(conn, token, user_id, "my-site")
 
-        auth = AuthService(db=db, allowed_github_users=frozenset({"bob"}))
+        auth = AuthService(db=database.connect, allowed_github_users=frozenset({"bob"}))
 
         with pytest.raises(AccessDenied):
             auth.authenticate(f"Bearer {token}")
 
-    def test_allowlist_keeps_listed_existing_user(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_allowlist_keeps_listed_existing_user(self, database):
         token = "buzz_sess_" + secrets.token_urlsafe(32)
-        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_session(conn, token, user_id, datetime.now() + timedelta(days=30))
 
-        auth = AuthService(db=db, allowed_github_users=frozenset({"alice"}))
+        auth = AuthService(db=database.connect, allowed_github_users=frozenset({"alice"}))
         identity = auth.authenticate(f"Bearer {token}")
 
         assert identity is not None
         assert identity.user.id == user_id
 
-    def test_registration_toggle_does_not_revoke_sessions(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_registration_toggle_does_not_revoke_sessions(self, database):
         token = "buzz_sess_" + secrets.token_urlsafe(32)
-        _insert_session(_test_conn, token, user_id, datetime.now() + timedelta(days=30))
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_session(conn, token, user_id, datetime.now() + timedelta(days=30))
 
-        auth = AuthService(db=db, allow_registration=False)
+        auth = AuthService(db=database.connect, allow_registration=False)
         identity = auth.authenticate(f"Bearer {token}")
 
         assert identity is not None
 
-    def test_denied_login_consumes_device_code(self):
-        db = make_test_db()
-        auth = self._make_auth(db, allow_registration=False)
+    def test_denied_login_consumes_device_code(self, database):
+        auth = self._make_auth(database.connect, allow_registration=False)
         start = auth.start_device_flow()
 
         with pytest.raises(AccessDenied):
@@ -522,18 +453,20 @@ class TestAccessControl:
         with pytest.raises(DeviceFlowExpired):
             auth.poll_device_flow(start["device_code"])
 
-    def test_revoked_deploy_token_does_not_update_last_used(self):
-        db = make_test_db()
-        user_id = _insert_user(_test_conn)
+    def test_revoked_deploy_token_does_not_update_last_used(self, database):
         token = "buzz_deploy_" + secrets.token_urlsafe(32)
-        _insert_deploy_token(_test_conn, token, user_id, "my-site")
+        with database.connect() as conn:
+            user_id = _insert_user(conn)
+            _insert_site(conn, "my-site", user_id)
+            _insert_deploy_token(conn, token, user_id, "my-site")
 
-        auth = AuthService(db=db, allowed_github_users=frozenset({"bob"}))
+        auth = AuthService(db=database.connect, allowed_github_users=frozenset({"bob"}))
 
         with pytest.raises(AccessDenied):
             auth.authenticate(f"Bearer {token}")
 
-        row = _test_conn.execute(
-            "SELECT last_used_at FROM deployment_tokens WHERE id = ?", (_hash(token),)
-        ).fetchone()
+        with database.connect() as conn:
+            row = conn.execute(
+                "SELECT last_used_at FROM deployment_tokens WHERE id = ?", (_hash(token),)
+            ).fetchone()
         assert row["last_used_at"] is None

@@ -3,9 +3,10 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from . import config
 from .auth_service import AccessDenied, AuthService, Identity, User
 from .cookies import COOKIE_NAME
+from .db import Database
+from .settings import Settings
 
 bearer_scheme = HTTPBearer(
     auto_error=False,
@@ -25,6 +26,14 @@ def document_bearer_token(
     pass
 
 
+def get_settings(request: Request) -> Settings:
+    return request.app.state.settings
+
+
+def get_database(request: Request) -> Database:
+    return request.app.state.database
+
+
 def get_auth_service(request: Request) -> AuthService:
     return request.app.state.auth_service
 
@@ -32,12 +41,13 @@ def get_auth_service(request: Request) -> AuthService:
 def get_identity(
     request: Request,
     auth: Annotated[AuthService, Depends(get_auth_service)],
+    settings: Annotated[Settings, Depends(get_settings)],
     _credentials: Annotated[
         HTTPAuthorizationCredentials | None, Security(bearer_scheme)
     ],
     authorization: str | None = Header(default=None, include_in_schema=False),
 ) -> Identity | None:
-    if config.DEV_MODE:
+    if settings.dev_mode:
         return Identity(user=User(id=1, github_login="dev", github_name="Dev User"), token_type="session")
 
     if authorization:
@@ -68,19 +78,6 @@ def require_identity(identity: Annotated[Identity | None, Depends(get_identity)]
 
 
 def require_custom_domain_control_ready(request: Request) -> None:
-    if not config.CUSTOM_DOMAINS_ENABLED:
-        raise HTTPException(
-            status_code=503,
-            detail="Custom domains are not enabled on this Buzz server",
-        )
-    control = request.app.state.custom_domains.control
-    if not config.TRAEFIK_CONTROL_TOKEN or control is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Custom domains are enabled but the control plane is not configured",
-        )
-    if not control.is_ready():
-        raise HTTPException(
-            status_code=503,
-            detail="Custom domain control plane is not ready",
-        )
+    capability = request.app.state.custom_domains.capabilities()
+    if not capability.control_ready:
+        raise HTTPException(status_code=503, detail=capability.detail)

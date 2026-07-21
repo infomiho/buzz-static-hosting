@@ -6,12 +6,12 @@ from starlette.datastructures import UploadFile
 
 from ..analytics import AnalyticsStore
 from ..api_models import DeploymentResponse, ErrorResponse, SiteResponse
-from ..config import DOMAIN, MAX_ARCHIVE_BYTES, SITES_DIR
-from ..db import db
-from ..dependencies import Identity, require_user, require_identity
+from ..db import Database
+from ..dependencies import Identity, get_database, get_settings, require_user, require_identity
 from ..exceptions import BadRequest, Forbidden, PayloadTooLarge
+from ..settings import Settings
 from ..site_path import InvalidSubdomain, validated_subdomain
-from ..site_store import SiteRecord, SiteStore
+from ..site_store import DeploymentLimits, SiteRecord, SiteStore
 from ..utils import generate_subdomain
 
 router = APIRouter()
@@ -30,14 +30,26 @@ def build_site_url(subdomain: str, domain: str | None, fallback_port: int) -> st
     return f"http://{subdomain}.localhost:{fallback_port}"
 
 
-def _deploy_site(subdomain: str, archive: BinaryIO, owner_id: int) -> SiteRecord:
-    with db() as conn:
-        return SiteStore(conn, SITES_DIR).deploy(subdomain, archive, owner_id)
+def _deployment_limits(settings: Settings) -> DeploymentLimits:
+    return DeploymentLimits(
+        max_archive_bytes=settings.max_archive_bytes,
+        max_site_bytes=settings.max_site_bytes,
+        max_entries=settings.max_site_files,
+        max_path_bytes=settings.max_archive_path_bytes,
+    )
 
 
-def _delete_site(name: str, owner_id: int) -> None:
-    with db() as conn:
-        SiteStore(conn, SITES_DIR).delete(name, owner_id)
+def _deploy_site(
+    database: Database, settings: Settings, subdomain: str, archive: BinaryIO, owner_id: int
+) -> SiteRecord:
+    with database.connect() as conn:
+        store = SiteStore(conn, settings.sites_dir, _deployment_limits(settings))
+        return store.deploy(subdomain, archive, owner_id)
+
+
+def _delete_site(database: Database, settings: Settings, name: str, owner_id: int) -> None:
+    with database.connect() as conn:
+        SiteStore(conn, settings.sites_dir).delete(name, owner_id)
 
 
 @router.post(
@@ -87,6 +99,8 @@ def _delete_site(name: str, owner_id: int) -> None:
 )
 async def deploy(
     request: Request,
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
     identity: Identity = Depends(require_identity),
     x_subdomain: str | None = Header(
         default=None,
@@ -103,17 +117,19 @@ async def deploy(
         file = form.get("file")
         if not isinstance(file, UploadFile):
             raise BadRequest("Missing ZIP file")
-        if file.size is not None and file.size > MAX_ARCHIVE_BYTES:
+        if file.size is not None and file.size > settings.max_archive_bytes:
             raise PayloadTooLarge(
-                f"ZIP exceeds the {MAX_ARCHIVE_BYTES}-byte compressed upload limit"
+                f"ZIP exceeds the {settings.max_archive_bytes}-byte compressed upload limit"
             )
 
         await file.seek(0)
-        record = await run_in_threadpool(_deploy_site, subdomain, file.file, identity.user.id)
+        record = await run_in_threadpool(
+            _deploy_site, database, settings, subdomain, file.file, identity.user.id
+        )
 
     return {
         "name": record.name,
-        "url": build_site_url(record.name, DOMAIN, request.url.port or 8080),
+        "url": build_site_url(record.name, settings.domain, request.url.port or 8080),
     }
 
 
@@ -127,9 +143,13 @@ async def deploy(
         403: {"model": ErrorResponse, "description": "A session token is required."},
     },
 )
-async def list_sites(identity: Annotated[Identity, Depends(require_user)]):
-    with db() as conn:
-        store = SiteStore(conn, SITES_DIR)
+async def list_sites(
+    identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    with database.connect() as conn:
+        store = SiteStore(conn, settings.sites_dir)
         sites = store.list_for_owner(identity.user.id)
         views_by_site = AnalyticsStore(conn).total_views_by_site([site.name for site in sites])
     return [
@@ -161,6 +181,11 @@ async def list_sites(identity: Annotated[Identity, Depends(require_user)]):
         },
     },
 )
-async def delete_site(name: str, identity: Annotated[Identity, Depends(require_user)]):
-    await run_in_threadpool(_delete_site, name, identity.user.id)
+async def delete_site(
+    name: str,
+    identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    await run_in_threadpool(_delete_site, database, settings, name, identity.user.id)
     return Response(status_code=204)

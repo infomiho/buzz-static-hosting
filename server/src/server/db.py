@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Callable, Generator
 
 from .analytics import init_analytics_schema
-from .config import DB_PATH
 from .custom_domains.schema import (
     _custom_domain_claims,
     _custom_domain_routing,
@@ -76,44 +76,47 @@ MIGRATIONS: tuple[Migration, ...] = (
 )
 
 
-def init_db() -> None:
-    conn = sqlite3.connect(DB_PATH)
-    try:
+class Database:
+    def __init__(self, path: Path):
+        self._path = path
+
+    def init(self) -> None:
+        conn = sqlite3.connect(self._path)
+        try:
+            _configure_connection(conn)
+            conn.execute("BEGIN IMMEDIATE")
+            current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if current_version > len(MIGRATIONS):
+                raise RuntimeError(
+                    f"Database schema version {current_version} is newer than supported version {len(MIGRATIONS)}"
+                )
+            for version, migration in enumerate(MIGRATIONS, start=1):
+                if version <= current_version:
+                    continue
+                migration(conn)
+                conn.execute(f"PRAGMA user_version = {version}")
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                raise RuntimeError(
+                    "Database contains foreign-key violations; restore or repair it before starting Buzz"
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @contextmanager
+    def connect(self) -> Generator[sqlite3.Connection, None, None]:
+        conn = sqlite3.connect(self._path)
         _configure_connection(conn)
-        conn.execute("BEGIN IMMEDIATE")
-        current_version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if current_version > len(MIGRATIONS):
-            raise RuntimeError(
-                f"Database schema version {current_version} is newer than supported version {len(MIGRATIONS)}"
-            )
-        for version, migration in enumerate(MIGRATIONS, start=1):
-            if version <= current_version:
-                continue
-            migration(conn)
-            conn.execute(f"PRAGMA user_version = {version}")
-        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-        if violations:
-            raise RuntimeError(
-                "Database contains foreign-key violations; restore or repair it before starting Buzz"
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-@contextmanager
-def db() -> Generator[sqlite3.Connection, None, None]:
-    conn = sqlite3.connect(DB_PATH)
-    _configure_connection(conn)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()

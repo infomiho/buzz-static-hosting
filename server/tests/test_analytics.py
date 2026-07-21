@@ -1,33 +1,10 @@
 import sqlite3
-from contextlib import contextmanager
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from server import db as db_module
-from server.analytics import AnalyticsEvent, AnalyticsStore, build_analytics_event, init_analytics_schema
-from server.app import create_app
+from server.analytics import AnalyticsEvent, AnalyticsStore, build_analytics_event
 from server.site_store import SiteStore
-
-
-def make_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE sites ("
-        "  name TEXT PRIMARY KEY,"
-        "  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
-        "  size_bytes INTEGER,"
-        "  owner_id INTEGER"
-        ")"
-    )
-    conn.execute("""CREATE TABLE custom_domain_claims (
-        site_name TEXT,
-        status TEXT,
-        expires_at TEXT
-    )""")
-    init_analytics_schema(conn)
-    return conn
 
 
 def request(path: str = "/", headers: dict[str, str] | None = None):
@@ -46,7 +23,9 @@ def request(path: str = "/", headers: dict[str, str] | None = None):
 
 class TestBuildAnalyticsEvent:
     def test_counts_html_document_requests(self):
-        event = build_analytics_event(request(), "my-site", "/", 200, 12, "text/html")
+        event = build_analytics_event(
+            request(), "my-site", "/", 200, 12, "text/html", visitor_secret="test-secret"
+        )
 
         assert event is not None
         assert event.is_pageview
@@ -55,16 +34,28 @@ class TestBuildAnalyticsEvent:
         assert event.visitor_hash is not None
 
     def test_skips_static_assets(self):
-        event = build_analytics_event(request("/style.css"), "my-site", "/style.css", 200, 12, "text/css")
+        event = build_analytics_event(
+            request("/style.css"), "my-site", "/style.css", 200, 12, "text/css",
+            visitor_secret="test-secret",
+        )
 
         assert event is None
 
     def test_skips_opted_out_requests(self):
-        assert build_analytics_event(request(headers={"dnt": "1"}), "my-site", "/", 200, 12, "text/html") is None
-        assert build_analytics_event(request(headers={"sec-gpc": "1"}), "my-site", "/", 200, 12, "text/html") is None
+        assert build_analytics_event(
+            request(headers={"dnt": "1"}), "my-site", "/", 200, 12, "text/html",
+            visitor_secret="test-secret",
+        ) is None
+        assert build_analytics_event(
+            request(headers={"sec-gpc": "1"}), "my-site", "/", 200, 12, "text/html",
+            visitor_secret="test-secret",
+        ) is None
 
     def test_skips_prefetch_requests(self):
-        assert build_analytics_event(request(headers={"purpose": "prefetch"}), "my-site", "/", 200, 12, "text/html") is None
+        assert build_analytics_event(
+            request(headers={"purpose": "prefetch"}), "my-site", "/", 200, 12, "text/html",
+            visitor_secret="test-secret",
+        ) is None
 
     def test_extracts_referrer_campaign_and_country(self):
         event = build_analytics_event(
@@ -77,6 +68,7 @@ class TestBuildAnalyticsEvent:
             200,
             12,
             "text/html",
+            visitor_secret="test-secret",
         )
 
         assert event is not None
@@ -93,6 +85,7 @@ class TestBuildAnalyticsEvent:
             12,
             "text/html",
             {"one.example.com", "two.example.com", "my-site.buzz.example.com"},
+            visitor_secret="test-secret",
         )
 
         assert event is not None
@@ -107,6 +100,7 @@ class TestBuildAnalyticsEvent:
             12,
             "text/html",
             {"example.com"},
+            visitor_secret="test-secret",
         )
 
         assert event is not None
@@ -120,6 +114,7 @@ class TestBuildAnalyticsEvent:
             200,
             12,
             "text/html",
+            visitor_secret="test-secret",
         )
 
         assert event is None
@@ -132,6 +127,7 @@ class TestBuildAnalyticsEvent:
             200,
             12,
             "text/html",
+            visitor_secret="test-secret",
         )
 
         assert event is not None
@@ -139,89 +135,89 @@ class TestBuildAnalyticsEvent:
 
 
 class TestAnalyticsStore:
-    def test_records_summary_dimensions_and_private_visitors(self):
-        conn = make_db()
-        store = AnalyticsStore(conn)
-        event = AnalyticsEvent(
-            site_name="my-site",
-            path="/",
-            day="2026-06-30",
-            bytes_sent=100,
-            is_pageview=True,
-            is_not_found=False,
-            visitor_hash="same-visitor",
-            referrer="example.com",
-            campaign="newsletter / email / launch",
-            country="HR",
-        )
+    def test_records_summary_dimensions_and_private_visitors(self, database):
+        with database.connect() as conn:
+            store = AnalyticsStore(conn)
+            event = AnalyticsEvent(
+                site_name="my-site",
+                path="/",
+                day="2026-06-30",
+                bytes_sent=100,
+                is_pageview=True,
+                is_not_found=False,
+                visitor_hash="same-visitor",
+                referrer="example.com",
+                campaign="newsletter / email / launch",
+                country="HR",
+            )
 
-        store.record(event)
-        store.record(event)
-        store.record(AnalyticsEvent(
-            site_name="my-site",
-            path="/missing",
-            day="2026-06-30",
-            bytes_sent=10,
-            is_pageview=False,
-            is_not_found=True,
-            visitor_hash="same-visitor",
-        ))
+            store.record(event)
+            store.record(event)
+            store.record(AnalyticsEvent(
+                site_name="my-site",
+                path="/missing",
+                day="2026-06-30",
+                bytes_sent=10,
+                is_pageview=False,
+                is_not_found=True,
+                visitor_hash="same-visitor",
+            ))
 
-        summary = store.summary("my-site")
+            summary = store.summary("my-site")
 
-        assert summary["totals"] == {"views": 2, "visitors": 1, "bytes": 210, "not_found": 1}
-        assert summary["top_pages"] == [{"value": "/", "views": 2}]
-        assert summary["not_found_paths"] == [{"value": "/missing", "views": 1}]
-        assert summary["referrers"] == [{"value": "example.com", "views": 2}]
-        assert summary["campaigns"] == [{"value": "newsletter / email / launch", "views": 2}]
-        assert summary["countries"] == [{"value": "HR", "views": 2}]
+            assert summary["totals"] == {"views": 2, "visitors": 1, "bytes": 210, "not_found": 1}
+            assert summary["top_pages"] == [{"value": "/", "views": 2}]
+            assert summary["not_found_paths"] == [{"value": "/missing", "views": 1}]
+            assert summary["referrers"] == [{"value": "example.com", "views": 2}]
+            assert summary["campaigns"] == [{"value": "newsletter / email / launch", "views": 2}]
+            assert summary["countries"] == [{"value": "HR", "views": 2}]
 
-        visitor = conn.execute("SELECT * FROM analytics_visitors").fetchone()
-        assert visitor["visitor_hash"] == "same-visitor"
-        assert "203.0.113" not in dict(visitor).values()
+            visitor = conn.execute("SELECT * FROM analytics_visitors").fetchone()
+            assert visitor["visitor_hash"] == "same-visitor"
+            assert "203.0.113" not in dict(visitor).values()
 
-    def test_summary_zero_fills_30_day_series(self):
-        conn = make_db()
-        summary = AnalyticsStore(conn).summary("my-site")
+    def test_summary_zero_fills_30_day_series(self, database):
+        with database.connect() as conn:
+            summary = AnalyticsStore(conn).summary("my-site")
 
         assert len(summary["series"]) == 30
         assert all(day["views"] == 0 and day["visitors"] == 0 for day in summary["series"])
 
-    def test_total_views_by_site_zero_fills_missing_analytics(self):
-        conn = make_db()
-        store = AnalyticsStore(conn)
-        store.record(AnalyticsEvent(
-            site_name="my-site",
-            path="/",
-            day="2026-06-30",
-            bytes_sent=100,
-            is_pageview=True,
-            is_not_found=False,
-            visitor_hash="visitor",
-        ))
-        store.record(AnalyticsEvent(
-            site_name="my-site",
-            path="/about",
-            day="2026-06-30",
-            bytes_sent=100,
-            is_pageview=True,
-            is_not_found=False,
-            visitor_hash="visitor",
-        ))
+    def test_total_views_by_site_zero_fills_missing_analytics(self, database):
+        with database.connect() as conn:
+            store = AnalyticsStore(conn)
+            store.record(AnalyticsEvent(
+                site_name="my-site",
+                path="/",
+                day="2026-06-30",
+                bytes_sent=100,
+                is_pageview=True,
+                is_not_found=False,
+                visitor_hash="visitor",
+            ))
+            store.record(AnalyticsEvent(
+                site_name="my-site",
+                path="/about",
+                day="2026-06-30",
+                bytes_sent=100,
+                is_pageview=True,
+                is_not_found=False,
+                visitor_hash="visitor",
+            ))
 
-        assert store.total_views_by_site(["my-site", "quiet-site"]) == {"my-site": 2, "quiet-site": 0}
+            assert store.total_views_by_site(["my-site", "quiet-site"]) == {"my-site": 2, "quiet-site": 0}
 
-    def test_prunes_old_visitor_hashes(self):
-        conn = make_db()
-        store = AnalyticsStore(conn)
-        conn.execute(
-            "INSERT INTO analytics_visitors (site_name, day, visitor_hash, created_at) VALUES (?, ?, ?, ?)",
-            ("my-site", "2020-01-01", "old", "2020-01-01"),
-        )
+    def test_prunes_old_visitor_hashes(self, database):
+        with database.connect() as conn:
+            store = AnalyticsStore(conn)
+            conn.execute(
+                "INSERT INTO analytics_visitors (site_name, day, visitor_hash, created_at) VALUES (?, ?, ?, ?)",
+                ("my-site", "2020-01-01", "old", "2020-01-01"),
+            )
 
-        store.prune_visitors()
+            store.prune_visitors()
 
-        assert conn.execute("SELECT COUNT(*) FROM analytics_visitors").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM analytics_visitors").fetchone()[0] == 0
 
 
 class CaptureAnalytics:
@@ -240,16 +236,13 @@ class CaptureAnalytics:
 
 
 class TestAnalyticsIntegration:
-    def test_hosted_site_requests_record_analytics_events(self, tmp_path, monkeypatch):
+    def test_hosted_site_requests_record_analytics_events(self, make_app, tmp_path):
         site = tmp_path / "my-site"
         site.mkdir()
         (site / "index.html").write_text("hello")
         (site / "style.css").write_text("body{}")
-        monkeypatch.setattr("server.app.SITES_DIR", tmp_path)
-        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "app.db")
-        db_module.init_db()
 
-        app = create_app()
+        app = make_app()
         capture = CaptureAnalytics()
         app.state.analytics = capture
         with TestClient(app) as client:
@@ -262,27 +255,21 @@ class TestAnalyticsIntegration:
             ("/missing", False, True),
         ]
 
-    def test_alias_lookup_failure_does_not_break_static_serving(
-        self, tmp_path, monkeypatch
-    ):
+    def test_alias_lookup_failure_does_not_break_static_serving(self, make_app, tmp_path):
         site = tmp_path / "my-site"
         site.mkdir()
         (site / "index.html").write_text("hello")
-        monkeypatch.setattr("server.app.SITES_DIR", tmp_path)
-        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "app.db")
-        db_module.init_db()
-        app = create_app()
+
+        app = make_app(custom_domains_enabled=True)
         capture = CaptureAnalytics()
         app.state.analytics = capture
 
-        @contextmanager
-        def failed_db():
+        def failed_lookup(site_name):
             raise sqlite3.OperationalError("database unavailable")
-            yield
+
+        app.state.custom_domains.activated_hostnames_for_site = failed_lookup
 
         with TestClient(app) as client:
-            monkeypatch.setattr("server.app.CUSTOM_DOMAINS_ENABLED", True)
-            monkeypatch.setattr("server.app.db", failed_db)
             response = client.get(
                 "/",
                 headers={
@@ -297,59 +284,41 @@ class TestAnalyticsIntegration:
         assert response.text == "hello"
         assert capture.events[0].referrer == "external.example"
 
-    def test_site_analytics_route_requires_site_ownership(self, tmp_path, monkeypatch):
-        conn = make_db()
-        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 0, 1)")
-        AnalyticsStore(conn).record(AnalyticsEvent(
-            site_name="my-site",
-            path="/",
-            day="2026-06-30",
-            bytes_sent=100,
-            is_pageview=True,
-            is_not_found=False,
-            visitor_hash="visitor",
-        ))
+    def test_site_analytics_route_requires_site_ownership(self, make_app, database):
+        with database.connect() as conn:
+            conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 0, 1)")
+            AnalyticsStore(conn).record(AnalyticsEvent(
+                site_name="my-site",
+                path="/",
+                day="2026-06-30",
+                bytes_sent=100,
+                is_pageview=True,
+                is_not_found=False,
+                visitor_hash="visitor",
+            ))
 
-        @contextmanager
-        def test_db():
-            yield conn
-
-        monkeypatch.setattr("server.config.DEV_MODE", True)
-        monkeypatch.setattr("server.routes.dashboard.db", test_db)
-        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "app.db")
-        db_module.init_db()
-        app = create_app()
-
-        with TestClient(app) as client:
+        with TestClient(make_app(dev_mode=True)) as client:
             res = client.get("/dashboard/sites/my-site/analytics")
 
         assert res.status_code == 200
         assert res.json()["totals"]["views"] == 1
 
-    def test_sites_route_includes_total_views(self, monkeypatch):
-        conn = make_db()
-        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 10, 1)")
-        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('quiet-site', 5, 1)")
-        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('other-site', 20, 2)")
-        AnalyticsStore(conn).record(AnalyticsEvent(
-            site_name="my-site",
-            path="/",
-            day="2026-06-30",
-            bytes_sent=100,
-            is_pageview=True,
-            is_not_found=False,
-            visitor_hash="visitor",
-        ))
+    def test_sites_route_includes_total_views(self, make_app, database):
+        with database.connect() as conn:
+            conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 10, 1)")
+            conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('quiet-site', 5, 1)")
+            conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('other-site', 20, 2)")
+            AnalyticsStore(conn).record(AnalyticsEvent(
+                site_name="my-site",
+                path="/",
+                day="2026-06-30",
+                bytes_sent=100,
+                is_pageview=True,
+                is_not_found=False,
+                visitor_hash="visitor",
+            ))
 
-        @contextmanager
-        def test_db():
-            yield conn
-
-        monkeypatch.setattr("server.config.DEV_MODE", True)
-        monkeypatch.setattr("server.routes.sites.db", test_db)
-        app = create_app()
-
-        res = TestClient(app).get("/sites")
+        res = TestClient(make_app(dev_mode=True)).get("/sites")
 
         assert res.status_code == 200
         sites = {site["name"]: site for site in res.json()}
@@ -357,22 +326,22 @@ class TestAnalyticsIntegration:
         assert sites["quiet-site"]["total_views"] == 0
         assert "other-site" not in sites
 
-    def test_deleting_site_removes_analytics(self, tmp_path):
-        conn = make_db()
-        conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 0, 1)")
-        AnalyticsStore(conn).record(AnalyticsEvent(
-            site_name="my-site",
-            path="/",
-            day="2026-06-30",
-            bytes_sent=100,
-            is_pageview=True,
-            is_not_found=False,
-            visitor_hash="visitor",
-        ))
-        conn.commit()
+    def test_deleting_site_removes_analytics(self, database, tmp_path):
+        with database.connect() as conn:
+            conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES ('my-site', 0, 1)")
+            AnalyticsStore(conn).record(AnalyticsEvent(
+                site_name="my-site",
+                path="/",
+                day="2026-06-30",
+                bytes_sent=100,
+                is_pageview=True,
+                is_not_found=False,
+                visitor_hash="visitor",
+            ))
+            conn.commit()
 
-        SiteStore(conn, tmp_path).delete("my-site", 1)
+            SiteStore(conn, tmp_path).delete("my-site", 1)
 
-        assert conn.execute("SELECT COUNT(*) FROM analytics_daily").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM analytics_dimensions").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM analytics_visitors").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM analytics_daily").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM analytics_dimensions").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM analytics_visitors").fetchone()[0] == 0

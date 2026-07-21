@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from server import db as db_module
 from server.custom_domains.cloudflare import (
     CloudflareDiagnostician,
     CloudflareDiagnosticStore,
@@ -55,17 +54,15 @@ def test_range_loader_fails_closed_for_missing_invalid_and_stale_data(tmp_path):
 
 
 @pytest.fixture
-def diagnostic_db(tmp_path, monkeypatch):
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-    db_module.init_db()
-    with db_module.db() as conn:
+def diagnostic_db(database):
+    with database.connect() as conn:
         conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
         store = DomainClaimStore(conn)
         claim = store.create("my-site", "www.example.com", claim_mode="cloudflare")
         store.record_check(claim.id, "my-site", (claim.verification_value,))
         claim = store.prepare_routes(True)[0]
         store.mark_routed(claim.id, claim.route_generation)
-    return db_module.db
+    return database.connect
 
 
 def diagnostician(diagnostic_db, addresses=("8.8.8.8",), **overrides):
@@ -115,6 +112,7 @@ def diagnostician(diagnostic_db, addresses=("8.8.8.8",), **overrides):
     )
     return CloudflareDiagnostician(
         collector,
+        diagnostic_db,
         http_probe=overrides.pop(
             "http_probe", lambda *_args: HttpForwardProbeResult("healthy", None, 200)
         ),
@@ -163,7 +161,7 @@ def test_range_state_is_shared_by_collection_policy_and_diagnostics(diagnostic_d
         cloudflare_range_state=state,
     )
     evidence = collector.collect(claim, "cloudflare")
-    checker = CloudflareDiagnostician(collector, range_state=state)
+    checker = CloudflareDiagnostician(collector, diagnostic_db, range_state=state)
 
     assert evidence.target_error("cloudflare").error == "range_data_stale"
     assert checker.range_error == "range_data_stale"
@@ -198,6 +196,7 @@ def test_coordinator_health_recording_skips_http_forwarding(diagnostic_db):
     evidence = collector.collect(claim, "cloudflare")
     checker = CloudflareDiagnostician(
         collector,
+        diagnostic_db,
         http_probe=lambda *_args: pytest.fail("coordinator recording must not probe HTTP"),
         range_state=state,
     )

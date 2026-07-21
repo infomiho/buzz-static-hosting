@@ -13,8 +13,6 @@ from urllib.request import Request, urlopen
 
 from google.auth import crypt, jwt
 
-from . import config
-
 logger = logging.getLogger(__name__)
 
 SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly"
@@ -73,15 +71,17 @@ def load_service_account_credentials(value: str) -> dict[str, Any]:
     return credentials
 
 
-def create_search_console_client() -> HttpSearchConsoleClient | None:
-    if not config.GSC_CREDENTIALS:
+def create_search_console_client(
+    gsc_credentials: str | None, gsc_property: str | None, domain: str | None
+) -> HttpSearchConsoleClient | None:
+    if not gsc_credentials:
         return None
-    property_url = config.GSC_PROPERTY or (f"sc-domain:{config.DOMAIN}" if config.DOMAIN else None)
+    property_url = gsc_property or (f"sc-domain:{domain}" if domain else None)
     if not property_url:
         logger.error("BUZZ_GSC_CREDENTIALS is set but BUZZ_GSC_PROPERTY and BUZZ_DOMAIN are not; search terms disabled")
         return None
     try:
-        credentials = load_service_account_credentials(config.GSC_CREDENTIALS)
+        credentials = load_service_account_credentials(gsc_credentials)
     except (OSError, ValueError) as exc:
         logger.error("Failed to load Search Console credentials: %s; search terms disabled", exc)
         return None

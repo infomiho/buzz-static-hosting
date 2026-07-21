@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from .claims import DomainClaim, DomainClaimStore
-from ..db import db
 from .evidence import DomainEvidenceCollector, DomainPathEvidenceStore
 from .transitions import DomainClaimStateMachine
 
@@ -15,11 +15,13 @@ class DomainActivator:
     def __init__(
         self,
         evidence_collector: DomainEvidenceCollector,
+        connect: Callable,
     ):
         self._evidence_collector = evidence_collector
+        self._connect = connect
 
     def run_once(self) -> None:
-        with db() as conn:
+        with self._connect() as conn:
             claims = DomainClaimStore(conn).activation_candidates()
         for claim in claims[:MAX_CANDIDATES_PER_PASS]:
             try:
@@ -29,7 +31,7 @@ class DomainActivator:
                 if error == "dns_timeout":
                     error = "dns_unavailable"
                 transient = target_error.transient if target_error else False
-                with db() as conn:
+                with self._connect() as conn:
                     DomainPathEvidenceStore(conn).record(
                         evidence, claim.mode_generation, 0, "direct"
                     )
@@ -60,9 +62,8 @@ class DomainActivator:
                     claim.route_generation,
                 )
 
-    @staticmethod
-    def _record_error(claim: DomainClaim, error: str) -> None:
-        with db() as conn:
+    def _record_error(self, claim: DomainClaim, error: str) -> None:
+        with self._connect() as conn:
             changed = DomainClaimStateMachine(conn).apply_activation_decision(
                 claim,
                 error,

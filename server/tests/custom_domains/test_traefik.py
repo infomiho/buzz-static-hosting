@@ -7,8 +7,6 @@ from urllib.request import Request, urlopen
 import pytest
 from fastapi.testclient import TestClient
 
-from server import db as db_module
-from server.app import create_app
 from server.custom_domains.traefik import (
     EMPTY_SNAPSHOT,
     TraefikControlServer,
@@ -347,28 +345,23 @@ def test_router_absence_requires_successful_runtime_collection_query():
         runtime_client.router("buzz-domain-1-g1")
 
 
-def test_disabled_custom_domains_do_not_start_control_listener(tmp_path, monkeypatch):
+def test_disabled_custom_domains_do_not_start_control_listener(make_app, monkeypatch):
     class UnexpectedControlServer:
         def __init__(self, *args, **kwargs):
             raise AssertionError("control listener started while custom domains were disabled")
 
-    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", False)
-    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "configured-but-disabled")
     monkeypatch.setattr("server.custom_domains.runtime.TraefikControlServer", UnexpectedControlServer)
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-    db_module.init_db()
+    app = make_app(custom_domains_enabled=False, traefik_control_token="configured-but-disabled")
 
-    with TestClient(create_app()) as client:
+    with TestClient(app) as client:
         response = client.get("/health", headers={"host": "localhost:8080"})
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_disabling_control_plane_is_rejected_while_routes_remain(tmp_path, monkeypatch):
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-    db_module.init_db()
-    with db_module.db() as conn:
+def test_disabling_control_plane_is_rejected_while_routes_remain(make_app, database):
+    with database.connect() as conn:
         conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
         conn.execute(
             """INSERT INTO custom_domain_claims
@@ -378,10 +371,9 @@ def test_disabling_control_plane_is_rejected_while_routes_remain(tmp_path, monke
                     '2026-07-16T00:00:00+00:00', '2026-07-17T00:00:00+00:00',
                     'routed', 1)"""
         )
-    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", False)
 
     with pytest.raises(RuntimeError, match="Withdraw all custom-domain routers"):
-        with TestClient(create_app()):
+        with TestClient(make_app(custom_domains_enabled=False)):
             pass
 
 
@@ -390,11 +382,9 @@ def test_disabling_control_plane_is_rejected_while_routes_remain(tmp_path, monke
     [(None, "http://traefik:8082/api"), ("secret", None)],
 )
 def test_active_cloudflare_claim_requires_complete_runtime(
-    tmp_path, monkeypatch, control_token, api_url
+    make_app, database, control_token, api_url
 ):
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-    db_module.init_db()
-    with db_module.db() as conn:
+    with database.connect() as conn:
         conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
         conn.execute(
             """INSERT INTO custom_domain_claims
@@ -404,16 +394,19 @@ def test_active_cloudflare_claim_requires_complete_runtime(
                     '2026-07-16T00:00:00+00:00', '2099-07-17T00:00:00+00:00',
                     'routed', 1, 'cloudflare', '2026-07-16T00:00:00+00:00')"""
         )
-    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", control_token)
-    monkeypatch.setattr("server.config.TRAEFIK_API_URL", api_url)
+
+    app = make_app(
+        custom_domains_enabled=True,
+        traefik_control_token=control_token,
+        traefik_api_url=api_url,
+    )
 
     with pytest.raises(RuntimeError, match="complete custom-domain runtime"):
-        with TestClient(create_app()):
+        with TestClient(app):
             pass
 
 
-def test_enabled_custom_domains_start_and_stop_control_listener(tmp_path, monkeypatch):
+def test_enabled_custom_domains_start_and_stop_control_listener(make_app, monkeypatch):
     events = []
 
     class FakeControlServer:
@@ -437,15 +430,15 @@ def test_enabled_custom_domains_start_and_stop_control_listener(tmp_path, monkey
         def stop(self):
             events.append("stopped")
 
-    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "secret")
-    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_PORT", 8081)
-    monkeypatch.setattr("server.config.TRAEFIK_API_URL", None)
     monkeypatch.setattr("server.custom_domains.runtime.TraefikControlServer", FakeControlServer)
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-    db_module.init_db()
+    app = make_app(
+        custom_domains_enabled=True,
+        traefik_control_token="secret",
+        traefik_control_port=8081,
+        traefik_api_url=None,
+    )
 
-    with TestClient(create_app()) as client:
+    with TestClient(app) as client:
         response = client.get("/health", headers={"host": "localhost:8080"})
         assert response.status_code == 200
         assert events == ["created", "started"]
@@ -453,7 +446,7 @@ def test_enabled_custom_domains_start_and_stop_control_listener(tmp_path, monkey
     assert events == ["created", "started", "stopped"]
 
 
-def test_lifespan_runs_transition_detection_before_legacy_validators(tmp_path, monkeypatch):
+def test_lifespan_runs_transition_detection_before_legacy_validators(make_app, monkeypatch):
     events = []
     observed = threading.Event()
 
@@ -489,11 +482,6 @@ def test_lifespan_runs_transition_detection_before_legacy_validators(tmp_path, m
             if self.name == "cloudflare":
                 observed.set()
 
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-    db_module.init_db()
-    monkeypatch.setattr("server.config.CUSTOM_DOMAINS_ENABLED", True)
-    monkeypatch.setattr("server.config.TRAEFIK_CONTROL_TOKEN", "secret")
-    monkeypatch.setattr("server.config.TRAEFIK_API_URL", "http://traefik/api")
     monkeypatch.setattr("server.custom_domains.runtime.TraefikRuntimeClient", Runtime)
     monkeypatch.setattr("server.custom_domains.runtime.TraefikControlServer", Control)
     monkeypatch.setattr("server.custom_domains.runtime.DomainRouteReconciler", lambda *a, **k: Loop("route"))
@@ -504,8 +492,13 @@ def test_lifespan_runs_transition_detection_before_legacy_validators(tmp_path, m
     monkeypatch.setattr(
         "server.custom_domains.runtime.DomainTransitionCoordinator", lambda *a, **k: Loop("transition")
     )
+    app = make_app(
+        custom_domains_enabled=True,
+        traefik_control_token="secret",
+        traefik_api_url="http://traefik/api",
+    )
 
-    with TestClient(create_app()):
+    with TestClient(app):
         assert observed.wait(2)
 
     assert events.index("transition") < events.index("direct")

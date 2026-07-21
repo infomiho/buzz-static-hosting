@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from server.app import create_app
+from server.app import DeploymentBodyLimitMiddleware, create_app
 from server.exceptions import BadRequest
 from server.routes.sites import validate_subdomain, build_site_url
 from server.site_store import SiteRecord
@@ -38,18 +38,17 @@ class TestBuildSiteUrl:
         assert build_site_url("my-site", None, 3000) == "http://my-site.localhost:3000"
 
 
-def test_deploy_returns_explicit_site_name(monkeypatch):
-    monkeypatch.setattr("server.config.DEV_MODE", True)
+def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
     monkeypatch.setattr(
         "server.routes.sites._deploy_site",
-        lambda subdomain, archive, owner_id: SiteRecord(
+        lambda database, settings, subdomain, archive, owner_id: SiteRecord(
             name=subdomain,
             owner_id=owner_id,
             size_bytes=0,
             created_at="2026-07-16T00:00:00Z",
         ),
     )
-    client = TestClient(create_app())
+    client = TestClient(make_app(dev_mode=True))
 
     response = client.post(
         "/deploy",
@@ -64,10 +63,8 @@ def test_deploy_returns_explicit_site_name(monkeypatch):
     }
 
 
-def test_deploy_rejects_compressed_upload_over_limit(monkeypatch):
-    monkeypatch.setattr("server.config.DEV_MODE", True)
-    monkeypatch.setattr("server.routes.sites.MAX_ARCHIVE_BYTES", 4)
-    client = TestClient(create_app())
+def test_deploy_rejects_compressed_upload_over_limit(make_app):
+    client = TestClient(make_app(dev_mode=True, max_archive_bytes=4))
 
     response = client.post(
         "/deploy",
@@ -78,10 +75,10 @@ def test_deploy_rejects_compressed_upload_over_limit(monkeypatch):
     assert response.json() == {"detail": "ZIP exceeds the 4-byte compressed upload limit"}
 
 
-def test_deploy_rejects_request_body_before_multipart_parsing(monkeypatch):
-    monkeypatch.setattr("server.config.DEV_MODE", True)
-    monkeypatch.setattr("server.app.MAX_DEPLOY_BODY_BYTES", 100)
-    client = TestClient(create_app())
+def test_deploy_rejects_request_body_before_multipart_parsing(make_app):
+    app = make_app(dev_mode=True)
+    app.add_middleware(DeploymentBodyLimitMiddleware, max_body_bytes=100)
+    client = TestClient(app)
 
     response = client.post(
         "/deploy",
@@ -94,10 +91,10 @@ def test_deploy_rejects_request_body_before_multipart_parsing(monkeypatch):
     }
 
 
-def test_deploy_rejects_chunked_request_body_over_limit(monkeypatch):
-    monkeypatch.setattr("server.config.DEV_MODE", True)
-    monkeypatch.setattr("server.app.MAX_DEPLOY_BODY_BYTES", 100)
-    client = TestClient(create_app())
+def test_deploy_rejects_chunked_request_body_over_limit(make_app):
+    app = make_app(dev_mode=True)
+    app.add_middleware(DeploymentBodyLimitMiddleware, max_body_bytes=100)
+    client = TestClient(app)
     body = (
         b"--buzz\r\n"
         b'Content-Disposition: form-data; name="file"; filename="site.zip"\r\n'

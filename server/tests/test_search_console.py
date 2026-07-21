@@ -1,18 +1,13 @@
 import hashlib
 import secrets
-import sqlite3
-from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
-from server.analytics import init_analytics_schema
-from server.app import create_app
 from server.auth_service import AuthService
 from server.cookies import COOKIE_NAME
 from server.github import FakeGitHubClient
-from server import config
 from server.search_console import (
     FakeSearchConsoleClient,
     SearchConsoleError,
@@ -21,30 +16,6 @@ from server.search_console import (
     load_service_account_credentials,
     map_search_terms_rows,
 )
-
-
-SCHEMA = """
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    github_id INTEGER UNIQUE NOT NULL,
-    github_login TEXT NOT NULL,
-    github_name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE sessions (
-    id TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE sites (
-    name TEXT PRIMARY KEY,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    size_bytes INTEGER,
-    owner_id INTEGER
-);
-"""
 
 
 class TestBuildSearchTermsPayload:
@@ -97,48 +68,27 @@ class TestLoadServiceAccountCredentials:
 
 
 class TestCreateSearchConsoleClient:
-    def test_returns_none_when_not_configured(self, monkeypatch):
-        monkeypatch.setattr(config, "GSC_CREDENTIALS", None)
-        assert create_search_console_client() is None
+    def test_returns_none_when_not_configured(self):
+        assert create_search_console_client(None, None, None) is None
 
-    def test_returns_none_on_unreadable_credentials(self, monkeypatch):
-        monkeypatch.setattr(config, "GSC_CREDENTIALS", "/nonexistent/key.json")
-        monkeypatch.setattr(config, "GSC_PROPERTY", "sc-domain:example.com")
-        assert create_search_console_client() is None
+    def test_returns_none_on_unreadable_credentials(self):
+        assert create_search_console_client(
+            "/nonexistent/key.json", "sc-domain:example.com", None
+        ) is None
 
-    def test_returns_none_without_property_or_domain(self, monkeypatch):
-        monkeypatch.setattr(config, "GSC_CREDENTIALS", '{"client_email": "a@b.c", "private_key": "key"}')
-        monkeypatch.setattr(config, "GSC_PROPERTY", None)
-        monkeypatch.setattr(config, "DOMAIN", None)
-        assert create_search_console_client() is None
+    def test_returns_none_without_property_or_domain(self):
+        assert create_search_console_client(
+            '{"client_email": "a@b.c", "private_key": "key"}', None, None
+        ) is None
 
 
 @pytest.fixture
-def test_db():
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    init_analytics_schema(conn)
-
-    @contextmanager
-    def db():
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-
-    return db, conn
-
-
-@pytest.fixture
-def app(test_db, monkeypatch):
-    db, conn = test_db
-    monkeypatch.setattr("server.routes.dashboard.db", db)
-    app = create_app()
-    app.state.auth_service = AuthService(db=db, github=FakeGitHubClient(), github_client_id="test-id")
-    return app
+def app(make_app, database):
+    application = make_app()
+    application.state.auth_service = AuthService(
+        db=database.connect, github=FakeGitHubClient(), github_client_id="test-id"
+    )
+    return application
 
 
 @pytest.fixture
@@ -147,22 +97,23 @@ def client(app):
 
 
 @pytest.fixture
-def user_and_token(test_db):
-    db, conn = test_db
-    cursor = conn.execute(
-        "INSERT INTO users (github_id, github_login, github_name) VALUES (?, ?, ?)",
-        (42, "alice", "Alice"),
-    )
-    user_id = cursor.lastrowid
-    conn.execute("INSERT INTO sites (name, size_bytes, owner_id) VALUES (?, ?, ?)", ("mysite", 100, user_id))
-
-    token = "buzz_sess_" + secrets.token_urlsafe(32)
-    expires_at = datetime.now() + timedelta(days=30)
-    conn.execute(
-        "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)",
-        (hashlib.sha256(token.encode()).hexdigest(), user_id, expires_at.isoformat()),
-    )
-    conn.commit()
+def user_and_token(database):
+    with database.connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO users (github_id, github_login, github_name) VALUES (?, ?, ?)",
+            (42, "alice", "Alice"),
+        )
+        user_id = cursor.lastrowid
+        conn.execute(
+            "INSERT INTO sites (name, size_bytes, owner_id) VALUES (?, ?, ?)",
+            ("mysite", 100, user_id),
+        )
+        token = "buzz_sess_" + secrets.token_urlsafe(32)
+        expires_at = datetime.now() + timedelta(days=30)
+        conn.execute(
+            "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)",
+            (hashlib.sha256(token.encode()).hexdigest(), user_id, expires_at.isoformat()),
+        )
     return user_id, token
 
 

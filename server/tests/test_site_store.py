@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from server import db as db_module
 from server.custom_domains.claims import DomainClaimStore
 from server.custom_domains.errors import ClaimConflict
 from server.exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
@@ -376,15 +375,13 @@ class TestDelete:
         assert conn.execute("SELECT name FROM sites WHERE name = 'my-site'").fetchone() is None
 
     def test_every_alias_must_complete_withdrawal_before_delete(
-        self, tmp_path, monkeypatch
+        self, tmp_path, database
     ):
-        monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-        db_module.init_db()
-        with db_module.db() as conn:
+        with database.connect() as conn:
             SiteStore(conn, tmp_path).deploy(
                 "my-site", archive({"index.html": "content"}), owner_id=1
             )
-        with db_module.db() as conn:
+        with database.connect() as conn:
             domain_store = DomainClaimStore(conn)
             claims = []
             for hostname in ("one.example.com", "two.example.com"):
@@ -399,23 +396,23 @@ class TestDelete:
 
             domain_store.cancel(claims[0].id, "my-site")
 
-        with db_module.db() as conn:
+        with database.connect() as conn:
             with pytest.raises(ClaimConflict):
                 SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
-        with db_module.db() as conn:
+        with database.connect() as conn:
             domain_store = DomainClaimStore(conn)
             first = domain_store.get(claims[0].id, "my-site")
             domain_store.finish_withdrawal(first.id, first.route_generation)
-        with db_module.db() as conn:
+        with database.connect() as conn:
             with pytest.raises(ClaimConflict):
                 SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
 
-        with db_module.db() as conn:
+        with database.connect() as conn:
             domain_store = DomainClaimStore(conn)
             domain_store.cancel(claims[1].id, "my-site")
             second = domain_store.get(claims[1].id, "my-site")
             domain_store.finish_withdrawal(second.id, second.route_generation)
-        with db_module.db() as conn:
+        with database.connect() as conn:
             SiteStore(conn, tmp_path).delete("my-site", owner_id=1)
 
         assert not (tmp_path / "my-site").exists()

@@ -2,17 +2,16 @@ import sqlite3
 
 import pytest
 
-from server import db as db_module
+from server.db import Database, MIGRATIONS
 
 
-def test_fresh_database_runs_all_migrations(tmp_path, monkeypatch):
+def test_fresh_database_runs_all_migrations(tmp_path):
     path = tmp_path / "data.db"
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
-    db_module.init_db()
+    Database(path).init()
 
     with sqlite3.connect(path) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db_module.MIGRATIONS)
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
         tables = {
             row[0]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -36,26 +35,25 @@ def test_fresh_database_runs_all_migrations(tmp_path, monkeypatch):
         assert indexes["custom_domain_claims_site_status"] == 0
 
 
-def test_existing_unversioned_database_upgrades_without_data_loss(tmp_path, monkeypatch):
+def test_existing_unversioned_database_upgrades_without_data_loss(tmp_path):
     path = tmp_path / "data.db"
     with sqlite3.connect(path) as conn:
         conn.execute("CREATE TABLE sites (name TEXT PRIMARY KEY, created_at TEXT, size_bytes INTEGER)")
         conn.execute("INSERT INTO sites (name) VALUES ('existing-site')")
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
-    db_module.init_db()
+    Database(path).init()
 
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT name FROM sites").fetchone()[0] == "existing-site"
         columns = {row[1] for row in conn.execute("PRAGMA table_info(sites)")}
         assert "owner_id" in columns
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db_module.MIGRATIONS)
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
 
 
-def test_version_four_database_upgrades_to_multiple_aliases(tmp_path, monkeypatch):
+def test_version_four_database_upgrades_to_multiple_aliases(tmp_path):
     path = tmp_path / "data.db"
     with sqlite3.connect(path) as conn:
-        for migration in db_module.MIGRATIONS[:4]:
+        for migration in MIGRATIONS[:4]:
             migration(conn)
         conn.execute("PRAGMA user_version = 4")
         conn.execute("INSERT INTO sites (name) VALUES ('existing-site')")
@@ -65,9 +63,8 @@ def test_version_four_database_upgrades_to_multiple_aliases(tmp_path, monkeypatc
             VALUES ('one.example.com', 'existing-site', 'token-one', 'pending',
                     '2026-07-16T00:00:00+00:00', '2026-07-17T00:00:00+00:00')"""
         )
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
-    db_module.init_db()
+    Database(path).init()
 
     with sqlite3.connect(path) as conn:
         conn.execute(
@@ -87,10 +84,10 @@ def test_version_four_database_upgrades_to_multiple_aliases(tmp_path, monkeypatc
         } == {"direct"}
 
 
-def test_cloudflare_diagnostic_data_survives_activation_migration(tmp_path, monkeypatch):
+def test_cloudflare_diagnostic_data_survives_activation_migration(tmp_path):
     path = tmp_path / "data.db"
     with sqlite3.connect(path) as conn:
-        for migration in db_module.MIGRATIONS[:6]:
+        for migration in MIGRATIONS[:6]:
             migration(conn)
         conn.execute("PRAGMA user_version = 6")
         conn.execute("INSERT INTO sites (name) VALUES ('existing-site')")
@@ -110,9 +107,8 @@ def test_cloudflare_diagnostic_data_survives_activation_migration(tmp_path, monk
                     'healthy', 'healthy', 'healthy')""",
             (claim_id,),
         )
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
-    db_module.init_db()
+    Database(path).init()
 
     with sqlite3.connect(path) as conn:
         row = conn.execute(
@@ -123,10 +119,10 @@ def test_cloudflare_diagnostic_data_survives_activation_migration(tmp_path, monk
     assert row == ("not_checked", None, 0)
 
 
-def test_mode_transition_migration_preserves_claims_and_diagnostics(tmp_path, monkeypatch):
+def test_mode_transition_migration_preserves_claims_and_diagnostics(tmp_path):
     path = tmp_path / "data.db"
     with sqlite3.connect(path) as conn:
-        for migration in db_module.MIGRATIONS[:7]:
+        for migration in MIGRATIONS[:7]:
             migration(conn)
         conn.execute("PRAGMA user_version = 7")
         conn.execute("INSERT INTO sites (name) VALUES ('existing-site')")
@@ -170,9 +166,8 @@ def test_mode_transition_migration_preserves_claims_and_diagnostics(tmp_path, mo
                     'healthy', 'healthy', 'healthy', 'healthy')""",
             (claim_id,),
         )
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
-    db_module.init_db()
+    Database(path).init()
 
     with sqlite3.connect(path) as conn:
         claim = conn.execute(
@@ -229,10 +224,9 @@ def test_mode_transition_migration_preserves_claims_and_diagnostics(tmp_path, mo
     } <= transition_columns
 
 
-def test_transition_schema_rejects_stale_mode_generation(tmp_path, monkeypatch):
+def test_transition_schema_rejects_stale_mode_generation(tmp_path):
     path = tmp_path / "data.db"
-    monkeypatch.setattr(db_module, "DB_PATH", path)
-    db_module.init_db()
+    Database(path).init()
     with sqlite3.connect(path) as conn:
         conn.execute("INSERT INTO sites (name) VALUES ('site')")
         claim_id = conn.execute(
@@ -251,10 +245,10 @@ def test_transition_schema_rejects_stale_mode_generation(tmp_path, monkeypatch):
             )
 
 
-def test_retarget_migration_marks_existing_automatic_onboarding(tmp_path, monkeypatch):
+def test_retarget_migration_marks_existing_automatic_onboarding(tmp_path):
     path = tmp_path / "data.db"
     with sqlite3.connect(path) as conn:
-        for migration in db_module.MIGRATIONS[:10]:
+        for migration in MIGRATIONS[:10]:
             migration(conn)
         conn.execute("PRAGMA user_version = 10")
         conn.execute("INSERT INTO sites (name) VALUES ('site')")
@@ -273,9 +267,8 @@ def test_retarget_migration_marks_existing_automatic_onboarding(tmp_path, monkey
             VALUES (?, 5, 2, NULL, 'cloudflare', 'observing', 'now')""",
             (claim_id,),
         )
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
-    db_module.init_db()
+    Database(path).init()
 
     with sqlite3.connect(path) as conn:
         automatic_retarget = conn.execute(
@@ -286,30 +279,28 @@ def test_retarget_migration_marks_existing_automatic_onboarding(tmp_path, monkey
     assert automatic_retarget == 1
 
 
-def test_migrations_are_idempotent(tmp_path, monkeypatch):
+def test_migrations_are_idempotent(tmp_path):
     path = tmp_path / "data.db"
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
-    db_module.init_db()
-    db_module.init_db()
+    Database(path).init()
+    Database(path).init()
 
     with sqlite3.connect(path) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db_module.MIGRATIONS)
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
 
 
-def test_normal_connections_enforce_foreign_keys(tmp_path, monkeypatch):
+def test_normal_connections_enforce_foreign_keys(tmp_path):
     path = tmp_path / "data.db"
-    monkeypatch.setattr(db_module, "DB_PATH", path)
-    db_module.init_db()
+    Database(path).init()
 
     with pytest.raises(sqlite3.IntegrityError):
-        with db_module.db() as conn:
+        with Database(path).connect() as conn:
             conn.execute(
                 "INSERT INTO sessions (id, user_id, expires_at) VALUES ('session', 999, '2099-01-01')"
             )
 
 
-def test_existing_foreign_key_violation_blocks_startup(tmp_path, monkeypatch):
+def test_existing_foreign_key_violation_blocks_startup(tmp_path):
     path = tmp_path / "data.db"
     with sqlite3.connect(path) as conn:
         conn.executescript("""
@@ -323,7 +314,6 @@ def test_existing_foreign_key_violation_blocks_startup(tmp_path, monkeypatch):
             );
             INSERT INTO sessions (id, user_id, expires_at) VALUES ('orphan', 999, '2099-01-01');
         """)
-    monkeypatch.setattr(db_module, "DB_PATH", path)
 
     with pytest.raises(RuntimeError, match="foreign-key violations"):
-        db_module.init_db()
+        Database(path).init()

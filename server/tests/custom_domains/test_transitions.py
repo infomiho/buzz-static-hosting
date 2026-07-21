@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from server import db as db_module
 from server.custom_domains.cloudflare import (
     CloudflareDiagnostician,
     CloudflareDiagnosticStore,
@@ -33,17 +32,15 @@ from server.custom_domains.errors import ClaimConflict
 
 
 @pytest.fixture
-def transition_db(tmp_path, monkeypatch):
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "data.db")
-    db_module.init_db()
-    with db_module.db() as conn:
+def transition_db(database):
+    with database.connect() as conn:
         conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
         store = DomainClaimStore(conn)
         claim = store.create("my-site", "www.example.com")
         store.record_check(claim.id, "my-site", (claim.verification_value,))
         claim = store.prepare_routes(True)[0]
         store.mark_routed(claim.id, claim.route_generation)
-    return db_module.db
+    return database.connect
 
 
 def activate(conn, claim, now=None):
@@ -674,7 +671,7 @@ def test_active_transition_completes_in_both_directions(
         )
     )
     recorder = (
-        CloudflareDiagnostician(collector, range_state=range_state)
+        CloudflareDiagnostician(collector, transition_db, range_state=range_state)
         if target == "cloudflare"
         else DiagnosticRecorder()
     )
@@ -1085,7 +1082,7 @@ def test_coordinator_persists_current_cloudflare_evidence_before_cutover(transit
         (ipaddress.ip_network("104.16.0.0/12"), ipaddress.ip_network("2606:4700::/32")),
     )
     range_state = CloudflareRangeState(ranges)
-    diagnostician = CloudflareDiagnostician(collector, range_state=range_state)
+    diagnostician = CloudflareDiagnostician(collector, transition_db, range_state=range_state)
     worker = coordinator(
         transition_db,
         observation,
@@ -1150,7 +1147,7 @@ def test_transition_probes_all_sixteen_cloudflare_addresses(transition_db):
         or EdgeProbeResult("healthy", None, "healthy", None, address=address),
         cloudflare_range_state=range_state,
     )
-    diagnostician = CloudflareDiagnostician(collector, range_state=range_state)
+    diagnostician = CloudflareDiagnostician(collector, transition_db, range_state=range_state)
     worker = coordinator(
         transition_db,
         DnsObservation("cloudflare", addresses),

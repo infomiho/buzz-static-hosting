@@ -3,8 +3,9 @@ from __future__ import annotations
 import secrets
 from urllib.parse import urlsplit
 
-from .config import ADJECTIVES, DOMAIN, NOUNS
 
+ADJECTIVES = ["cool", "fast", "blue", "red", "green", "happy", "swift", "bright", "calm", "bold"]
+NOUNS = ["site", "page", "app", "web", "hub", "box", "lab", "dev", "net", "cloud"]
 
 _LOCAL_CONTROL_HOSTS = {"localhost", "127.0.0.1", "::1", "testserver"}
 
@@ -29,20 +30,20 @@ def _hostname(host: str | None) -> str:
     return (parsed.hostname or "").lower().rstrip(".")
 
 
-def is_control_host(host: str | None) -> bool:
+def is_control_host(host: str | None, domain: str | None) -> bool:
     hostname = _hostname(host)
-    domain = _hostname(DOMAIN)
+    domain = _hostname(domain)
     if domain:
         return hostname == domain
     return hostname in _LOCAL_CONTROL_HOSTS
 
 
-def extract_subdomain(host: str | None) -> str | None:
+def extract_subdomain(host: str | None, domain: str | None) -> str | None:
     hostname = _hostname(host)
     if not hostname:
         return None
 
-    domain = _hostname(DOMAIN)
+    domain = _hostname(domain)
     if domain and hostname.endswith("." + domain):
         sub = hostname[: -(len(domain) + 1)]
         return sub if sub else None

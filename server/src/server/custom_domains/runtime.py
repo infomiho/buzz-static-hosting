@@ -8,7 +8,6 @@ import logging
 import random
 from typing import Callable
 
-from .. import config as server_config
 from .activation import DomainActivator
 from .capabilities import DomainCapabilities, compute_capabilities
 from .claims import DnsTxtResolver, DomainClaimStore
@@ -47,6 +46,9 @@ class CustomDomainsRuntime:
 
     def capabilities(self) -> DomainCapabilities:
         return compute_capabilities(
+            enabled=self._config.custom_domains_enabled,
+            control_token=self._config.traefik_control_token,
+            ingress_ips=self._config.custom_domain_ingress_ips,
             control=self.control,
             diagnostician=self.diagnostician,
             range_state=self.range_state,
@@ -60,7 +62,7 @@ class CustomDomainsRuntime:
         self, hostname: str | None, path: str
     ) -> tuple[int, str, str] | None:
         if (
-            not server_config.CUSTOM_DOMAINS_ENABLED
+            not self._config.custom_domains_enabled
             or not hostname
             or not path.startswith(DOMAIN_CHECK_PREFIX)
         ):
@@ -78,7 +80,7 @@ class CustomDomainsRuntime:
         return claim.id, claim.site_name, token
 
     def activated_site(self, hostname: str | None) -> str | None:
-        if not server_config.CUSTOM_DOMAINS_ENABLED or not hostname:
+        if not self._config.custom_domains_enabled or not hostname:
             return None
         with self._connect() as conn:
             claim = DomainClaimStore(conn).find_activated(hostname.lower().rstrip("."))
@@ -110,6 +112,7 @@ class CustomDomainsRuntime:
             config.traefik_control_port,
             runtime_client,
             snapshot_provider=lambda: build_traefik_snapshot(
+                self._connect,
                 config.traefik_https_entrypoint,
                 config.traefik_service,
                 config.traefik_cert_resolver,
@@ -148,6 +151,7 @@ class CustomDomainsRuntime:
             withdrawal_snapshot_acknowledged=(
                 control_server.withdrawal_snapshot_acknowledged
             ),
+            connect=self._connect,
         )
 
         def validate_transition_router(claim) -> None:
@@ -168,17 +172,21 @@ class CustomDomainsRuntime:
             validate_transition_router,
             cloudflare_range_state=self.range_state,
         )
-        activator = DomainActivator(evidence_collector=evidence_collector)
+        activator = DomainActivator(
+            evidence_collector=evidence_collector, connect=self._connect
+        )
         self.diagnostician = CloudflareDiagnostician(
             evidence_collector,
             activation_enabled=True,
             range_state=self.range_state,
+            connect=self._connect,
         )
         self.transition_coordinator = DomainTransitionCoordinator(
             evidence_collector,
             self.diagnostician,
             admission_enabled=lambda: self.capabilities().automatic_ready,
             cloudflare_target_enabled=lambda: self.capabilities().cloudflare_ready,
+            database=self._connect,
         )
         control_server.set_operator_handlers(
             self._active_handoffs,

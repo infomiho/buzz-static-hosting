@@ -5,18 +5,18 @@ import logging
 from collections.abc import Callable
 
 from .claims import DomainClaim, DomainClaimStore
-from ..db import db
 from .traefik import TraefikRuntimeClient
 
 logger = logging.getLogger(__name__)
 
 
 def build_traefik_snapshot(
+    connect: Callable,
     https_entrypoint: str,
     service: str,
     cert_resolver: str,
 ) -> bytes:
-    with db() as conn:
+    with connect() as conn:
         claims = DomainClaimStore(conn).routable_claims()
     if not claims:
         return b"{}\n"
@@ -45,6 +45,7 @@ class DomainRouteReconciler:
         cert_resolver: str,
         routing_enabled: Callable[[], bool],
         withdrawal_snapshot_acknowledged: Callable[[str, str], bool],
+        connect: Callable,
     ):
         self._runtime_client = runtime_client
         self._https_entrypoint = https_entrypoint
@@ -52,9 +53,10 @@ class DomainRouteReconciler:
         self._cert_resolver = cert_resolver
         self._routing_enabled = routing_enabled
         self._withdrawal_snapshot_acknowledged = withdrawal_snapshot_acknowledged
+        self._connect = connect
 
     def run_once(self) -> None:
-        with db() as conn:
+        with self._connect() as conn:
             claims = DomainClaimStore(conn).prepare_routes(self._routing_enabled())
         for claim in claims:
             try:
@@ -77,7 +79,7 @@ class DomainRouteReconciler:
         if not self.matches_expected_router(claim, router):
             self._record_error(claim, "router_configuration_mismatch")
             return
-        with db() as conn:
+        with self._connect() as conn:
             DomainClaimStore(conn).mark_routed(claim.id, claim.route_generation)
         logger.info("Custom domain router %s acknowledged", claim.route_name)
 
@@ -96,7 +98,7 @@ class DomainRouteReconciler:
         if router is not None:
             self._record_error(claim, "router_still_present")
             return
-        with db() as conn:
+        with self._connect() as conn:
             DomainClaimStore(conn).finish_withdrawal(claim.id, claim.route_generation)
         logger.info("Custom domain router %s withdrawal acknowledged", claim.route_name)
 
@@ -113,7 +115,7 @@ class DomainRouteReconciler:
         )
 
     def _record_error(self, claim: DomainClaim, error: str) -> None:
-        with db() as conn:
+        with self._connect() as conn:
             changed = DomainClaimStore(conn).record_route_error(
                 claim.id,
                 claim.route_generation,

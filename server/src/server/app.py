@@ -12,16 +12,6 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from .analytics import AnalyticsRecorder, build_analytics_event
 from .api_models import HealthResponse
 from .auth_service import AuthService, Identity
-from .config import (
-    ALLOW_REGISTRATION,
-    ALLOWED_GITHUB_USERS,
-    CONTENT_TYPES,
-    CUSTOM_DOMAINS_ENABLED,
-    DOMAIN,
-    GITHUB_CLIENT_ID,
-    MAX_ARCHIVE_BYTES,
-    SITES_DIR,
-)
 from .cookies import COOKIE_NAME
 from .custom_domains import (
     ClaimConflict,
@@ -32,8 +22,9 @@ from .custom_domains import (
     UnsupportedClaimMode,
 )
 from .site_path import InvalidSubdomain, resolve_site_file
-from .db import db
+from .db import Database
 from .dependencies import get_identity
+from .settings import Settings
 from .exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
 from .github import HttpGitHubClient
 from .routes import auth, dashboard, domains, sites, tokens
@@ -41,8 +32,22 @@ from .search_console import create_search_console_client
 from .utils import extract_subdomain, is_control_host
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
-MAX_DEPLOY_BODY_BYTES = MAX_ARCHIVE_BYTES + 1024 * 1024
 logger = logging.getLogger(__name__)
+
+CONTENT_TYPES = {
+    ".html": "text/html",
+    ".css": "text/css",
+    ".js": "application/javascript",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".txt": "text/plain",
+    ".xml": "application/xml",
+}
 
 
 class DeploymentBodyLimitMiddleware:
@@ -106,8 +111,13 @@ def origin_matches_host(origin: str, host: str, scheme: str) -> bool:
     )
 
 
-def create_app() -> FastAPI:
-    custom_domains = CustomDomainsRuntime(CustomDomainsConfig.from_config(), connect=db)
+def create_app(settings: Settings | None = None, database: Database | None = None) -> FastAPI:
+    settings = settings or Settings.from_environment()
+    database = database or Database(settings.db_path)
+    max_deploy_body_bytes = settings.max_archive_bytes + 1024 * 1024
+    custom_domains = CustomDomainsRuntime(
+        CustomDomainsConfig.from_settings(settings), connect=database.connect
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -151,16 +161,20 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     github_client = HttpGitHubClient()
+    app.state.settings = settings
+    app.state.database = database
     app.state.github_client = github_client
     app.state.auth_service = AuthService(
-        db=db,
+        db=database.connect,
         github=github_client,
-        github_client_id=GITHUB_CLIENT_ID,
-        allow_registration=ALLOW_REGISTRATION,
-        allowed_github_users=ALLOWED_GITHUB_USERS,
+        github_client_id=settings.github_client_id,
+        allow_registration=settings.allow_registration,
+        allowed_github_users=settings.allowed_github_users,
     )
-    app.state.analytics = AnalyticsRecorder(db)
-    app.state.search_console = create_search_console_client()
+    app.state.analytics = AnalyticsRecorder(database.connect)
+    app.state.search_console = create_search_console_client(
+        settings.gsc_credentials, settings.gsc_property, settings.domain
+    )
     app.state.custom_domains = custom_domains
 
     @app.exception_handler(BadRequest)
@@ -197,7 +211,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         DeploymentBodyLimitMiddleware,
-        max_body_bytes=MAX_DEPLOY_BODY_BYTES,
+        max_body_bytes=max_deploy_body_bytes,
     )
 
     @app.middleware("http")
@@ -228,7 +242,7 @@ def create_app() -> FastAPI:
                 media_type="text/plain",
                 headers={"Cache-Control": "no-store"},
             )
-        subdomain = extract_subdomain(host)
+        subdomain = extract_subdomain(host, settings.domain)
         if subdomain:
             if request.method not in {"GET", "HEAD"}:
                 return Response(
@@ -237,9 +251,9 @@ def create_app() -> FastAPI:
                     headers={"Allow": "GET, HEAD"},
                     media_type="text/plain",
                 )
-            return await serve_static(request, subdomain, request.url.path)
+            return await serve_static(request, subdomain, request.url.path, settings)
 
-        if not is_control_host(host):
+        if not is_control_host(host, settings.domain):
             site_name = custom_domains.activated_site(request.url.hostname)
             if site_name:
                 if request.method not in {"GET", "HEAD"}:
@@ -249,7 +263,7 @@ def create_app() -> FastAPI:
                         headers={"Allow": "GET, HEAD"},
                         media_type="text/plain",
                     )
-                return await serve_static(request, site_name, request.url.path)
+                return await serve_static(request, site_name, request.url.path, settings)
             return Response(
                 content="Misdirected Request",
                 status_code=421,
@@ -257,7 +271,7 @@ def create_app() -> FastAPI:
             )
 
         request_origin = request.headers.get("origin") or request.headers.get("referer")
-        control_scheme = "https" if DOMAIN else request.url.scheme
+        control_scheme = "https" if settings.domain else request.url.scheme
         if (
             request.method not in {"GET", "HEAD", "OPTIONS"}
             and request.cookies.get(COOKIE_NAME)
@@ -295,7 +309,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing(request: Request, identity: Identity | None = Depends(get_identity)):
-        domain = DOMAIN or "localhost:8080"
+        domain = settings.domain or "localhost:8080"
 
         if identity:
             return templates.TemplateResponse(request, "dashboard.html", {
@@ -314,25 +328,27 @@ def create_app() -> FastAPI:
     return app
 
 
-async def serve_static(request: Request, subdomain: str, path: str) -> Response:
+async def serve_static(
+    request: Request, subdomain: str, path: str, settings: Settings
+) -> Response:
     try:
-        filepath = resolve_site_file(SITES_DIR, subdomain, path)
+        filepath = resolve_site_file(settings.sites_dir, subdomain, path)
     except InvalidSubdomain:
         return Response(content="Site not found", status_code=404, media_type="text/plain")
 
     if filepath:
         content_type = CONTENT_TYPES.get(filepath.suffix.lower(), "application/octet-stream")
-        record_analytics(request, subdomain, path, 200, filepath.stat().st_size, content_type)
+        record_analytics(request, subdomain, path, 200, filepath.stat().st_size, content_type, settings)
         return FileResponse(filepath, media_type=content_type)
 
-    site_dir = (SITES_DIR / subdomain).resolve()
+    site_dir = (settings.sites_dir / subdomain).resolve()
     custom_404 = site_dir / "404.html"
     if site_dir.is_dir() and custom_404.is_file():
-        record_analytics(request, subdomain, path, 404, custom_404.stat().st_size, "text/html")
+        record_analytics(request, subdomain, path, 404, custom_404.stat().st_size, "text/html", settings)
         return FileResponse(custom_404, status_code=404, media_type="text/html")
 
     content = b"404 Not Found"
-    record_analytics(request, subdomain, path, 404, len(content), "text/plain")
+    record_analytics(request, subdomain, path, 404, len(content), "text/plain", settings)
     return Response(content=content, status_code=404, media_type="text/plain")
 
 
@@ -343,8 +359,11 @@ def record_analytics(
     status_code: int,
     bytes_sent: int,
     content_type: str,
+    settings: Settings,
 ) -> None:
-    internal_hosts = {f"{subdomain}.{DOMAIN.split(':', 1)[0]}"} if DOMAIN else set()
+    internal_hosts = (
+        {f"{subdomain}.{settings.domain.split(':', 1)[0]}"} if settings.domain else set()
+    )
     event = build_analytics_event(
         request,
         subdomain,
@@ -353,10 +372,11 @@ def record_analytics(
         bytes_sent,
         content_type,
         internal_hosts,
+        visitor_secret=settings.analytics_secret,
     )
     if not event:
         return
-    if CUSTOM_DOMAINS_ENABLED and event.referrer:
+    if settings.custom_domains_enabled and event.referrer:
         try:
             internal_hosts.update(
                 request.app.state.custom_domains.activated_hostnames_for_site(subdomain)
@@ -369,6 +389,7 @@ def record_analytics(
                 bytes_sent,
                 content_type,
                 internal_hosts,
+                visitor_secret=settings.analytics_secret,
             )
         except Exception:
             logger.warning(

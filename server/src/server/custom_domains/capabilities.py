@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .. import config
-
 _RANGE_DETAIL = {
     "range_data_missing": "Cloudflare IP range data is missing",
     "range_data_invalid": "Cloudflare IP range data is invalid",
@@ -25,6 +23,9 @@ class DomainCapabilities:
 
 def compute_capabilities(
     *,
+    enabled: bool,
+    control_token: str | None,
+    ingress_ips: frozenset[str],
     control,
     diagnostician,
     range_state,
@@ -32,17 +33,13 @@ def compute_capabilities(
     coordinator,
 ) -> DomainCapabilities:
     runtime_ready = bool(control and control.is_ready())
-    control_ready = bool(
-        config.CUSTOM_DOMAINS_ENABLED
-        and config.TRAEFIK_CONTROL_TOKEN
-        and runtime_ready
-    )
-    routing_ready = bool(config.CUSTOM_DOMAIN_INGRESS_IPS)
+    control_ready = bool(enabled and control_token and runtime_ready)
+    routing_ready = bool(ingress_ips)
 
-    if not config.CUSTOM_DOMAINS_ENABLED:
+    if not enabled:
         status = "disabled"
         detail = "Custom domains are not enabled on this Buzz server"
-    elif not config.TRAEFIK_CONTROL_TOKEN or control is None:
+    elif not control_token or control is None:
         status = "unready"
         detail = "Custom domains are enabled but the control plane is not configured"
     elif not runtime_ready:

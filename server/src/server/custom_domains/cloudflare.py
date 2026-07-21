@@ -11,7 +11,6 @@ from .claims import (
     DomainClaim,
     DomainClaimStore,
 )
-from ..db import db
 from .evidence import (
     ClaimEvidence,
     DomainEvidenceCollector,
@@ -302,6 +301,7 @@ class CloudflareDiagnostician:
     def __init__(
         self,
         evidence_collector: DomainEvidenceCollector,
+        connect: Callable,
         http_probe: Callable[
             [str, DomainClaim], HttpForwardProbeResult
         ] = probe_cloudflare_http_forwarding,
@@ -309,6 +309,7 @@ class CloudflareDiagnostician:
         activation_enabled: bool = False,
     ):
         self._evidence_collector = evidence_collector
+        self._connect = connect
         self._http_probe = http_probe
         self._range_state = range_state or evidence_collector.cloudflare_range_state
         self._activation_enabled = activation_enabled
@@ -316,7 +317,7 @@ class CloudflareDiagnostician:
     def run_once(self) -> None:
         now = datetime.now(timezone.utc)
 
-        with db() as conn:
+        with self._connect() as conn:
             claims = CloudflareDiagnosticStore(conn).candidates(now)
         for claim in claims[:MAX_CANDIDATES_PER_PASS]:
             try:
@@ -329,7 +330,7 @@ class CloudflareDiagnostician:
                     mode_generation=claim.mode_generation,
                     probe_generation=0,
                 )
-                with db() as conn:
+                with self._connect() as conn:
                     DomainPathEvidenceStore(conn).record(
                         evidence, claim.mode_generation, 0, "cloudflare"
                     )
@@ -439,7 +440,7 @@ class CloudflareDiagnostician:
             mode_generation=reservation.mode_generation,
             probe_generation=reservation.probe_generation,
         )
-        with db() as conn:
+        with self._connect() as conn:
             return CloudflareDiagnosticStore(conn).record(diagnostic, reservation)
 
     def record_health(
@@ -450,7 +451,7 @@ class CloudflareDiagnostician:
             mode_generation=claim.mode_generation,
             probe_generation=0,
         )
-        with db() as conn:
+        with self._connect() as conn:
             return CloudflareDiagnosticStore(conn).record(diagnostic)
 
     def _apply_activation(

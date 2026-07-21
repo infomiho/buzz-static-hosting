@@ -14,13 +14,8 @@ from pathlib import Path, PurePosixPath
 from sqlite3 import Connection, OperationalError, Row
 from typing import BinaryIO
 
-from .config import (
-    MAX_ARCHIVE_BYTES,
-    MAX_ARCHIVE_PATH_BYTES,
-    MAX_SITE_BYTES,
-    MAX_SITE_FILES,
-)
 from .custom_domains import ClaimConflict, DomainClaimStore
+from .environment import environment_value
 from .exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
 
 
@@ -37,10 +32,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class DeploymentLimits:
-    max_archive_bytes: int = MAX_ARCHIVE_BYTES
-    max_site_bytes: int = MAX_SITE_BYTES
-    max_entries: int = MAX_SITE_FILES
-    max_path_bytes: int = MAX_ARCHIVE_PATH_BYTES
+    max_archive_bytes: int = environment_value("BUZZ_MAX_ARCHIVE_BYTES")
+    max_site_bytes: int = environment_value("BUZZ_MAX_SITE_BYTES")
+    max_entries: int = environment_value("BUZZ_MAX_SITE_FILES")
+    max_path_bytes: int = environment_value("BUZZ_MAX_ARCHIVE_PATH_BYTES")
 
 
 @dataclass

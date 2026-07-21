@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import os
+
 import uvicorn
 
-from . import config
-from .config import (
-    ALLOW_REGISTRATION,
-    ALLOWED_GITHUB_USERS,
-    SITES_DIR,
-    GITHUB_CLIENT_ID,
-    GITHUB_CLIENT_SECRET,
-)
-from .db import db, init_db
+from .app import create_app
+from .db import Database
 from .environment import environment_value
+from .settings import Settings
 from .site_store import SiteStore
 
 
@@ -36,30 +33,37 @@ def main() -> None:
     parser.add_argument("--reload", action="store_true", help="Auto-reload on changes")
     args = parser.parse_args()
 
+    settings = Settings.from_environment()
+    overrides: dict[str, object] = {}
     if args.domain:
-        config.DOMAIN = args.domain
+        overrides["domain"] = args.domain
     if args.dev:
-        config.DEV_MODE = True
+        overrides["dev_mode"] = True
+    if overrides:
+        settings = dataclasses.replace(settings, **overrides)
 
-    SITES_DIR.mkdir(parents=True, exist_ok=True)
-    init_db()
-    with db() as conn:
-        SiteStore(conn, SITES_DIR).reconcile()
+    settings.sites_dir.mkdir(parents=True, exist_ok=True)
+    database = Database(settings.db_path)
+    database.init()
+    with database.connect() as conn:
+        SiteStore(conn, settings.sites_dir).reconcile()
         user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
-    if not config.DEV_MODE:
-        warning = access_control_warning(ALLOW_REGISTRATION, ALLOWED_GITHUB_USERS, user_count)
+    if not settings.dev_mode:
+        warning = access_control_warning(
+            settings.allow_registration, settings.allowed_github_users, user_count
+        )
         if warning:
             print(warning)
 
     print(f"Server running on http://localhost:{args.port}")
-    if config.DOMAIN:
-        print(f"Serving sites on *.{config.DOMAIN}")
+    if settings.domain:
+        print(f"Serving sites on *.{settings.domain}")
     else:
         print(f"Serving sites on *.localhost:{args.port}")
-    if config.DEV_MODE:
+    if settings.dev_mode:
         print("DEV MODE: Authentication bypassed")
-    elif GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET:
+    elif settings.github_client_id and settings.github_client_secret:
         print("GitHub OAuth enabled")
     else:
         print("ERROR: GitHub OAuth not configured")
@@ -67,10 +71,22 @@ def main() -> None:
         print("Or use --dev flag for local development")
         exit(1)
 
-    uvicorn.run(
-        "server.app:create_app",
-        factory=True,
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-    )
+    if args.reload:
+        # Reload spawns a fresh interpreter that imports the factory directly, so
+        # command-line overrides cannot travel through the app instance. Propagate
+        # --domain through the environment; --dev is not honored under --reload.
+        if args.domain:
+            os.environ["BUZZ_DOMAIN"] = args.domain
+        uvicorn.run(
+            "server.app:create_app",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            reload=True,
+        )
+    else:
+        uvicorn.run(
+            create_app(settings, database),
+            host=args.host,
+            port=args.port,
+        )

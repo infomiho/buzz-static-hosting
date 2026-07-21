@@ -3,15 +3,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import secrets
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from sqlite3 import Connection
 from typing import Any
 from urllib.parse import parse_qs, urlparse
-
-from . import config
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +300,8 @@ def build_analytics_event(
     bytes_sent: int,
     content_type: str,
     internal_hosts: Collection[str] = (),
+    *,
+    visitor_secret: str,
 ) -> AnalyticsEvent | None:
     if request.method != "GET":
         return None
@@ -329,7 +328,7 @@ def build_analytics_event(
         bytes_sent=bytes_sent,
         is_pageview=is_pageview,
         is_not_found=is_not_found,
-        visitor_hash=_visitor_hash(site_name, day, _client_ip(request), user_agent),
+        visitor_hash=_visitor_hash(site_name, day, _client_ip(request), user_agent, visitor_secret),
         referrer=_referrer_host(request, internal_hosts),
         campaign=_campaign(request),
         country=_country(request),
@@ -377,13 +376,9 @@ def _client_ip(request: Any) -> str:
     return request.client.host if request.client else ""
 
 
-def _visitor_hash(site_name: str, day: str, ip: str, user_agent: str) -> str | None:
+def _visitor_hash(site_name: str, day: str, ip: str, user_agent: str, secret: str) -> str | None:
     if not ip and not user_agent:
         return None
-    secret = getattr(config, "ANALYTICS_SECRET", None)
-    if not secret:
-        secret = config.GITHUB_CLIENT_SECRET or secrets.token_hex(16)
-        config.ANALYTICS_SECRET = secret
     raw = f"{secret}|{site_name}|{day}|{ip}|{user_agent}"
     return hashlib.sha256(raw.encode()).hexdigest()
 

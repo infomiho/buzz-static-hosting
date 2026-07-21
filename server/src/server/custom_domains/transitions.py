@@ -16,7 +16,6 @@ from .claims import (
     DomainClaim,
     DomainClaimStore,
 )
-from ..db import db
 from .evidence import DnsObservation, DomainPathEvidenceStore, EvidenceResult
 from .probes import MAX_CONCURRENT_CLAIM_CHECKS
 from .errors import ClaimConflict
@@ -1296,7 +1295,7 @@ class DomainTransitionCoordinator:
         cloudflare_diagnostician,
         admission_enabled: Callable[[], bool],
         cloudflare_target_enabled: Callable[[], bool],
-        database: Callable = db,
+        database: Callable,
         lease_owner: str = "domain-transition-coordinator",
     ):
         self._evidence_collector = evidence_collector

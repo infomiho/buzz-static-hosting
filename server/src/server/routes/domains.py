@@ -4,7 +4,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
-from .. import config
 from ..api_models import (
     CreateDomainClaimRequest,
     CustomDomainCapabilityResponse,
@@ -25,24 +24,27 @@ from ..custom_domains import (
     claim_views_for_site,
     normalize_hostname,
 )
-from ..db import db
+from ..db import Database
 from ..dependencies import (
     Identity,
+    get_database,
+    get_settings,
     require_custom_domain_control_ready,
     require_user,
 )
 from ..exceptions import BadRequest
+from ..settings import Settings
 from ..site_store import SiteStore
 
 router = APIRouter(prefix="/sites/{site_name}/domains")
 capabilities_router = APIRouter(prefix="/capabilities")
 
 
-def domain_limits() -> DomainClaimLimits:
+def domain_limits(settings: Settings) -> DomainClaimLimits:
     return DomainClaimLimits(
-        per_site=config.MAX_CUSTOM_DOMAINS_PER_SITE,
-        per_user=config.MAX_CUSTOM_DOMAINS_PER_USER,
-        server_wide=config.MAX_CUSTOM_DOMAINS_SERVER_WIDE,
+        per_site=settings.max_custom_domains_per_site,
+        per_user=settings.max_custom_domains_per_user,
+        server_wide=settings.max_custom_domains_server_wide,
     )
 
 
@@ -137,6 +139,7 @@ def domain_response(view: ClaimView) -> dict:
 async def custom_domain_capability(
     request: Request,
     _identity: Annotated[Identity, Depends(require_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
     capability = request.app.state.custom_domains.capabilities()
     targets = [
@@ -145,14 +148,14 @@ async def custom_domain_capability(
             "value": address,
         }
         for address in sorted(
-            config.CUSTOM_DOMAIN_INGRESS_IPS,
+            settings.custom_domain_ingress_ips,
             key=lambda value: (ipaddress.ip_address(value).version, value),
         )
     ]
     return {
         "status": capability.status,
         "detail": capability.detail,
-        "enabled": config.CUSTOM_DOMAINS_ENABLED,
+        "enabled": settings.custom_domains_enabled,
         "control_ready": capability.control_ready,
         "routing_enabled": capability.routing_ready,
         "routing_targets": targets,
@@ -167,9 +170,11 @@ async def custom_domain_capability(
     }
 
 
-def require_owned_site(site_name: str, owner_id: int) -> None:
-    with db() as conn:
-        SiteStore(conn, config.SITES_DIR).get_by_name(site_name, owner_id)
+def require_owned_site(
+    database: Database, settings: Settings, site_name: str, owner_id: int
+) -> None:
+    with database.connect() as conn:
+        SiteStore(conn, settings.sites_dir).get_by_name(site_name, owner_id)
 
 
 @router.get(
@@ -185,9 +190,11 @@ def require_owned_site(site_name: str, owner_id: int) -> None:
 async def list_domain_claims(
     site_name: str,
     identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
-    require_owned_site(site_name, identity.user.id)
-    with db() as conn:
+    require_owned_site(database, settings, site_name, identity.user.id)
+    with database.connect() as conn:
         return [domain_response(view) for view in claim_views_for_site(conn, site_name)]
 
 
@@ -214,10 +221,12 @@ async def create_domain_claim(
     site_name: str,
     data: CreateDomainClaimRequest,
     identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
-    require_owned_site(site_name, identity.user.id)
+    require_owned_site(database, settings, site_name, identity.user.id)
     try:
-        hostname = normalize_hostname(data.hostname, config.DOMAIN)
+        hostname = normalize_hostname(data.hostname, settings.domain)
     except InvalidHostname as exc:
         raise BadRequest(str(exc))
     capability = request.app.state.custom_domains.capabilities()
@@ -227,12 +236,12 @@ async def create_domain_claim(
             detail=capability.automatic_detail
             or "Custom domains are not ready on this Buzz server",
         )
-    with db() as conn:
+    with database.connect() as conn:
         try:
             claim = DomainClaimStore(conn).create(
                 site_name,
                 hostname,
-                limits=domain_limits(),
+                limits=domain_limits(settings),
                 claim_mode="direct",
                 automatic_mode=True,
             )
@@ -260,12 +269,14 @@ async def check_domain_claim(
     site_name: str,
     claim_id: int,
     identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
-    require_owned_site(site_name, identity.user.id)
-    with db() as conn:
+    require_owned_site(database, settings, site_name, identity.user.id)
+    with database.connect() as conn:
         claim = DomainClaimStore(conn).get(claim_id, site_name)
     if claim.status == "verified":
-        with db() as conn:
+        with database.connect() as conn:
             return domain_response(build_claim_view(conn, claim))
     retry_after = claim.check_retry_after()
     if retry_after:
@@ -274,7 +285,7 @@ async def check_domain_claim(
             detail="Wait before checking this custom domain again",
             headers={"Retry-After": str(retry_after)},
         )
-    with db() as conn:
+    with database.connect() as conn:
         try:
             claim = DomainClaimStore(conn).reserve_check(claim_id, site_name)
         except ClaimConflict as exc:
@@ -287,12 +298,12 @@ async def check_domain_claim(
     try:
         values = await run_in_threadpool(resolver.lookup, claim.verification_name)
     except DomainCheckUnavailable:
-        with db() as conn:
+        with database.connect() as conn:
             checked = DomainClaimStore(conn).record_check_error(
                 claim_id, site_name, "dns_unavailable"
             )
             return domain_response(build_claim_view(conn, checked))
-    with db() as conn:
+    with database.connect() as conn:
         claim = DomainClaimStore(conn).record_check(claim_id, site_name, values)
         return domain_response(build_claim_view(conn, claim))
 
@@ -312,9 +323,11 @@ async def cancel_domain_claim(
     site_name: str,
     claim_id: int,
     identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
-    require_owned_site(site_name, identity.user.id)
-    with db() as conn:
+    require_owned_site(database, settings, site_name, identity.user.id)
+    with database.connect() as conn:
         pending_withdrawal = DomainClaimStore(conn).cancel(
             claim_id,
             site_name,
@@ -349,11 +362,13 @@ async def retry_domain_transition(
     site_name: str,
     claim_id: int,
     identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
-    require_owned_site(site_name, identity.user.id)
+    require_owned_site(database, settings, site_name, identity.user.id)
     coordinator = transition_coordinator(request)
     await run_in_threadpool(coordinator.retry, claim_id, site_name)
-    with db() as conn:
+    with database.connect() as conn:
         claim = DomainClaimStore(conn).get(claim_id, site_name)
         return domain_response(build_claim_view(conn, claim))
 
@@ -374,10 +389,12 @@ async def cancel_domain_transition(
     site_name: str,
     claim_id: int,
     identity: Annotated[Identity, Depends(require_user)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
-    require_owned_site(site_name, identity.user.id)
+    require_owned_site(database, settings, site_name, identity.user.id)
     coordinator = transition_coordinator(request)
     await run_in_threadpool(coordinator.cancel, claim_id, site_name)
-    with db() as conn:
+    with database.connect() as conn:
         claim = DomainClaimStore(conn).get(claim_id, site_name)
         return domain_response(build_claim_view(conn, claim))

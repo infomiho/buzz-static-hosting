@@ -2,7 +2,6 @@ import ssl
 
 import pytest
 
-from server import db as db_module
 from server.custom_domains.claims import DomainClaimStore
 from server.custom_domains.evidence import AddressAnswer, DomainDnsObserver, DomainEvidenceCollector
 from server.custom_domains.activation import DomainActivator
@@ -10,21 +9,18 @@ from server.custom_domains.probes import MAX_RESPONSE_BYTES, ActivationFailed, p
 
 
 @pytest.fixture
-def activation_db(tmp_path, monkeypatch):
-    path = tmp_path / "data.db"
-    monkeypatch.setattr(db_module, "DB_PATH", path)
-    db_module.init_db()
-    with db_module.db() as conn:
+def activation_db(database):
+    with database.connect() as conn:
         conn.execute("INSERT INTO sites (name) VALUES ('my-site')")
         store = DomainClaimStore(conn)
         claim = store.create("my-site", "www.example.com")
         store.record_check(claim.id, "my-site", (claim.verification_value,))
         claim = store.prepare_routes(True)[0]
         store.mark_routed(claim.id, claim.route_generation)
-    return db_module.db
+    return database.connect
 
 
-def activator(resolver, probe=lambda _origin, _claim: None):
+def activator(connect, resolver, probe=lambda _origin, _claim: None):
     def lookup(name, family):
         if family == "AAAA":
             return AddressAnswer.no_answer()
@@ -36,7 +32,7 @@ def activator(resolver, probe=lambda _origin, _claim: None):
             )
 
     def ownership(name):
-        with db_module.db() as conn:
+        with connect() as conn:
             claim = DomainClaimStore(conn).list_for_site("my-site")[0]
         return (claim.verification_value,) if claim.verification_name == name else ()
 
@@ -47,14 +43,13 @@ def activator(resolver, probe=lambda _origin, _claim: None):
         ownership_resolver=ownership,
         origin_probe=probe,
     )
-    return DomainActivator(
-        evidence_collector=collector,
-    )
+    return DomainActivator(evidence_collector=collector, connect=connect)
 
 
 def test_activation_requires_allowed_dns_and_exact_origin_challenge(activation_db):
     probes = []
     route_activator = activator(
+        activation_db,
         lambda _hostname: ("8.8.8.8",),
         lambda origin, claim: probes.append((origin, claim.hostname)),
     )
@@ -86,7 +81,7 @@ def test_activation_requires_allowed_dns_and_exact_origin_challenge(activation_d
     ],
 )
 def test_activation_rejects_unexpected_dns_answers(activation_db, addresses, error):
-    route_activator = activator(lambda _hostname: addresses)
+    route_activator = activator(activation_db, lambda _hostname: addresses)
 
     route_activator.run_once()
 
@@ -100,7 +95,7 @@ def test_activation_records_probe_failure(activation_db):
     def fail_probe(_origin, _claim):
         raise ActivationFailed("tls_invalid")
 
-    activator(lambda _hostname: ("8.8.8.8",), fail_probe).run_once()
+    activator(activation_db, lambda _hostname: ("8.8.8.8",), fail_probe).run_once()
 
     with activation_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
@@ -129,7 +124,7 @@ def test_activation_isolates_alias_failures(activation_db):
             raise RuntimeError("unexpected failure")
         return ("8.8.8.8",)
 
-    activator(resolve).run_once()
+    activator(activation_db, resolve).run_once()
 
     with activation_db() as conn:
         claims = DomainClaimStore(conn).list_for_site("my-site")
@@ -147,7 +142,7 @@ def test_removal_race_prevents_activation(activation_db):
         with activation_db() as conn:
             DomainClaimStore(conn).cancel(claim.id, "my-site")
 
-    activator(lambda _hostname: ("8.8.8.8",), remove_during_probe).run_once()
+    activator(activation_db, lambda _hostname: ("8.8.8.8",), remove_during_probe).run_once()
 
     with activation_db() as conn:
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
@@ -161,7 +156,7 @@ def test_removal_race_prevents_activation(activation_db):
 
 
 def test_new_route_generation_clears_activation(activation_db):
-    route_activator = activator(lambda _hostname: ("8.8.8.8",))
+    route_activator = activator(activation_db, lambda _hostname: ("8.8.8.8",))
     route_activator.run_once()
     with activation_db() as conn:
         store = DomainClaimStore(conn)

@@ -4,7 +4,6 @@ from threading import Barrier
 
 import pytest
 
-from server import db as db_module
 from server.custom_domains.claims import (
     DnsTxtResolver,
     DomainCheckUnavailable,
@@ -26,11 +25,8 @@ def test_dns_resolver_rejects_non_ascii_txt_data(monkeypatch):
 
 
 @pytest.fixture
-def claim_db(tmp_path, monkeypatch):
-    path = tmp_path / "data.db"
-    monkeypatch.setattr(db_module, "DB_PATH", path)
-    db_module.init_db()
-    with db_module.db() as conn:
+def claim_db(database):
+    with database.connect() as conn:
         conn.execute(
             "INSERT INTO users (id, github_id, github_login) VALUES (1, 1, 'alice'), (2, 2, 'bob')"
         )
@@ -38,7 +34,7 @@ def claim_db(tmp_path, monkeypatch):
             """INSERT INTO sites (name, owner_id) VALUES
             ('site-one', 1), ('site-two', 2), ('site-three', 1)"""
         )
-    return db_module.db
+    return database.connect
 
 
 @pytest.mark.parametrize(

@@ -1,11 +1,11 @@
 """Startup configuration for the custom-domains runtime. Captures the wiring
-knobs the runtime reads once when it starts; admission and capability checks
-read the live config module so operators can flip flags without a restart."""
+knobs the runtime reads once when it starts, derived from the resolved
+application settings."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .. import config as server_config
+from ..settings import Settings
 
 
 @dataclass(frozen=True)
@@ -24,18 +24,18 @@ class CustomDomainsConfig:
     traefik_service: str
 
     @classmethod
-    def from_config(cls) -> "CustomDomainsConfig":
+    def from_settings(cls, settings: Settings) -> "CustomDomainsConfig":
         return cls(
-            custom_domains_enabled=server_config.CUSTOM_DOMAINS_ENABLED,
-            custom_domain_ingress_ips=server_config.CUSTOM_DOMAIN_INGRESS_IPS,
-            custom_domain_operator_token=server_config.CUSTOM_DOMAIN_OPERATOR_TOKEN,
-            custom_domain_origin_host=server_config.CUSTOM_DOMAIN_ORIGIN_HOST,
-            custom_domain_reconcile_seconds=server_config.CUSTOM_DOMAIN_RECONCILE_SECONDS,
-            traefik_api_url=server_config.TRAEFIK_API_URL,
-            traefik_api_authorization=server_config.TRAEFIK_API_AUTHORIZATION,
-            traefik_cert_resolver=server_config.TRAEFIK_CERT_RESOLVER,
-            traefik_control_port=server_config.TRAEFIK_CONTROL_PORT,
-            traefik_control_token=server_config.TRAEFIK_CONTROL_TOKEN,
-            traefik_https_entrypoint=server_config.TRAEFIK_HTTPS_ENTRYPOINT,
-            traefik_service=server_config.TRAEFIK_SERVICE,
+            custom_domains_enabled=settings.custom_domains_enabled,
+            custom_domain_ingress_ips=settings.custom_domain_ingress_ips,
+            custom_domain_operator_token=settings.custom_domain_operator_token,
+            custom_domain_origin_host=settings.custom_domain_origin_host,
+            custom_domain_reconcile_seconds=settings.custom_domain_reconcile_seconds,
+            traefik_api_url=settings.traefik_api_url,
+            traefik_api_authorization=settings.traefik_api_authorization,
+            traefik_cert_resolver=settings.traefik_cert_resolver,
+            traefik_control_port=settings.traefik_control_port,
+            traefik_control_token=settings.traefik_control_token,
+            traefik_https_entrypoint=settings.traefik_https_entrypoint,
+            traefik_service=settings.traefik_service,
         )
