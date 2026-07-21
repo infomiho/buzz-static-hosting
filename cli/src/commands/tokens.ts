@@ -1,15 +1,52 @@
 import { Command } from "commander";
 import {
-  apiRequest,
-  CliError,
-  DeploymentToken,
-  errorMessage,
+  isRecord,
+  requestEmpty,
+  requestJson,
   type CliOptions,
-} from "../lib.js";
+} from "../client.js";
+
+interface DeploymentToken {
+  id: string;
+  name: string;
+  site_name: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+}
+
+function isDeploymentTokenArray(value: unknown): value is DeploymentToken[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (token) =>
+        isRecord(token) &&
+        typeof token.id === "string" &&
+        typeof token.name === "string" &&
+        typeof token.site_name === "string" &&
+        (token.last_used_at === null || typeof token.last_used_at === "string")
+    )
+  );
+}
+
+interface CreatedToken {
+  token: string;
+}
+
+function isCreatedToken(value: unknown): value is CreatedToken {
+  return isRecord(value) && typeof value.token === "string";
+}
 
 export async function listTokens(cliOptions: CliOptions = {}) {
-  const response = await apiRequest("/tokens", {}, { cliOptions });
-  const tokens: DeploymentToken[] = await response.json();
+  const tokens = await requestJson(
+    "/tokens",
+    {
+      guard: isDeploymentTokenArray,
+      invalid: "Server returned an invalid deployment-token response",
+    },
+    {},
+    { cliOptions }
+  );
 
   if (tokens.length === 0) {
     console.log("No deployment tokens");
@@ -34,8 +71,12 @@ export async function createToken(
   cmdOptions: { name?: string },
   cliOptions: CliOptions = {}
 ) {
-  const response = await apiRequest(
+  const data = await requestJson(
     "/tokens",
+    {
+      guard: isCreatedToken,
+      invalid: "Server returned an invalid deployment-token response",
+    },
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -44,18 +85,12 @@ export async function createToken(
         name: cmdOptions.name || "Deployment token",
       }),
     },
-    { cliOptions }
+    {
+      cliOptions,
+      errors: { notFound: `Site '${siteName}' not found`, fallback: "Unknown error" },
+    }
   );
 
-  if (response.status === 404) {
-    throw new CliError(`Site '${siteName}' not found`);
-  }
-
-  if (!response.ok) {
-    throw new CliError(await errorMessage(response, "Unknown error"));
-  }
-
-  const data = await response.json();
   console.log(`Token created for site '${siteName}':\n`);
   console.log(`  ${data.token}\n`);
   console.log("Save this token - it won't be shown again!");
@@ -66,22 +101,13 @@ export async function deleteToken(
   tokenId: string,
   cliOptions: CliOptions = {}
 ) {
-  const response = await apiRequest(
+  await requestEmpty(
     `/tokens/${tokenId}`,
+    [204],
     { method: "DELETE" },
-    { cliOptions }
+    { cliOptions, errors: { notFound: "Token not found", fallback: "Unknown error" } }
   );
-
-  if (response.status === 204) {
-    console.log("Token deleted");
-    return;
-  }
-
-  if (response.status === 404) {
-    throw new CliError("Token not found");
-  }
-
-  throw new CliError(await errorMessage(response, "Unknown error"));
+  console.log("Token deleted");
 }
 
 export function registerTokensCommand(program: Command) {

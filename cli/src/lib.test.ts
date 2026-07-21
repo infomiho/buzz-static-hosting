@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import JSZip from "jszip";
-import { formatSize, authHeaders, createZipBuffer, errorMessage } from "./lib.js";
+import { formatSize, createZipBuffer } from "./lib.js";
 
 describe("formatSize", () => {
   it("formats bytes", () => {
@@ -16,32 +16,6 @@ describe("formatSize", () => {
 
   it("formats megabytes", () => {
     expect(formatSize(3 * 1024 * 1024)).toBe("3.0 MB");
-  });
-});
-
-describe("authHeaders", () => {
-  it("returns bearer header when token provided", () => {
-    expect(authHeaders("my-token")).toEqual({
-      Authorization: "Bearer my-token",
-    });
-  });
-
-  it("returns empty object when no token", () => {
-    expect(authHeaders()).toEqual({});
-  });
-});
-
-describe("errorMessage", () => {
-  it("reads FastAPI detail errors", async () => {
-    const response = new Response(JSON.stringify({ detail: "Nope" }));
-
-    await expect(errorMessage(response, "Fallback")).resolves.toBe("Nope");
-  });
-
-  it("falls back to text errors", async () => {
-    const response = new Response("plain failure");
-
-    await expect(errorMessage(response, "Fallback")).resolves.toBe("plain failure");
   });
 });
 

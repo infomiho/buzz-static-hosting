@@ -10,7 +10,9 @@ import {
   removeDomain,
   retryTransition,
 } from "./domains.js";
-import { formatDomainClaim, resolveDomainClaim, type DomainClaim } from "../domains.js";
+import { formatDomainClaim } from "../domains/format.js";
+import { resolveDomainClaim } from "../domains/client.js";
+import { type DomainClaim } from "../domains/schema.js";
 
 const cliOptions = { server: "https://buzz.example.com", token: "session-token" };
 

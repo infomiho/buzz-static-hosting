@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CliError, getOptions, type CliOptions } from "../lib.js";
+import { CliError, getOptions, type CliOptions } from "../client.js";
 
 export function url(cliOptions: CliOptions = {}) {
   const cnamePath = join(process.cwd(), "CNAME");

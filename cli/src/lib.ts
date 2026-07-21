@@ -1,62 +1,12 @@
 import cliProgress from "cli-progress";
 import { CliError } from "./errors.js";
-import {
-  DEFAULT_SERVER,
-  getCredential,
-  loadConfig,
-  normalizeServerUrl,
-} from "./credentials.js";
 
 export { CliError } from "./errors.js";
-
-export interface Site {
-  name: string;
-  created: string;
-  size_bytes: number;
-}
-
-interface Options {
-  server: string;
-  token?: string;
-}
-
-export interface CliOptions {
-  server?: string;
-  token?: string;
-}
-
-export interface DeploymentToken {
-  id: string;
-  name: string;
-  site_name: string;
-  created_at: string;
-  expires_at: string | null;
-  last_used_at: string | null;
-}
-
-export function getOptions(cliOptions: CliOptions = {}): Options {
-  const config = loadConfig();
-  const server = normalizeServerUrl(
-    cliOptions.server || process.env.BUZZ_SERVER || config.server || DEFAULT_SERVER
-  );
-  return {
-    server,
-    token:
-      cliOptions.token || process.env.BUZZ_TOKEN || getCredential(config, server),
-  };
-}
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-}
-
-export function authHeaders(token?: string): Record<string, string> {
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-  return {};
 }
 
 export function handleError(error: unknown): void {
@@ -71,64 +21,6 @@ export function handleError(error: unknown): void {
     console.error(`Error: ${String(error ?? "Unknown error")}`);
   }
   process.exitCode = 1;
-}
-
-export async function errorMessage(response: Response, fallback: string): Promise<string> {
-  const text = await response.text();
-  if (!text) return fallback;
-
-  try {
-    const data: unknown = JSON.parse(text);
-    if (data && typeof data === "object") {
-      const { detail, error } = data as { detail?: unknown; error?: unknown };
-      if (typeof detail === "string") return detail;
-      if (typeof error === "string") return error;
-    }
-  } catch {
-    return text;
-  }
-
-  return fallback;
-}
-
-export async function apiRequest(
-  path: string,
-  options: RequestInit = {},
-  {
-    requireAuth = true,
-    cliOptions = {},
-  }: { requireAuth?: boolean; cliOptions?: CliOptions } = {}
-): Promise<Response> {
-  const opts = getOptions(cliOptions);
-
-  if (requireAuth && !opts.token) {
-    throw new CliError("Not authenticated", "Run 'buzz login' first");
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(`${opts.server}${path}`, {
-      ...options,
-      headers: {
-        ...authHeaders(opts.token),
-        ...options.headers,
-      },
-    });
-  } catch (error) {
-    throw new CliError(
-      `Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-  }
-
-  if (response.status === 401) {
-    throw new CliError("Session expired", "Run 'buzz login' to re-authenticate");
-  }
-
-  if (response.status === 403) {
-    throw new CliError(await errorMessage(response, "Permission denied"));
-  }
-
-  return response;
 }
 
 interface ProgressCallbacks {

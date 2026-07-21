@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { apiRequest, CliError, errorMessage, type CliOptions } from "../lib.js";
+import { requestEmpty, type CliOptions } from "../client.js";
 import { confirm } from "../prompts.js";
 
 export async function deleteSite(
@@ -15,22 +15,16 @@ export async function deleteSite(
     }
   }
 
-  const response = await apiRequest(
+  await requestEmpty(
     `/sites/${subdomain}`,
+    [204],
     { method: "DELETE" },
-    { cliOptions }
+    {
+      cliOptions,
+      errors: { notFound: `Site '${subdomain}' not found`, fallback: "Unknown error" },
+    }
   );
-
-  if (response.status === 204) {
-    console.log(`Deleted ${subdomain}`);
-    return;
-  }
-
-  if (response.status === 404) {
-    throw new CliError(`Site '${subdomain}' not found`);
-  }
-
-  throw new CliError(await errorMessage(response, "Unknown error"));
+  console.log(`Deleted ${subdomain}`);
 }
 
 export function registerDeleteCommand(program: Command) {

@@ -1,19 +1,19 @@
 import { Command } from "commander";
-import { CliError, type CliOptions } from "../lib.js";
+import { CliError, type CliOptions } from "../client.js";
 import { confirm } from "../prompts.js";
 import {
   cancelDomainTransition,
   cancelDomainClaim,
   checkDomainClaim,
   createDomainClaim,
-  formatDomainClaim,
   getAllDomainClaims,
   getDomainCapability,
   getDomainClaims,
   resolveDomainClaim,
   retryDomainTransition,
-  type DomainCapability,
-} from "../domains.js";
+} from "../domains/client.js";
+import { formatDomainClaim } from "../domains/format.js";
+import { type DomainCapability } from "../domains/schema.js";
 
 function requireReady(capability: DomainCapability): void {
   if (capability.status !== "ready") {

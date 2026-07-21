@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { CliError, authHeaders, createZipBuffer, errorMessage } from "./lib.js";
+import { CliError, isRecord, requestJson } from "./client.js";
+import { createZipBuffer } from "./lib.js";
 
 interface UploadResult {
   url: string;
@@ -10,6 +11,14 @@ interface UploadResult {
 interface DeploymentResponse {
   name: string;
   url: string;
+}
+
+function isDeploymentResponse(value: unknown): value is DeploymentResponse {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.url === "string"
+  );
 }
 
 export function resolveSubdomain(
@@ -58,43 +67,34 @@ export async function uploadSite(
   const body = new FormData();
   body.append("file", new Blob([zip], { type: "application/zip" }), "site.zip");
 
-  const headers = authHeaders(token);
+  const headers: Record<string, string> = {};
   if (subdomain) {
     headers["x-subdomain"] = subdomain;
   }
 
-  let response: Response;
-  try {
-    response = await fetchFn(`${server}/deploy`, {
-      method: "POST",
-      headers,
-      body,
-    });
-  } catch (error) {
-    throw new CliError(
-      `Could not connect to server - ${error instanceof Error ? error.message : error}`
-    );
-  }
-
-  if (response.ok) {
-    const data = (await response.json()) as DeploymentResponse;
-    if (typeof data.name !== "string" || typeof data.url !== "string") {
-      throw new CliError("Server returned an invalid deployment response");
+  const data = await requestJson(
+    "/deploy",
+    {
+      guard: isDeploymentResponse,
+      invalid: "Server returned an invalid deployment response",
+    },
+    { method: "POST", headers, body },
+    {
+      fetchFn,
+      cliOptions: { server, token },
+      errors: {
+        unauthorized: new CliError("Not authenticated", "Run 'buzz login' first"),
+        forbidden: (message) =>
+          new CliError(
+            message,
+            message.includes("owned by another user")
+              ? "Choose a different subdomain with --subdomain <name>"
+              : undefined
+          ),
+        fallback: "Unknown error",
+      },
     }
-    return { url: data.url, subdomain: data.name };
-  }
+  );
 
-  if (response.status === 401) {
-    throw new CliError("Not authenticated", "Run 'buzz login' first");
-  }
-
-  const message = await errorMessage(response, "Unknown error");
-  if (response.status === 403) {
-    const tip = message.includes("owned by another user")
-      ? "Choose a different subdomain with --subdomain <name>"
-      : undefined;
-    throw new CliError(message || "Permission denied", tip);
-  }
-
-  throw new CliError(message);
+  return { url: data.url, subdomain: data.name };
 }

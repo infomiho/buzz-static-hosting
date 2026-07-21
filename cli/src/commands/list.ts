@@ -1,9 +1,14 @@
 import { Command } from "commander";
-import { apiRequest, formatSize, Site, type CliOptions } from "../lib.js";
+import { isSiteArray, requestJson, type CliOptions } from "../client.js";
+import { formatSize } from "../lib.js";
 
 export async function list(cliOptions: CliOptions = {}) {
-  const response = await apiRequest("/sites", {}, { cliOptions });
-  const sites: Site[] = await response.json();
+  const sites = await requestJson(
+    "/sites",
+    { guard: isSiteArray, invalid: "Server returned an invalid site response" },
+    {},
+    { cliOptions }
+  );
 
   if (sites.length === 0) {
     console.log("No sites deployed");
