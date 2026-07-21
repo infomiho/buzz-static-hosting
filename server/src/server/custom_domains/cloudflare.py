@@ -16,6 +16,7 @@ from .evidence import (
     DomainEvidenceCollector,
     DomainPathEvidenceStore,
 )
+from .machine_edges import lease_held
 from .probes import (
     MAX_RESPONSE_BYTES,
     PROBE_TIMEOUT_SECONDS,
@@ -232,13 +233,12 @@ class CloudflareDiagnosticStore:
         ]
         if reservation:
             mode_guard = ""
-            reservation_guard = """AND EXISTS (
+            reservation_guard = f"""AND EXISTS (
                 SELECT 1 FROM custom_domain_mode_transitions AS transitions
                 WHERE transitions.claim_id = claims.id
                   AND transitions.mode_generation = claims.mode_generation
                   AND transitions.probe_generation = ?
-                  AND transitions.lease_owner = ?
-                  AND transitions.lease_expires_at > datetime('now'))"""
+                  AND {lease_held("transitions")})"""
         parameters.extend(
             (
                 diagnostic.claim_id,
@@ -428,6 +428,21 @@ class CloudflareDiagnostician:
             evidence.ownership.error,
         )
 
+    def diagnose_transition(
+        self,
+        claim: DomainClaim,
+        reservation: ProbeReservation,
+        evidence: ClaimEvidence,
+        confirmed: ClaimEvidence,
+    ) -> CloudflareDiagnostic:
+        """Build the transition diagnostic without touching the network or the
+        database, so the coordinator can persist it inside its apply txn."""
+        return replace(
+            self._diagnose_evidence(evidence, confirmed),
+            mode_generation=reservation.mode_generation,
+            probe_generation=reservation.probe_generation,
+        )
+
     def record_transition(
         self,
         claim: DomainClaim,
@@ -435,11 +450,7 @@ class CloudflareDiagnostician:
         evidence: ClaimEvidence,
         confirmed: ClaimEvidence,
     ) -> bool:
-        diagnostic = replace(
-            self._diagnose_evidence(evidence, confirmed),
-            mode_generation=reservation.mode_generation,
-            probe_generation=reservation.probe_generation,
-        )
+        diagnostic = self.diagnose_transition(claim, reservation, evidence, confirmed)
         with self._connect() as conn:
             return CloudflareDiagnosticStore(conn).record(diagnostic, reservation)
 

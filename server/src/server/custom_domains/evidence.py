@@ -25,6 +25,7 @@ from .probes import (
     probe_origin,
 )
 from .claims import DnsTxtResolver, DomainCheckUnavailable, DomainClaim
+from .machine_edges import claim_scope, lease_held
 from .observation import DnsObservation
 
 MAX_CNAME_DEPTH = 8
@@ -332,11 +333,10 @@ class DomainPathEvidenceStore:
             mode_generation,
         ]
         if reservation:
-            reservation_guard = """AND EXISTS (
+            reservation_guard = f"""AND EXISTS (
                 SELECT 1 FROM custom_domain_mode_transitions
                 WHERE claim_id = claims.id AND mode_generation = claims.mode_generation
-                  AND probe_generation = ? AND lease_owner = ?
-                  AND lease_expires_at > datetime('now'))"""
+                  AND probe_generation = ? AND {lease_held()})"""
             parameters.extend((reservation.probe_generation, reservation.owner))
         cursor = self._conn.execute(
             f"""INSERT INTO custom_domain_path_evidence
@@ -346,9 +346,7 @@ class DomainPathEvidenceStore:
             SELECT ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'),
                    ?, ?, ?, ?, ?, ?, ?
             FROM custom_domain_claims AS claims
-            WHERE claims.id = ? AND claims.route_generation = ?
-              AND claims.mode_generation = ? AND claims.status = 'verified'
-              AND claims.route_status = 'routed' AND claims.removal_requested_at IS NULL
+            WHERE {claim_scope(table="claims")}
               {reservation_guard}""",
             parameters,
         )

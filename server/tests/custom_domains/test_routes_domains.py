@@ -415,7 +415,11 @@ def test_transition_cancel_endpoint_retains_valid_effective_mode(domain_api, dat
     diagnostic_recorder = type(
         "DiagnosticRecorder",
         (),
-        {"record_transition": lambda *_args: True, "record_health": lambda *_args: True},
+        {
+            "diagnose_transition": lambda *_args: None,
+            "record_transition": lambda *_args: True,
+            "record_health": lambda *_args: True,
+        },
     )()
     client.app.state.custom_domains.transition_coordinator = DomainTransitionCoordinator(
         collector,
@@ -507,21 +511,21 @@ def test_completed_transition_does_not_project_historical_paths(domain_api, data
             claim.id, claim.route_generation, "direct"
         )
         observation = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "test"
         )
-        state.record_reserved_observation(claim, reservation, observation)
-        state.release_reservation(reservation)
+        state._record_reserved_observation(claim, reservation, observation)
+        state.release(reservation)
         conn.execute(
             "UPDATE custom_domain_mode_transitions SET last_target_observed_at = datetime('now', '-61 seconds') WHERE claim_id = ?",
             (claim.id,),
         )
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "test"
         )
-        state.record_reserved_observation(claim, reservation, observation)
-        state.record_reserved_confirmation(claim, reservation, observation)
-        assert state.complete_reserved(claim, reservation)
+        state._record_reserved_observation(claim, reservation, observation)
+        state._record_reserved_confirmation(claim, reservation, observation)
+        assert state.complete(claim, reservation)
 
     response = client.get("/sites/my-site/domains").json()[0]
 

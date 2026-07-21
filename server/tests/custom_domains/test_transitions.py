@@ -27,7 +27,12 @@ from server.custom_domains.evidence import (
     DomainEvidenceCollector,
     EvidenceResult,
 )
-from server.custom_domains.transitions import DomainClaimStateMachine, DomainTransitionCoordinator
+from server.custom_domains.transitions import (
+    DomainClaimStateMachine,
+    DomainTransitionCoordinator,
+    HandoffAssessment,
+    Outcome,
+)
 from server.custom_domains.errors import ClaimConflict
 
 
@@ -52,6 +57,10 @@ def activate(conn, claim, now=None):
 class DiagnosticRecorder:
     def __init__(self):
         self.transitions = []
+
+    def diagnose_transition(self, claim, reservation, evidence, confirmed):
+        self.transitions.append((claim.id, reservation.probe_generation, evidence, confirmed))
+        return None
 
     def record_transition(self, claim, reservation, evidence, confirmed):
         self.transitions.append((claim.id, reservation.probe_generation, evidence, confirmed))
@@ -395,28 +404,28 @@ def test_transition_completion_requires_reserved_stable_confirmed_evidence(trans
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
         state = DomainClaimStateMachine(conn)
         transition = state.start(claim.id, claim.route_generation, "direct")
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "worker"
         )
         assert reservation
         observation = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
-        assert state.record_reserved_observation(claim, reservation, observation)
-        assert not state.complete_reserved(claim, reservation)
-        assert state.release_reservation(reservation)
+        assert state._record_reserved_observation(claim, reservation, observation)
+        assert not state.complete(claim, reservation)
+        assert state.release(reservation)
 
         conn.execute(
             """UPDATE custom_domain_mode_transitions
             SET last_target_observed_at = datetime('now', '-61 seconds') WHERE claim_id = ?""",
             (claim.id,),
         )
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "worker"
         )
         assert reservation
-        assert state.record_reserved_observation(claim, reservation, observation)
-        assert not state.complete_reserved(claim, reservation)
-        assert state.record_reserved_confirmation(claim, reservation, observation)
-        assert state.complete_reserved(claim, reservation)
+        assert state._record_reserved_observation(claim, reservation, observation)
+        assert not state.complete(claim, reservation)
+        assert state._record_reserved_confirmation(claim, reservation, observation)
+        assert state.complete(claim, reservation)
 
         activated = DomainClaimStore(conn).get(claim.id, "my-site")
     assert activated.activated_at is not None
@@ -427,7 +436,7 @@ def test_expired_reservation_cannot_confirm_or_complete(transition_db):
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
         state = DomainClaimStateMachine(conn)
         transition = state.start(claim.id, claim.route_generation, "direct")
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "worker"
         )
         conn.execute(
@@ -439,8 +448,8 @@ def test_expired_reservation_cannot_confirm_or_complete(transition_db):
         )
         observation = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
 
-        assert not state.record_reserved_confirmation(claim, reservation, observation)
-        assert not state.complete_reserved(claim, reservation)
+        assert not state._record_reserved_confirmation(claim, reservation, observation)
+        assert not state.complete(claim, reservation)
 
 
 @pytest.mark.parametrize(
@@ -469,18 +478,18 @@ def test_deadline_resolution_matrix(
             "direct",
             now=datetime.now(timezone.utc) - timedelta(days=2),
         )
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "worker"
         )
         observation = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
-        assert state.record_reserved_observation(claim, reservation, observation)
+        assert state._record_reserved_observation(claim, reservation, observation)
         conn.execute(
             "UPDATE custom_domain_mode_transitions SET stable_observation_count = 2 WHERE claim_id = ?",
             (claim.id,),
         )
-        assert state.record_reserved_confirmation(claim, reservation, observation)
+        assert state._record_reserved_confirmation(claim, reservation, observation)
 
-        result = state.resolve_reserved_deadline(
+        result = state.resolve_deadline(
             claim, reservation, target_healthy, effective_healthy
         )
 
@@ -493,17 +502,17 @@ def test_probe_lease_exclusion_and_expiry_recovery(transition_db):
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
         state = DomainClaimStateMachine(conn)
         transition = state.start(claim.id, claim.route_generation, "direct")
-        first = state.reserve_probe(
+        first = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "first"
         )
         assert first
-        assert not state.reserve_probe(
+        assert not state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "second"
         )
         conn.execute(
             "UPDATE custom_domain_mode_transitions SET lease_expires_at = datetime('now', '-1 second')"
         )
-        second = state.reserve_probe(
+        second = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "second"
         )
 
@@ -969,28 +978,28 @@ def test_retarget_rejects_stale_prior_reservation(transition_db):
     with transition_db() as conn:
         state = DomainClaimStateMachine(conn)
         transition = state.get(claim.id)
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "worker"
         )
         current = DomainClaimStore(conn).get(claim.id, "my-site")
-        assert state.record_reserved_observation(current, reservation, direct)
-        assert state.release_reservation(reservation)
+        assert state._record_reserved_observation(current, reservation, direct)
+        assert state.release(reservation)
         conn.execute(
             """UPDATE custom_domain_mode_transitions
             SET last_target_observed_at = datetime('now', '-61 seconds')
             WHERE claim_id = ?""",
             (claim.id,),
         )
-        reservation = state.reserve_probe(
+        reservation = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "worker"
         )
-        assert state.record_reserved_observation(current, reservation, direct)
-        assert state.retarget_reserved_automatic_onboarding(
+        assert state._record_reserved_observation(current, reservation, direct)
+        assert state._retarget_reserved_automatic_onboarding(
             current, reservation, "direct"
         )
 
         retargeted = state.get(claim.id)
-        assert not state.record_reserved_observation(current, reservation, direct)
+        assert not state._record_reserved_observation(current, reservation, direct)
     assert retargeted.mode_generation > reservation.mode_generation
     assert retargeted.probe_generation > reservation.probe_generation
 
@@ -1178,14 +1187,14 @@ def test_failed_retry_rejects_stale_prior_generation_evidence(transition_db):
         claim = DomainClaimStore(conn).list_for_site("my-site")[0]
         state = DomainClaimStateMachine(conn)
         transition = state.start(claim.id, claim.route_generation, "direct")
-        stale = state.reserve_probe(
+        stale = state.reserve(
             claim.id, claim.route_generation, transition.mode_generation, "worker"
         )
-        assert state.fail_reserved(claim, stale, "target_check_failed")
+        assert state._fail_reserved(claim, stale, "target_check_failed")
         retried = state.retry(claim.id, claim.route_generation)
         observation = DnsObservation("direct", ("8.8.8.8",), 60, "stale")
 
-        assert not state.record_reserved_observation(claim, stale, observation)
+        assert not state._record_reserved_observation(claim, stale, observation)
         assert retried.mode_generation > stale.mode_generation
         assert retried.probe_generation > stale.probe_generation
 
@@ -1352,6 +1361,163 @@ def test_scheduler_orders_due_deadline_before_oldest_health_evidence(transition_
         ordered = DomainClaimStateMachine(conn).managed_candidates()
 
     assert [claim.id for claim in ordered[:2]] == [due.id, oldest.id]
+
+
+def _assessment(claim, reservation, collector, *, cloudflare_target=True):
+    modes = tuple(
+        mode for mode in (reservation.target_mode, reservation.source_mode) if mode
+    )
+    evidence = collector.collect(claim, modes)
+    source_health = DomainTransitionCoordinator._source_health(reservation, evidence)
+    return HandoffAssessment(evidence, source_health, None, cloudflare_target)
+
+
+@pytest.mark.parametrize(
+    ("observation", "target", "expected_outcome", "expected_state"),
+    [
+        (
+            DnsObservation("direct", ("8.8.8.8",), 60, "stable"),
+            "direct",
+            Outcome.validating,
+            "validating",
+        ),
+        (
+            DnsObservation("unsupported", ("1.1.1.1",), 60, "unsupported"),
+            "cloudflare",
+            Outcome.observing,
+            "observing",
+        ),
+    ],
+)
+def test_advance_onboarding_outcomes(
+    transition_db, observation, target, expected_outcome, expected_state
+):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        state = DomainClaimStateMachine(conn)
+        transition = state.start(claim.id, claim.route_generation, target)
+        reservation = state.reserve(
+            claim.id, claim.route_generation, transition.mode_generation, "worker"
+        )
+        outcome = state.advance(
+            claim, reservation, _assessment(claim, reservation, Collector(observation))
+        )
+        current = state.get(claim.id)
+
+    assert outcome == expected_outcome
+    assert current.state == expected_state
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_outcome"),
+    [
+        ("ownership_txt_mismatch", Outcome.source_failed_target_preserved),
+        ("edge_unavailable", Outcome.source_unhealthy_retained),
+    ],
+)
+def test_advance_source_health_outcomes(transition_db, error, expected_outcome):
+    claim = start_cloudflare_to_direct_handoff(transition_db)
+    collector = CloudflareSourceCollector(error)
+    with transition_db() as conn:
+        state = DomainClaimStateMachine(conn)
+        transition = state.get(claim.id)
+        reservation = state.reserve(
+            claim.id, claim.route_generation, transition.mode_generation, "worker"
+        )
+        current = DomainClaimStore(conn).get(claim.id, "my-site")
+        outcome = state.advance(
+            current, reservation, _assessment(current, reservation, collector)
+        )
+
+    assert outcome == expected_outcome
+
+
+def test_advance_reports_lost_lease_when_reservation_lapsed(transition_db):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        state = DomainClaimStateMachine(conn)
+        transition = state.start(claim.id, claim.route_generation, "direct")
+        reservation = state.reserve(
+            claim.id, claim.route_generation, transition.mode_generation, "worker"
+        )
+        conn.execute(
+            """UPDATE custom_domain_mode_transitions
+            SET lease_expires_at = datetime('now', '-1 second') WHERE claim_id = ?""",
+            (claim.id,),
+        )
+        observation = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
+        outcome = state.advance(
+            claim, reservation, _assessment(claim, reservation, Collector(observation))
+        )
+
+    assert outcome == Outcome.lost_lease
+
+
+def test_two_owners_yield_a_single_reservation_winner(transition_db):
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        DomainClaimStateMachine(conn).start(claim.id, claim.route_generation, "direct")
+    reservations = []
+    lock = threading.Lock()
+
+    def contend(owner):
+        with transition_db() as conn:
+            state = DomainClaimStateMachine(conn)
+            transition = state.get(claim.id)
+            reservation = state.reserve(
+                claim.id, claim.route_generation, transition.mode_generation, owner
+            )
+        with lock:
+            reservations.append(reservation)
+
+    threads = [threading.Thread(target=contend, args=(f"owner-{i}",)) for i in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len([reservation for reservation in reservations if reservation]) == 1
+
+
+def test_past_deadline_handoff_completes_in_one_advance(transition_db):
+    observation = DnsObservation("direct", ("8.8.8.8",), 60, "stable")
+    with transition_db() as conn:
+        claim = DomainClaimStore(conn).list_for_site("my-site")[0]
+        conn.execute(
+            "UPDATE custom_domain_claims SET claim_mode = 'cloudflare' WHERE id = ?",
+            (claim.id,),
+        )
+        claim = activate(conn, claim)
+        state = DomainClaimStateMachine(conn)
+        transition = state.start(
+            claim.id,
+            claim.route_generation,
+            "direct",
+            now=datetime.now(timezone.utc) - timedelta(days=2),
+        )
+        reservation = state.reserve(
+            claim.id, claim.route_generation, transition.mode_generation, "worker"
+        )
+        assert state._record_reserved_observation(claim, reservation, observation)
+        state.release(reservation)
+    age_target_evidence(transition_db, claim.id)
+
+    with transition_db() as conn:
+        state = DomainClaimStateMachine(conn)
+        transition = state.get(claim.id)
+        reservation = state.reserve(
+            claim.id, claim.route_generation, transition.mode_generation, "worker"
+        )
+        current = DomainClaimStore(conn).get(claim.id, "my-site")
+        outcome = state.advance(
+            current, reservation, _assessment(current, reservation, Collector(observation))
+        )
+        completed = state.get(claim.id)
+        updated = DomainClaimStore(conn).get(claim.id, "my-site")
+
+    assert outcome == Outcome.deadline_completed
+    assert completed.state == "completed"
+    assert updated.claim_mode == "direct"
 
 
 def test_scheduler_covers_1000_oldest_first_with_real_work(transition_db):

@@ -9,14 +9,36 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable
+from enum import StrEnum
+from typing import TYPE_CHECKING, Callable
 
 from .claims import (
     HEALTH_FRESHNESS_SECONDS,
     DomainClaim,
     DomainClaimStore,
 )
-from .evidence import DnsObservation, DomainPathEvidenceStore, EvidenceResult
+from .evidence import (
+    ClaimEvidence,
+    DnsObservation,
+    DomainPathEvidenceStore,
+    EvidenceResult,
+)
+from .machine_edges import (
+    ACTIVE_STATES as _ACTIVE_STATES,
+    ACTIVE_STATE_ORDER,
+    ACTIVE_STATES_SQL,
+    LEASE_AVAILABLE_SQL,
+    LEASE_HELD_SQL,
+    PRE_DEADLINE_STATES_SQL,
+    RESERVED_KEY_SQL,
+    TRANSITION_GENERATION_KEY_SQL,
+    TransitionState,
+    claim_routed_exists,
+    claim_scope,
+    lease_held,
+    reserved_transition_exists,
+    state_in,
+)
 from .observation import (
     STABLE_OBSERVATIONS_REQUIRED,
     TrackedObservation,
@@ -25,6 +47,9 @@ from .observation import (
 )
 from .probes import MAX_CONCURRENT_CLAIM_CHECKS
 from .errors import ClaimConflict
+
+if TYPE_CHECKING:
+    from .cloudflare import CloudflareDiagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +99,52 @@ class ProbeReservation:
     lease_expires_at: str
 
 
+@dataclass(frozen=True)
+class HandoffAssessment:
+    """Everything a single advance() needs, gathered off the wire by the
+    coordinator so the apply transaction opens no network connection. The
+    evidence is a frozen value; its ``target_error`` reads are pure."""
+
+    evidence: ClaimEvidence
+    source_health: EvidenceResult | None
+    cloudflare_diagnostic: "CloudflareDiagnostic | None"
+    cloudflare_target_enabled: bool
+
+    @property
+    def observation(self) -> DnsObservation:
+        return self.evidence.dns
+
+    @property
+    def confirmed_dns(self) -> DnsObservation | None:
+        return self.evidence.confirmed_dns
+
+    @property
+    def common_error(self) -> EvidenceResult | None:
+        return self.evidence.common_error
+
+    def target_error(self, mode: str) -> EvidenceResult | None:
+        return self.evidence.target_error(mode)
+
+
+class Outcome(StrEnum):
+    lost_lease = "lost_lease"
+    observing = "observing"
+    validating = "validating"
+    action_needed = "action_needed"
+    retargeted = "retargeted"
+    source_failed_target_preserved = "source_failed_target_preserved"
+    source_unhealthy_retained = "source_unhealthy_retained"
+    common_failed = "common_failed"
+    completed = "completed"
+    cancelled = "cancelled"
+    failed = "failed"
+    deadline_completed = "deadline_completed"
+    deadline_cancelled = "deadline_cancelled"
+    deadline_failed = "deadline_failed"
+
+
 class DomainClaimStateMachine:
-    ACTIVE_STATES = ("observing", "validating", "action_needed", "deadline_evaluation")
+    ACTIVE_STATES = _ACTIVE_STATES
 
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
@@ -252,7 +321,7 @@ class DomainClaimStateMachine:
         )
         return self.get(claim_id)  # type: ignore[return-value]
 
-    def reserve_probe(
+    def reserve(
         self,
         claim_id: int,
         route_generation: int,
@@ -265,17 +334,13 @@ class DomainClaimStateMachine:
         if not self._conn.in_transaction:
             self._conn.execute("BEGIN IMMEDIATE")
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET probe_generation = probe_generation + 1, lease_owner = ?,
                 lease_expires_at = datetime('now', ?)
-            WHERE claim_id = ? AND mode_generation = ?
-              AND state IN ('observing', 'validating', 'action_needed', 'deadline_evaluation')
-              AND (lease_expires_at IS NULL OR lease_expires_at <= datetime('now'))
-              AND EXISTS (
-                SELECT 1 FROM custom_domain_claims
-                WHERE id = ? AND route_generation = ?
-                  AND mode_generation = ? AND status = 'verified'
-                  AND route_status = 'routed' AND removal_requested_at IS NULL)""",
+            WHERE {TRANSITION_GENERATION_KEY_SQL}
+              AND {ACTIVE_STATES_SQL}
+              AND {LEASE_AVAILABLE_SQL}
+              AND {claim_routed_exists()}""",
             (
                 owner,
                 f"+{lease_seconds} seconds",
@@ -301,7 +366,7 @@ class DomainClaimStateMachine:
             transition.lease_expires_at,
         )
 
-    def renew_reservation(self, reservation: ProbeReservation) -> bool:
+    def _renew(self, reservation: ProbeReservation) -> bool:
         return self._renew_probe(
             reservation.claim_id,
             reservation.mode_generation,
@@ -309,7 +374,7 @@ class DomainClaimStateMachine:
             reservation.owner,
         )
 
-    def release_reservation(self, reservation: ProbeReservation) -> bool:
+    def release(self, reservation: ProbeReservation) -> bool:
         return self._release_probe(
             reservation.claim_id,
             reservation.mode_generation,
@@ -353,17 +418,13 @@ class DomainClaimStateMachine:
         # unchanged since get(); a mismatched row updates zero rows and the
         # decision is discarded, never retried.
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET checked_at = ?, observed_mode = ?, observed_ttl = ?,
                 answer_fingerprint = ?, max_target_ttl = ?, error = ?, state = ?,
                 stable_observation_count = ?,
                 first_target_observed_at = ?, last_target_observed_at = ?
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND lease_owner = ? AND lease_expires_at > datetime('now')
-              AND EXISTS (SELECT 1 FROM custom_domain_claims
-                WHERE id = ? AND route_generation = ? AND mode_generation = ?
-                  AND status = 'verified' AND route_status = 'routed'
-                  AND removal_requested_at IS NULL)""",
+            WHERE {RESERVED_KEY_SQL} AND {LEASE_HELD_SQL}
+              AND {claim_routed_exists()}""",
             (
                 database_now,
                 observed_mode,
@@ -390,7 +451,7 @@ class DomainClaimStateMachine:
         )
         return cursor.rowcount > 0
 
-    def record_reserved_observation(
+    def _record_reserved_observation(
         self,
         claim: DomainClaim,
         reservation: ProbeReservation,
@@ -418,15 +479,12 @@ class DomainClaimStateMachine:
         owner: str,
     ) -> bool:
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
-            SET state = 'action_needed', error = ?, checked_at = CURRENT_TIMESTAMP,
+            f"""UPDATE custom_domain_mode_transitions
+            SET state = '{TransitionState.ACTION_NEEDED}', error = ?,
+                checked_at = CURRENT_TIMESTAMP,
                 lease_owner = NULL, lease_expires_at = NULL
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND lease_owner = ? AND lease_expires_at > datetime('now')
-              AND EXISTS (SELECT 1 FROM custom_domain_claims
-                WHERE id = ? AND route_generation = ? AND mode_generation = ?
-                  AND status = 'verified' AND route_status = 'routed'
-                  AND removal_requested_at IS NULL)""",
+            WHERE {RESERVED_KEY_SQL} AND {LEASE_HELD_SQL}
+              AND {claim_routed_exists()}""",
             (
                 error,
                 claim_id,
@@ -440,7 +498,7 @@ class DomainClaimStateMachine:
         )
         return cursor.rowcount > 0
 
-    def set_reserved_action_needed(
+    def _set_reserved_action_needed(
         self, claim: DomainClaim, reservation: ProbeReservation, error: str
     ) -> bool:
         return self._set_action_needed(
@@ -452,7 +510,7 @@ class DomainClaimStateMachine:
             reservation.owner,
         )
 
-    def record_reserved_confirmation(
+    def _record_reserved_confirmation(
         self,
         claim: DomainClaim,
         reservation: ProbeReservation,
@@ -463,15 +521,12 @@ class DomainClaimStateMachine:
         cursor = self._conn.execute(
             f"""UPDATE custom_domain_mode_transitions
             SET confirmed_fingerprint = ?, confirmed_at = CURRENT_TIMESTAMP
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
+            WHERE {RESERVED_KEY_SQL}
               AND target_mode = ? AND observed_mode = target_mode
               AND answer_fingerprint = ?
               AND stable_observation_count >= {STABLE_OBSERVATIONS_REQUIRED}
-              AND lease_owner = ? AND lease_expires_at > datetime('now')
-              AND EXISTS (SELECT 1 FROM custom_domain_claims
-                WHERE id = ? AND route_generation = ? AND mode_generation = ?
-                  AND status = 'verified' AND route_status = 'routed'
-                  AND removal_requested_at IS NULL)""",
+              AND {LEASE_HELD_SQL}
+              AND {claim_routed_exists()}""",
             (
                 observation.fingerprint,
                 claim.id,
@@ -491,10 +546,9 @@ class DomainClaimStateMachine:
         self, claim_id: int, mode_generation: int, probe_generation: int, owner: str
     ) -> bool:
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET lease_owner = NULL, lease_expires_at = NULL
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND lease_owner = ?""",
+            WHERE {RESERVED_KEY_SQL} AND lease_owner = ?""",
             (claim_id, mode_generation, probe_generation, owner),
         )
         return cursor.rowcount > 0
@@ -512,15 +566,11 @@ class DomainClaimStateMachine:
         if not self._conn.in_transaction:
             self._conn.execute("BEGIN IMMEDIATE")
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET lease_expires_at = datetime('now', ?)
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND lease_owner = ? AND lease_expires_at > datetime('now')
-              AND state IN
-                ('observing', 'validating', 'action_needed', 'deadline_evaluation')
-              AND EXISTS (SELECT 1 FROM custom_domain_claims
-                WHERE id = ? AND mode_generation = ? AND status = 'verified'
-                  AND route_status = 'routed' AND removal_requested_at IS NULL)""",
+            WHERE {RESERVED_KEY_SQL} AND {LEASE_HELD_SQL}
+              AND {ACTIVE_STATES_SQL}
+              AND {claim_routed_exists(route_generation=False)}""",
             (
                 f"+{lease_seconds} seconds",
                 claim_id,
@@ -533,7 +583,7 @@ class DomainClaimStateMachine:
         )
         return cursor.rowcount > 0
 
-    def deadline_due(self, claim_id: int, mode_generation: int) -> bool:
+    def _deadline_due(self, claim_id: int, mode_generation: int) -> bool:
         return bool(
             self._conn.execute(
                 """SELECT 1 FROM custom_domain_mode_transitions
@@ -558,9 +608,7 @@ class DomainClaimStateMachine:
         if not transition or transition.mode_generation != mode_generation:
             return False
         new_generation = mode_generation + 1
-        activation_guard = (
-            "activated_at IS NOT NULL" if transition.source_mode else "activated_at IS NULL"
-        )
+        activation = "activated" if transition.source_mode else "not_activated"
         cursor = self._conn.execute(
             f"""UPDATE custom_domain_claims
             SET mode_generation = ?,
@@ -569,14 +617,8 @@ class DomainClaimStateMachine:
                 common_failure_count = 0,
                 health_checked_at = CASE WHEN ? THEN NULL ELSE ? END,
                 activation_checked_at = CASE WHEN ? THEN activation_checked_at ELSE ? END
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND status = 'verified' AND route_status = 'routed' AND {activation_guard}
-              AND removal_requested_at IS NULL
-              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
-                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-                  AND source_mode IS ? AND lease_owner = ?
-                  AND lease_expires_at > datetime('now')
-                  AND state IN ('observing', 'validating', 'action_needed', 'deadline_evaluation'))""",
+            WHERE {claim_scope(activation=activation)}
+              AND {reserved_transition_exists(extra="source_mode IS ?")}""",
             (
                 new_generation,
                 transition.source_mode is None,
@@ -597,12 +639,11 @@ class DomainClaimStateMachine:
         if not cursor.rowcount:
             return False
         self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET mode_generation = ?, probe_generation = probe_generation + 1,
-                state = 'cancelled', completed_at = ?, lease_owner = NULL,
-                lease_expires_at = NULL
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND lease_owner = ?""",
+                state = '{TransitionState.CANCELLED}', completed_at = ?,
+                lease_owner = NULL, lease_expires_at = NULL
+            WHERE {RESERVED_KEY_SQL} AND lease_owner = ?""",
             (
                 new_generation,
                 now.isoformat(),
@@ -614,7 +655,7 @@ class DomainClaimStateMachine:
         )
         return True
 
-    def cancel_reserved(
+    def cancel(
         self, claim: DomainClaim, reservation: ProbeReservation
     ) -> bool:
         return self._cancel_transition(
@@ -644,14 +685,14 @@ class DomainClaimStateMachine:
             or not transition
             or transition.mode_generation != mode_generation
             or transition.probe_generation != probe_generation
-            or not self.deadline_due(claim_id, mode_generation)
+            or not self._deadline_due(claim_id, mode_generation)
         ):
             return None
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions SET state = 'deadline_evaluation'
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND lease_owner = ? AND lease_expires_at > datetime('now')
-              AND state IN ('observing', 'validating', 'action_needed')""",
+            f"""UPDATE custom_domain_mode_transitions
+            SET state = '{TransitionState.DEADLINE_EVALUATION}'
+            WHERE {RESERVED_KEY_SQL} AND {LEASE_HELD_SQL}
+              AND {PRE_DEADLINE_STATES_SQL}""",
             (claim_id, mode_generation, probe_generation, owner),
         )
         if not cursor.rowcount:
@@ -683,7 +724,7 @@ class DomainClaimStateMachine:
             return "failed"
         return None
 
-    def resolve_reserved_deadline(
+    def resolve_deadline(
         self,
         claim: DomainClaim,
         reservation: ProbeReservation,
@@ -700,7 +741,7 @@ class DomainClaimStateMachine:
             owner=reservation.owner,
         )
 
-    def fail_reserved(
+    def _fail_reserved(
         self, claim: DomainClaim, reservation: ProbeReservation, error: str
     ) -> bool:
         return self._fail_reserved_ids(
@@ -724,15 +765,10 @@ class DomainClaimStateMachine:
     ) -> bool:
         now = now or datetime.now(timezone.utc)
         cursor = self._conn.execute(
-            """UPDATE custom_domain_claims
+            f"""UPDATE custom_domain_claims
             SET activated_at = NULL, activation_checked_at = ?, activation_error = ?
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND status = 'verified' AND route_status = 'routed'
-              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
-                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-                  AND lease_owner = ? AND lease_expires_at > datetime('now')
-                  AND state IN
-                    ('observing', 'validating', 'action_needed', 'deadline_evaluation'))""",
+            WHERE {claim_scope(include_removal=False)}
+              AND {reserved_transition_exists()}""",
             (
                 now.isoformat(), error, claim_id, route_generation, mode_generation,
                 claim_id, mode_generation, probe_generation, owner,
@@ -741,12 +777,11 @@ class DomainClaimStateMachine:
         if not cursor.rowcount:
             return False
         self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
-            SET state = 'failed', error = ?, completed_at = ?,
+            f"""UPDATE custom_domain_mode_transitions
+            SET state = '{TransitionState.FAILED}', error = ?, completed_at = ?,
                 probe_generation = probe_generation + 1,
                 lease_owner = NULL, lease_expires_at = NULL
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND lease_owner = ?""",
+            WHERE {RESERVED_KEY_SQL} AND lease_owner = ?""",
             (
                 error, now.isoformat(), claim_id, mode_generation,
                 probe_generation, owner,
@@ -766,16 +801,14 @@ class DomainClaimStateMachine:
         now = now or datetime.now(timezone.utc)
         if error:
             cursor = self._conn.execute(
-                """UPDATE custom_domain_claims
+                f"""UPDATE custom_domain_claims
                 SET health_checked_at = ?,
                     health_failure_count = CASE WHEN ? THEN health_failure_count + 1 ELSE 3 END,
                     activation_checked_at = ?, activation_error = ?,
                     activated_at = CASE
                         WHEN NOT ? OR health_failure_count + 1 >= 3 THEN NULL
                         ELSE activated_at END
-                WHERE id = ? AND route_generation = ? AND mode_generation = ?
-                  AND status = 'verified' AND route_status = 'routed'
-                  AND removal_requested_at IS NULL""",
+                WHERE {claim_scope()}""",
                 (
                     now.isoformat(),
                     transient,
@@ -789,12 +822,10 @@ class DomainClaimStateMachine:
             )
         else:
             cursor = self._conn.execute(
-                """UPDATE custom_domain_claims
+                f"""UPDATE custom_domain_claims
                 SET health_checked_at = ?, health_failure_count = 0,
                     activation_checked_at = ?, activation_error = NULL
-                WHERE id = ? AND route_generation = ? AND mode_generation = ?
-                  AND status = 'verified' AND route_status = 'routed'
-                  AND removal_requested_at IS NULL""",
+                WHERE {claim_scope()}""",
                 (
                     now.isoformat(),
                     now.isoformat(),
@@ -874,16 +905,14 @@ class DomainClaimStateMachine:
         now = now or datetime.now(timezone.utc)
         if error:
             cursor = self._conn.execute(
-                """UPDATE custom_domain_claims
+                f"""UPDATE custom_domain_claims
                 SET common_failure_count = CASE
                         WHEN ? THEN common_failure_count + 1 ELSE 3 END,
                     activation_checked_at = ?, activation_error = ?,
                     activated_at = CASE
                         WHEN NOT ? OR common_failure_count + 1 >= 3 THEN NULL
                         ELSE activated_at END
-                WHERE id = ? AND route_generation = ? AND mode_generation = ?
-                  AND status = 'verified' AND route_status = 'routed'
-                  AND removal_requested_at IS NULL""",
+                WHERE {claim_scope()}""",
                 (
                     transient,
                     now.isoformat(),
@@ -896,11 +925,9 @@ class DomainClaimStateMachine:
             )
         else:
             cursor = self._conn.execute(
-                """UPDATE custom_domain_claims
+                f"""UPDATE custom_domain_claims
                 SET health_checked_at = ?, common_failure_count = 0
-                WHERE id = ? AND route_generation = ? AND mode_generation = ?
-                  AND status = 'verified' AND route_status = 'routed'
-                  AND activated_at IS NOT NULL AND removal_requested_at IS NULL""",
+                WHERE {claim_scope(activation="activated")}""",
                 (now.isoformat(), claim_id, route_generation, mode_generation),
             )
         if not cursor.rowcount:
@@ -910,7 +937,7 @@ class DomainClaimStateMachine:
         ).fetchone()
         return row["activated_at"] is None
 
-    def apply_reserved_common_failure(
+    def _apply_reserved_common_failure(
         self,
         claim: DomainClaim,
         reservation: ProbeReservation,
@@ -920,20 +947,15 @@ class DomainClaimStateMachine:
     ) -> bool | None:
         now = now or datetime.now(timezone.utc)
         cursor = self._conn.execute(
-            """UPDATE custom_domain_claims
+            f"""UPDATE custom_domain_claims
             SET common_failure_count = CASE
                     WHEN ? THEN common_failure_count + 1 ELSE 3 END,
                 activation_checked_at = ?, activation_error = ?,
                 activated_at = CASE
                     WHEN NOT ? OR common_failure_count + 1 >= 3 THEN NULL
                     ELSE activated_at END
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND status = 'verified' AND route_status = 'routed'
-              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
-                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-                  AND lease_owner = ? AND lease_expires_at > datetime('now')
-                  AND state IN
-                    ('observing', 'validating', 'action_needed', 'deadline_evaluation'))""",
+            WHERE {claim_scope(include_removal=False)}
+              AND {reserved_transition_exists()}""",
             (
                 transient,
                 now.isoformat(),
@@ -955,23 +977,17 @@ class DomainClaimStateMachine:
         ).fetchone()
         return row["activated_at"] is None
 
-    def apply_reserved_common_success(
+    def _apply_reserved_common_success(
         self,
         claim: DomainClaim,
         reservation: ProbeReservation,
     ) -> bool:
         cursor = self._conn.execute(
-            """UPDATE custom_domain_claims
+            f"""UPDATE custom_domain_claims
             SET common_failure_count = CASE
                     WHEN activated_at IS NOT NULL THEN 0 ELSE common_failure_count END
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND status = 'verified' AND route_status = 'routed'
-              AND removal_requested_at IS NULL
-              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
-                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-                  AND lease_owner = ? AND lease_expires_at > datetime('now')
-                  AND state IN
-                    ('observing', 'validating', 'action_needed', 'deadline_evaluation'))""",
+            WHERE {claim_scope()}
+              AND {reserved_transition_exists()}""",
             (
                 claim.id,
                 claim.route_generation,
@@ -984,7 +1000,7 @@ class DomainClaimStateMachine:
         )
         return cursor.rowcount > 0
 
-    def apply_reserved_continuous_health(
+    def _apply_reserved_continuous_health(
         self,
         claim: DomainClaim,
         reservation: ProbeReservation,
@@ -1008,16 +1024,8 @@ class DomainClaimStateMachine:
         cursor = self._conn.execute(
             f"""UPDATE custom_domain_claims
             SET health_checked_at = ?, activation_checked_at = ?, {health_update}
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND claim_mode = ? AND activated_at IS NOT NULL
-              AND status = 'verified' AND route_status = 'routed'
-              AND removal_requested_at IS NULL
-              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
-                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-                  AND source_mode = ? AND lease_owner = ?
-                  AND lease_expires_at > datetime('now')
-                  AND state IN
-                    ('observing', 'validating', 'action_needed', 'deadline_evaluation'))""",
+            WHERE {claim_scope(claim_mode=True, activation="activated")}
+              AND {reserved_transition_exists(extra="source_mode = ?")}""",
             (
                 now.isoformat(),
                 now.isoformat(),
@@ -1040,21 +1048,14 @@ class DomainClaimStateMachine:
         ).fetchone()
         return row["activated_at"] is None
 
-    def preserve_reserved_target_after_source_failure(
+    def _preserve_reserved_target_after_source_failure(
         self, claim: DomainClaim, reservation: ProbeReservation
     ) -> bool:
         new_generation = reservation.mode_generation + 1
         cursor = self._conn.execute(
-            """UPDATE custom_domain_claims SET mode_generation = ?
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND activated_at IS NULL AND status = 'verified'
-              AND route_status = 'routed' AND removal_requested_at IS NULL
-              AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
-                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-                  AND source_mode = ? AND lease_owner = ?
-                  AND lease_expires_at > datetime('now')
-                  AND state IN
-                    ('observing', 'validating', 'action_needed', 'deadline_evaluation'))""",
+            f"""UPDATE custom_domain_claims SET mode_generation = ?
+            WHERE {claim_scope(activation="not_activated")}
+              AND {reserved_transition_exists(extra="source_mode = ?")}""",
             (
                 new_generation,
                 claim.id,
@@ -1070,18 +1071,17 @@ class DomainClaimStateMachine:
         if not cursor.rowcount:
             return False
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET mode_generation = ?, probe_generation = probe_generation + 1,
-                source_mode = NULL, state = 'observing', deadline_at = NULL,
-                automatic_retarget = 0,
+                source_mode = NULL, state = '{TransitionState.OBSERVING}',
+                deadline_at = NULL, automatic_retarget = 0,
                 checked_at = NULL, completed_at = NULL, answer_fingerprint = NULL,
                 confirmed_fingerprint = NULL, confirmed_at = NULL,
                 stable_observation_count = 0, first_target_observed_at = NULL,
                 last_target_observed_at = NULL, observed_mode = NULL,
                 observed_ttl = NULL, max_target_ttl = 0, error = NULL,
                 lease_owner = NULL, lease_expires_at = NULL
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
-              AND source_mode = ? AND lease_owner = ?""",
+            WHERE {RESERVED_KEY_SQL} AND source_mode = ? AND lease_owner = ?""",
             (
                 new_generation,
                 claim.id,
@@ -1093,7 +1093,7 @@ class DomainClaimStateMachine:
         )
         return cursor.rowcount > 0
 
-    def retarget_reserved_automatic_onboarding(
+    def _retarget_reserved_automatic_onboarding(
         self,
         claim: DomainClaim,
         reservation: ProbeReservation,
@@ -1104,19 +1104,15 @@ class DomainClaimStateMachine:
         new_generation = reservation.mode_generation + 1
         cursor = self._conn.execute(
             f"""UPDATE custom_domain_claims SET mode_generation = ?
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND automatic_mode = 1 AND activated_at IS NULL
-              AND status = 'verified' AND route_status = 'routed'
-              AND removal_requested_at IS NULL
+            WHERE {claim_scope(activation="not_activated", automatic=True)}
               AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions
-                WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
+                WHERE {RESERVED_KEY_SQL}
                   AND source_mode IS NULL AND target_mode <> ?
                   AND automatic_retarget = 1 AND observed_mode = ?
                   AND answer_fingerprint IS NOT NULL
                   AND stable_observation_count >= {STABLE_OBSERVATIONS_REQUIRED}
-                  AND lease_owner = ?
-                  AND lease_expires_at > datetime('now')
-                  AND state IN ('observing', 'validating', 'action_needed'))""",
+                  AND {LEASE_HELD_SQL}
+                  AND {PRE_DEADLINE_STATES_SQL})""",
             (
                 new_generation,
                 claim.id,
@@ -1133,16 +1129,16 @@ class DomainClaimStateMachine:
         if not cursor.rowcount:
             return False
         cursor = self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
+            f"""UPDATE custom_domain_mode_transitions
             SET mode_generation = ?, probe_generation = probe_generation + 1,
-                target_mode = ?, state = 'observing', checked_at = NULL,
-                completed_at = NULL, answer_fingerprint = NULL,
+                target_mode = ?, state = '{TransitionState.OBSERVING}',
+                checked_at = NULL, completed_at = NULL, answer_fingerprint = NULL,
                 confirmed_fingerprint = NULL, confirmed_at = NULL,
                 stable_observation_count = 0, first_target_observed_at = NULL,
                 last_target_observed_at = NULL, observed_mode = NULL,
                 observed_ttl = NULL, max_target_ttl = 0, error = NULL,
                 lease_owner = NULL, lease_expires_at = NULL
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?
+            WHERE {RESERVED_KEY_SQL}
               AND source_mode IS NULL AND automatic_retarget = 1
               AND lease_owner = ?""",
             (
@@ -1198,9 +1194,7 @@ class DomainClaimStateMachine:
                 activation_checked_at = ?, activation_error = NULL,
                 health_checked_at = ?, health_failure_count = 0,
                 common_failure_count = 0
-            WHERE id = ? AND route_generation = ? AND mode_generation = ?
-              AND status = 'verified' AND route_status = 'routed'
-              AND removal_requested_at IS NULL
+            WHERE {claim_scope()}
               AND EXISTS (SELECT 1 FROM custom_domain_mode_transitions AS transition
                 WHERE transition.claim_id = ? AND transition.mode_generation = ?
                   AND transition.probe_generation = ? AND transition.target_mode = ?
@@ -1209,10 +1203,8 @@ class DomainClaimStateMachine:
                   AND transition.confirmed_fingerprint = transition.answer_fingerprint
                   AND transition.confirmed_at IS NOT NULL
                   AND transition.stable_observation_count >= {STABLE_OBSERVATIONS_REQUIRED}
-                  AND transition.lease_owner = ?
-                  AND transition.lease_expires_at > datetime('now')
-                  AND transition.state IN
-                    ('observing', 'validating', 'action_needed', 'deadline_evaluation')
+                  AND {lease_held("transition")}
+                  AND {state_in(ACTIVE_STATE_ORDER, "transition.state")}
                   AND (transition.target_mode <> 'cloudflare' OR EXISTS (
                     SELECT 1 FROM custom_domain_cloudflare_diagnostics AS diagnostic
                     WHERE diagnostic.claim_id = transition.claim_id
@@ -1239,15 +1231,15 @@ class DomainClaimStateMachine:
         if not cursor.rowcount:
             return False
         self._conn.execute(
-            """UPDATE custom_domain_mode_transitions
-            SET state = 'completed', completed_at = ?, lease_owner = NULL,
-                lease_expires_at = NULL
-            WHERE claim_id = ? AND mode_generation = ? AND probe_generation = ?""",
+            f"""UPDATE custom_domain_mode_transitions
+            SET state = '{TransitionState.COMPLETED}', completed_at = ?,
+                lease_owner = NULL, lease_expires_at = NULL
+            WHERE {RESERVED_KEY_SQL}""",
             (now.isoformat(), claim_id, mode_generation, probe_generation),
         )
         return True
 
-    def complete_reserved(
+    def complete(
         self, claim: DomainClaim, reservation: ProbeReservation
     ) -> bool:
         return self._complete(
@@ -1257,6 +1249,196 @@ class DomainClaimStateMachine:
             reservation.probe_generation,
             owner=reservation.owner,
         )
+
+    def advance(
+        self,
+        claim: DomainClaim,
+        reservation: ProbeReservation,
+        assessment: HandoffAssessment,
+    ) -> Outcome:
+        """Apply one pass of off-the-wire evidence to a reserved transition in a
+        single BEGIN IMMEDIATE transaction. The entry lease renewal is the one
+        full legality check; nothing the row proves can change under a held
+        lease, so the dispatched appliers run on a stable row. The branch order
+        mirrors the coordinator's historical pass: source health, common
+        health, observation, retarget, deadline resolution, target error,
+        confirm and complete."""
+        if not self._renew(reservation):
+            return Outcome.lost_lease
+        observation = assessment.observation
+        source_health = assessment.source_health
+        if not DomainPathEvidenceStore(self._conn).record(
+            assessment.evidence,
+            reservation.mode_generation,
+            reservation.probe_generation,
+            self._path_mode(reservation, source_health, observation),
+            reservation,
+        ):
+            return Outcome.lost_lease
+        if assessment.cloudflare_diagnostic is not None:
+            from .cloudflare import CloudflareDiagnosticStore
+
+            CloudflareDiagnosticStore(self._conn).record(
+                assessment.cloudflare_diagnostic, reservation
+            )
+
+        if source_health is not None:
+            outcome = self._advance_source(claim, reservation, source_health)
+            if outcome is not None:
+                return outcome
+
+        common_error = assessment.common_error
+        if common_error:
+            return self._advance_common_failure(claim, reservation, common_error)
+
+        if not self._apply_reserved_common_success(claim, reservation):
+            return Outcome.lost_lease
+        if not self._record_reserved_observation(claim, reservation, observation):
+            return Outcome.lost_lease
+        recorded = self.get(claim.id)
+        if (
+            recorded
+            and recorded.source_mode is None
+            and observation.mode != recorded.target_mode
+            and recorded.stable_observation_count >= STABLE_OBSERVATIONS_REQUIRED
+            and (observation.mode != "cloudflare" or assessment.cloudflare_target_enabled)
+            and self._retarget_reserved_automatic_onboarding(
+                claim, reservation, observation.mode
+            )
+        ):
+            return Outcome.retargeted
+        if not recorded:
+            return Outcome.lost_lease
+
+        if self._deadline_due(recorded.claim_id, recorded.mode_generation):
+            return self._advance_deadline(claim, reservation, recorded, assessment)
+
+        if (
+            observation.mode != recorded.target_mode
+            or recorded.stable_observation_count < STABLE_OBSERVATIONS_REQUIRED
+        ):
+            self.release(reservation)
+            return Outcome(recorded.state)
+
+        return self._advance_stable_target(claim, reservation, recorded, assessment)
+
+    def _advance_source(
+        self,
+        claim: DomainClaim,
+        reservation: ProbeReservation,
+        source_health: EvidenceResult,
+    ) -> Outcome | None:
+        source_error = source_health.error if not source_health.healthy else None
+        deactivated = self._apply_reserved_continuous_health(
+            claim, reservation, source_error, source_health.transient
+        )
+        if deactivated is None:
+            return Outcome.lost_lease
+        if deactivated:
+            self._preserve_reserved_target_after_source_failure(claim, reservation)
+            return Outcome.source_failed_target_preserved
+        if source_error:
+            if self._deadline_due(reservation.claim_id, reservation.mode_generation):
+                return self._deadline_outcome(
+                    self.resolve_deadline(claim, reservation, False, False)
+                )
+            self.release(reservation)
+            return Outcome.source_unhealthy_retained
+        return None
+
+    def _advance_common_failure(
+        self,
+        claim: DomainClaim,
+        reservation: ProbeReservation,
+        common_error: EvidenceResult,
+    ) -> Outcome:
+        error = common_error.error or "common_check_failed"
+        deactivated = self._apply_reserved_common_failure(
+            claim, reservation, error, common_error.transient
+        )
+        if deactivated is None:
+            return Outcome.lost_lease
+        if self._deadline_due(reservation.claim_id, reservation.mode_generation):
+            return self._deadline_outcome(
+                self.resolve_deadline(claim, reservation, False, False)
+            )
+        if deactivated and reservation.source_mode is not None:
+            self._fail_reserved(claim, reservation, error)
+            return Outcome.failed
+        self.release(reservation)
+        return Outcome.common_failed
+
+    def _advance_deadline(
+        self,
+        claim: DomainClaim,
+        reservation: ProbeReservation,
+        recorded: DomainModeTransition,
+        assessment: HandoffAssessment,
+    ) -> Outcome:
+        observation = assessment.observation
+        observed_healthy = assessment.target_error(observation.mode) is None
+        target_healthy = bool(
+            recorded.stable_observation_count >= STABLE_OBSERVATIONS_REQUIRED
+            and observation.mode == recorded.target_mode
+            and observed_healthy
+        )
+        if target_healthy:
+            confirmed_dns = assessment.confirmed_dns
+            target_healthy = bool(
+                confirmed_dns
+                and self._record_reserved_confirmation(claim, reservation, confirmed_dns)
+            )
+        effective_healthy = bool(
+            recorded.source_mode == observation.mode and observed_healthy
+        )
+        return self._deadline_outcome(
+            self.resolve_deadline(
+                claim, reservation, target_healthy, effective_healthy
+            )
+        )
+
+    def _advance_stable_target(
+        self,
+        claim: DomainClaim,
+        reservation: ProbeReservation,
+        recorded: DomainModeTransition,
+        assessment: HandoffAssessment,
+    ) -> Outcome:
+        target_error = assessment.target_error(recorded.target_mode)
+        if target_error:
+            self._set_reserved_action_needed(
+                claim, reservation, target_error.error or "target_check_failed"
+            )
+            return Outcome.action_needed
+        confirmed_dns = assessment.confirmed_dns
+        if not confirmed_dns or not self._record_reserved_confirmation(
+            claim, reservation, confirmed_dns
+        ):
+            self.release(reservation)
+            return Outcome(recorded.state)
+        if self.complete(claim, reservation):
+            return Outcome.completed
+        return Outcome(recorded.state)
+
+    @staticmethod
+    def _path_mode(
+        reservation: ProbeReservation,
+        source_health: EvidenceResult | None,
+        observation: DnsObservation,
+    ) -> str | None:
+        if source_health is not None:
+            return reservation.source_mode
+        if observation.mode in {"direct", "cloudflare"}:
+            return observation.mode
+        return reservation.target_mode
+
+    @staticmethod
+    def _deadline_outcome(result: str | None) -> Outcome:
+        return {
+            "completed": Outcome.deadline_completed,
+            "cancelled": Outcome.deadline_cancelled,
+            "failed": Outcome.deadline_failed,
+        }.get(result, Outcome.lost_lease)
 
 
 class TransitionValidationFailed(Exception):
@@ -1331,7 +1513,7 @@ class DomainTransitionCoordinator:
                 return True
             if not transition or transition.state not in transitions.ACTIVE_STATES:
                 raise ClaimConflict("This transition cannot be cancelled")
-            reservation = transitions.reserve_probe(
+            reservation = transitions.reserve(
                 claim.id,
                 claim.route_generation,
                 transition.mode_generation,
@@ -1341,48 +1523,40 @@ class DomainTransitionCoordinator:
             raise ClaimConflict("This transition cannot be cancelled")
         if reservation.source_mode is None:
             with self._database() as conn:
-                cancelled = DomainClaimStateMachine(conn).cancel_reserved(
+                cancelled = DomainClaimStateMachine(conn).cancel(
                     claim, reservation
                 )
             if not cancelled:
                 raise ClaimConflict("This transition changed while cancellation was validated")
             return True
+        # An active handoff cancels only if its effective (source) path is still
+        # healthy. Collect that proof off the wire, then reconcile in one txn.
         evidence = self._evidence_collector.collect(claim, claim.claim_mode)
+        effective_healthy = (
+            evidence.common_error is None
+            and evidence.dns.mode == claim.claim_mode
+            and evidence.target_error(claim.claim_mode) is None
+        )
         with self._database() as conn:
+            machine = DomainClaimStateMachine(conn)
             if not DomainPathEvidenceStore(conn).record(
                 evidence,
                 reservation.mode_generation,
                 reservation.probe_generation,
                 claim.claim_mode,
                 reservation,
-            ):
-                raise ClaimConflict("This transition changed while cancellation was validated")
-        with self._database() as conn:
-            if not DomainClaimStateMachine(conn).renew_reservation(reservation):
-                raise ClaimConflict("This transition changed while cancellation was validated")
-        common_error = evidence.common_error
-        if common_error:
-            with self._database() as conn:
-                DomainClaimStateMachine(conn).release_reservation(reservation)
+            ) or not machine._renew(reservation):
+                outcome = "changed"
+            elif not effective_healthy:
+                machine.release(reservation)
+                outcome = "unhealthy"
+            elif machine.cancel(claim, reservation):
+                outcome = "cancelled"
+            else:
+                outcome = "changed"
+        if outcome == "unhealthy":
             raise ClaimConflict("The effective domain path is not healthy")
-        observation = evidence.dns
-        if observation.mode != claim.claim_mode:
-            with self._database() as conn:
-                DomainClaimStateMachine(conn).release_reservation(reservation)
-            raise ClaimConflict("The effective domain path is not healthy")
-        target_error = evidence.target_error(claim.claim_mode)
-        if target_error:
-            with self._database() as conn:
-                DomainClaimStateMachine(conn).release_reservation(reservation)
-            raise ClaimConflict("The effective domain path is not healthy")
-        with self._database() as conn:
-            if not DomainClaimStateMachine(conn).renew_reservation(reservation):
-                raise ClaimConflict("This transition changed while cancellation was validated")
-        with self._database() as conn:
-            cancelled = DomainClaimStateMachine(conn).cancel_reserved(
-                claim, reservation
-            )
-        if not cancelled:
+        if outcome == "changed":
             raise ClaimConflict("This transition changed while cancellation was validated")
         return True
 
@@ -1457,10 +1631,8 @@ class DomainTransitionCoordinator:
     def _process_transition(
         self, claim: DomainClaim, transition: DomainModeTransition, deadline: float
     ) -> None:
-
         with self._database() as conn:
-            transitions = DomainClaimStateMachine(conn)
-            reservation = transitions.reserve_probe(
+            reservation = DomainClaimStateMachine(conn).reserve(
                 claim.id,
                 claim.route_generation,
                 transition.mode_generation,
@@ -1469,209 +1641,48 @@ class DomainTransitionCoordinator:
         if not reservation:
             return
         try:
-            modes = tuple(
-                mode
-                for mode in (transition.target_mode, transition.source_mode)
-                if mode is not None
-            )
-            evidence = self._evidence_collector.collect(claim, modes)
+            assessment = self._assess(claim, reservation, deadline)
         except Exception:
             with self._database() as conn:
-                DomainClaimStateMachine(conn).release_reservation(reservation)
+                DomainClaimStateMachine(conn).release(reservation)
             raise
-        if time.monotonic() > deadline:
+        if assessment is None:
             with self._database() as conn:
-                DomainClaimStateMachine(conn).release_reservation(reservation)
+                DomainClaimStateMachine(conn).release(reservation)
             return
-        source_health = self._source_health(reservation, evidence)
-        path_mode = (
-            reservation.source_mode
-            if source_health is not None
-            else evidence.dns.mode
-            if evidence.dns.mode in {"direct", "cloudflare"}
-            else reservation.target_mode
-        )
         with self._database() as conn:
-            if not DomainPathEvidenceStore(conn).record(
-                evidence,
-                reservation.mode_generation,
-                reservation.probe_generation,
-                path_mode,
-                reservation,
-            ):
-                return
-        cloudflare_recorded = False
-        if source_health is not None and reservation.source_mode == "cloudflare":
-            cloudflare_recorded = self._cloudflare_diagnostician.record_transition(
+            DomainClaimStateMachine(conn).advance(claim, reservation, assessment)
+
+    def _assess(
+        self, claim: DomainClaim, reservation: ProbeReservation, deadline: float
+    ) -> HandoffAssessment | None:
+        modes = tuple(
+            mode
+            for mode in (reservation.target_mode, reservation.source_mode)
+            if mode is not None
+        )
+        evidence = self._evidence_collector.collect(claim, modes)
+        if time.monotonic() > deadline:
+            return None
+        source_health = self._source_health(reservation, evidence)
+        cloudflare_path = "cloudflare" in {
+            reservation.source_mode,
+            reservation.target_mode,
+            evidence.dns.mode,
+        }
+        diagnostic = (
+            self._cloudflare_diagnostician.diagnose_transition(
                 claim, reservation, evidence, evidence
             )
-            if not cloudflare_recorded:
-                with self._database() as conn:
-                    DomainClaimStateMachine(conn).release_reservation(reservation)
-                return
-        if source_health is not None:
-            source_error = source_health.error if not source_health.healthy else None
-            with self._database() as conn:
-                transitions = DomainClaimStateMachine(conn)
-                deactivated = transitions.apply_reserved_continuous_health(
-                    claim,
-                    reservation,
-                    source_error,
-                    source_health.transient,
-                )
-                if deactivated is None:
-                    return
-                if deactivated:
-                    transitions.preserve_reserved_target_after_source_failure(
-                        claim, reservation
-                    )
-                    return
-                if source_error:
-                    if transitions.deadline_due(
-                        reservation.claim_id, reservation.mode_generation
-                    ):
-                        transitions.resolve_reserved_deadline(
-                            claim, reservation, False, False
-                        )
-                    else:
-                        transitions.release_reservation(reservation)
-                    return
-        common_error = evidence.common_error
-        if common_error:
-            with self._database() as conn:
-                transitions = DomainClaimStateMachine(conn)
-                error = common_error.error or "common_check_failed"
-                deactivated = transitions.apply_reserved_common_failure(
-                    claim, reservation, error, common_error.transient
-                )
-                if deactivated is None:
-                    return
-                if transitions.deadline_due(
-                    reservation.claim_id, reservation.mode_generation
-                ):
-                    transitions.resolve_reserved_deadline(
-                        claim, reservation, False, False
-                    )
-                elif deactivated and reservation.source_mode is not None:
-                    transitions.fail_reserved(claim, reservation, error)
-                else:
-                    transitions.release_reservation(reservation)
-            return
-        observation = evidence.dns
-        with self._database() as conn:
-            transitions = DomainClaimStateMachine(conn)
-            if not transitions.renew_reservation(reservation):
-                return
-            if not transitions.apply_reserved_common_success(claim, reservation):
-                return
-            if not transitions.record_reserved_observation(
-                claim, reservation, observation
-            ):
-                return
-            recorded = transitions.get(claim.id)
-            if (
-                recorded
-                and recorded.source_mode is None
-                and observation.mode != recorded.target_mode
-                and recorded.stable_observation_count >= STABLE_OBSERVATIONS_REQUIRED
-                and (
-                    observation.mode != "cloudflare"
-                    or self._cloudflare_target_enabled()
-                )
-                and transitions.retarget_reserved_automatic_onboarding(
-                    claim, reservation, observation.mode
-                )
-            ):
-                return
-        if recorded:
-            with self._database() as conn:
-                if not DomainClaimStateMachine(conn).renew_reservation(reservation):
-                    return
-        with self._database() as conn:
-            deadline_due = bool(
-                recorded
-                and DomainClaimStateMachine(conn).deadline_due(
-                    recorded.claim_id, recorded.mode_generation
-                )
-            )
-        if recorded and deadline_due:
-            if time.monotonic() > deadline:
-                with self._database() as conn:
-                    DomainClaimStateMachine(conn).release_reservation(reservation)
-                return
-            observed_healthy = evidence.target_error(observation.mode) is None
-            if (
-                observation.mode == "cloudflare"
-                and not cloudflare_recorded
-                and not self._cloudflare_diagnostician.record_transition(
-                    claim, reservation, evidence, evidence
-                )
-            ):
-                with self._database() as conn:
-                    DomainClaimStateMachine(conn).release_reservation(reservation)
-                return
-            target_healthy = bool(
-                recorded.stable_observation_count >= STABLE_OBSERVATIONS_REQUIRED
-                and observation.mode == recorded.target_mode
-                and observed_healthy
-            )
-            if target_healthy:
-                confirmed_dns = evidence.confirmed_dns
-                with self._database() as conn:
-                    target_healthy = bool(
-                        confirmed_dns
-                        and DomainClaimStateMachine(conn).record_reserved_confirmation(
-                            claim, reservation, confirmed_dns
-                        )
-                    )
-            effective_healthy = bool(
-                recorded.source_mode == observation.mode and observed_healthy
-            )
-            with self._database() as conn:
-                DomainClaimStateMachine(conn).resolve_reserved_deadline(
-                    claim,
-                    reservation,
-                    target_healthy,
-                    effective_healthy,
-                )
-            return
-        if (
-            not recorded
-            or observation.mode != recorded.target_mode
-            or recorded.stable_observation_count < STABLE_OBSERVATIONS_REQUIRED
-        ):
-            if recorded:
-                with self._database() as conn:
-                    DomainClaimStateMachine(conn).release_reservation(reservation)
-            return
-        if time.monotonic() > deadline:
-            with self._database() as conn:
-                DomainClaimStateMachine(conn).release_reservation(reservation)
-            return
-        target_error = evidence.target_error(recorded.target_mode)
-        if recorded.target_mode == "cloudflare" and not self._cloudflare_diagnostician.record_transition(
-            claim, reservation, evidence, evidence
-        ):
-            with self._database() as conn:
-                DomainClaimStateMachine(conn).release_reservation(reservation)
-            return
-        if target_error:
-            with self._database() as conn:
-                DomainClaimStateMachine(conn).set_reserved_action_needed(
-                    claim,
-                    reservation,
-                    target_error.error or "target_check_failed",
-                )
-            return
-        with self._database() as conn:
-            transitions = DomainClaimStateMachine(conn)
-            confirmed_dns = evidence.confirmed_dns
-            if not confirmed_dns or not transitions.record_reserved_confirmation(
-                claim, reservation, confirmed_dns
-            ):
-                transitions.release_reservation(reservation)
-                return
-            transitions.complete_reserved(claim, reservation)
+            if cloudflare_path
+            else None
+        )
+        return HandoffAssessment(
+            evidence,
+            source_health,
+            diagnostic,
+            self._cloudflare_target_enabled(),
+        )
 
     @staticmethod
     def _source_health(reservation: ProbeReservation, evidence):
