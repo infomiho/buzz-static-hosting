@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.10.0...buzz-cli-v0.11.0) (2026-07-22)
+
+
+### Features
+
+* automate custom domain transitions ([b2bb57a](https://github.com/infomiho/buzz-static-hosting/commit/b2bb57a657c893c5d08b7ab1dcc6700e8f5a74cf))
+* sign in through the browser device authorization flow ([469907d](https://github.com/infomiho/buzz-static-hosting/commit/469907d65ea67ff45574717eaf55c8e641b1c9b6))
+
 ## [0.10.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.9.0...buzz-cli-v0.10.0) (2026-07-17)
 
 
