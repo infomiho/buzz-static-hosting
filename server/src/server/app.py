@@ -26,8 +26,12 @@ from .db import Database
 from .dependencies import get_identity
 from .settings import Settings
 from .exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
+from .device_authorization import DeviceAuthorizationService
 from .github import HttpGitHubClient
-from .routes import auth, dashboard, domains, sites, tokens
+from .github_login import GitHubDeviceFlow
+from .passkeys import PasskeyService
+from .pending_store import PendingStore
+from .routes import account, auth, dashboard, device, domains, sites, tokens
 from .search_console import create_search_console_client
 from .utils import extract_subdomain, is_control_host
 
@@ -166,10 +170,23 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     app.state.github_client = github_client
     app.state.auth_service = AuthService(
         db=database.connect,
-        github=github_client,
-        github_client_id=settings.github_client_id,
         allow_registration=settings.allow_registration,
         allowed_github_users=settings.allowed_github_users,
+    )
+    app.state.github_device_flow = GitHubDeviceFlow(github_client, settings.github_client_id)
+    control_origin = f"https://{settings.domain}" if settings.domain else "http://localhost:8080"
+    app.state.passkeys = PasskeyService(
+        db=database.connect,
+        store=PendingStore(),
+        rp_id=(settings.domain or "localhost").split(":", 1)[0],
+        rp_name="Buzz",
+        # Never widen this: user sites live on subdomains of the RP ID, and the
+        # exact-origin check is what rejects assertions triggered from them.
+        expected_origin=control_origin,
+    )
+    app.state.device_authorization = DeviceAuthorizationService(
+        store=PendingStore(),
+        verification_uri=f"{control_origin}/device",
     )
     app.state.analytics = AnalyticsRecorder(database.connect)
     app.state.search_console = create_search_console_client(
@@ -286,12 +303,19 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 media_type="text/plain",
             )
 
-        return await call_next(request)
+        # Only the control host reaches here; hosted user sites are served
+        # earlier and stay framable. The dashboard must not be.
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+        return response
 
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
     app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
     app.include_router(dashboard.router)
+    app.include_router(account.router)
+    app.include_router(device.router)
     app.include_router(sites.router, tags=["Sites"])
     app.include_router(domains.capabilities_router, tags=["Custom Domains"])
     app.include_router(domains.router, tags=["Custom Domains"])

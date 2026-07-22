@@ -11,12 +11,15 @@ from ..api_models import (
     ErrorResponse,
     LogoutResponse,
 )
-from ..auth_service import (
-    AuthService, DeviceFlowDenied, DeviceFlowExpired,
-    DeviceFlowFailed, DeviceFlowPending, DeviceFlowSlowDown,
-    InvalidSession,
+from ..auth_service import AuthService, InvalidSession
+from ..dependencies import (
+    Identity,
+    document_bearer_token,
+    get_auth_service,
+    get_device_authorization,
+    require_user,
 )
-from ..dependencies import Identity, document_bearer_token, get_auth_service, require_user
+from ..device_authorization import DeviceAuthorizationService, DeviceCodeExpired
 
 router = APIRouter()
 
@@ -25,19 +28,12 @@ router = APIRouter()
     "/device",
     response_model=DeviceAuthorizationResponse,
     operation_id="startDeviceAuthorization",
-    summary="Start GitHub device authorization",
-    responses={
-        500: {
-            "model": ErrorResponse,
-            "description": "GitHub authentication is unavailable.",
-        }
-    },
+    summary="Start device authorization",
 )
-async def device_start(auth: Annotated[AuthService, Depends(get_auth_service)]):
-    try:
-        return auth.start_device_flow()
-    except DeviceFlowFailed as e:
-        raise HTTPException(status_code=500, detail=e.detail)
+async def device_start(
+    device_auth: Annotated[DeviceAuthorizationService, Depends(get_device_authorization)],
+):
+    return device_auth.start()
 
 
 @router.post(
@@ -45,31 +41,35 @@ async def device_start(auth: Annotated[AuthService, Depends(get_auth_service)]):
     response_model=DevicePollPendingResponse | DevicePollCompleteResponse,
     response_model_exclude_none=True,
     operation_id="pollDeviceAuthorization",
-    summary="Poll GitHub device authorization",
+    summary="Poll device authorization",
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "The device flow failed or expired.",
+            "description": "The device code expired or was already used.",
         },
         403: {
             "model": ErrorResponse,
-            "description": "The GitHub account is not allowed on this server.",
+            "description": "The approving account is not allowed on this server.",
         },
     },
 )
-async def device_poll(data: DevicePollRequest, auth: Annotated[AuthService, Depends(get_auth_service)]):
+async def device_poll(
+    data: DevicePollRequest,
+    device_auth: Annotated[DeviceAuthorizationService, Depends(get_device_authorization)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+):
     try:
-        result = auth.poll_device_flow(data.device_code)
-    except DeviceFlowPending:
-        return {"status": "pending"}
-    except DeviceFlowSlowDown as e:
-        return {"status": "pending", "interval": e.interval}
-    except DeviceFlowExpired:
+        user_id = device_auth.poll(data.device_code)
+    except DeviceCodeExpired:
         raise HTTPException(status_code=400, detail="Device code expired")
-    except DeviceFlowDenied:
-        raise HTTPException(status_code=400, detail="User denied access")
-    except DeviceFlowFailed as e:
-        raise HTTPException(status_code=400, detail=e.detail)
+
+    if user_id is None:
+        return {"status": "pending"}
+
+    try:
+        result = auth.login_by_user_id(user_id)
+    except InvalidSession:
+        raise HTTPException(status_code=400, detail="Device code expired")
 
     return {
         "status": "complete",

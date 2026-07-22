@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from .exceptions import Forbidden
-from .github import GitHubClient
+from .github_login import GitHubUser
 
 logger = logging.getLogger(__name__)
 
@@ -75,28 +75,6 @@ class InvalidSession(Exception):
     pass
 
 
-class DeviceFlowPending(Exception):
-    pass
-
-
-class DeviceFlowSlowDown(Exception):
-    def __init__(self, interval: int):
-        self.interval = interval
-
-
-class DeviceFlowExpired(Exception):
-    pass
-
-
-class DeviceFlowDenied(Exception):
-    pass
-
-
-class DeviceFlowFailed(Exception):
-    def __init__(self, detail: str):
-        self.detail = detail
-
-
 class AccessDenied(Forbidden):
     def __init__(self, github_login: str):
         self.github_login = github_login
@@ -122,19 +100,14 @@ class AuthService:
     def __init__(
         self,
         db: Callable,
-        github: GitHubClient | None = None,
-        github_client_id: str | None = None,
         allow_registration: bool = True,
         allowed_github_users: frozenset[str] | None = None,
     ) -> None:
         self._db = db
-        self._github = github
-        self._github_client_id = github_client_id
         self._allow_registration = allow_registration
         self._allowed_github_users = frozenset(
             login.lower() for login in (allowed_github_users or frozenset())
         )
-        self._pending_codes: dict[str, dict] = {}
 
     def _ensure_allowed(self, login: str, *, is_new_user: bool, github_id: int | None = None) -> None:
         if self._allowed_github_users:
@@ -171,93 +144,48 @@ class AuthService:
 
         return None
 
-    def start_device_flow(self) -> dict:
-        if not self._github or not self._github_client_id:
-            raise DeviceFlowFailed("GitHub OAuth not configured")
-
-        result = self._github.start_device_flow(self._github_client_id)
-
-        if "device_code" not in result:
-            raise DeviceFlowFailed("Failed to start device flow")
-
-        self._pending_codes[result["device_code"]] = {
-            "expires_at": datetime.now() + timedelta(seconds=result.get("expires_in", 900)),
-        }
-
-        return {
-            "device_code": result["device_code"],
-            "user_code": result["user_code"],
-            "verification_uri": result.get("verification_uri", "https://github.com/login/device"),
-            "interval": result.get("interval", 5),
-            "expires_in": result.get("expires_in", 900),
-        }
-
-    def poll_device_flow(self, device_code: str) -> LoginResult:
-        if not self._github or not self._github_client_id:
-            raise DeviceFlowFailed("GitHub OAuth not configured")
-
-        pending = self._pending_codes.get(device_code)
-        if not pending:
-            raise DeviceFlowExpired()
-
-        if datetime.now() > pending["expires_at"]:
-            del self._pending_codes[device_code]
-            raise DeviceFlowExpired()
-
-        result = self._github.poll_device_flow(self._github_client_id, device_code)
-
-        if "error" in result:
-            error = result["error"]
-            if error == "authorization_pending":
-                raise DeviceFlowPending()
-            elif error == "slow_down":
-                raise DeviceFlowSlowDown(result.get("interval", 10))
-            elif error == "expired_token":
-                del self._pending_codes[device_code]
-                raise DeviceFlowExpired()
-            elif error == "access_denied":
-                del self._pending_codes[device_code]
-                raise DeviceFlowDenied()
-            else:
-                del self._pending_codes[device_code]
-                raise DeviceFlowFailed(result.get("error_description", error))
-
-        access_token = result["access_token"]
-        github_user = self._github.get_user(access_token)
-
-        # GitHub has granted the token, so the device code is consumed even
-        # when the user turns out not to be allowed.
-        del self._pending_codes[device_code]
-
+    def login_with_github(self, github_user: GitHubUser) -> LoginResult:
+        """Resolve a GitHub identity to a Buzz user and mint a session."""
         user = self._upsert_user(github_user)
-        token = self._create_session(user.id)
+        return LoginResult(token=self._create_session(user.id), user=user)
 
-        return LoginResult(token=token, user=user)
-
-    def _upsert_user(self, github_user: dict) -> User:
+    def _upsert_user(self, github_user: GitHubUser) -> User:
         with self._db() as conn:
             existing = conn.execute(
-                "SELECT id FROM users WHERE github_id = ?", (github_user["id"],)
+                "SELECT id FROM users WHERE github_id = ?", (github_user.id,)
             ).fetchone()
 
             self._ensure_allowed(
-                github_user["login"], is_new_user=existing is None, github_id=github_user["id"]
+                github_user.login, is_new_user=existing is None, github_id=github_user.id
             )
 
             if existing:
                 user_id = existing["id"]
                 conn.execute(
                     "UPDATE users SET github_login = ?, github_name = ? WHERE id = ?",
-                    (github_user["login"], github_user.get("name"), user_id),
+                    (github_user.login, github_user.name, user_id),
                 )
             else:
                 cursor = conn.execute(
                     "INSERT INTO users (github_id, github_login, github_name) VALUES (?, ?, ?)",
-                    (github_user["id"], github_user["login"], github_user.get("name")),
+                    (github_user.id, github_user.login, github_user.name),
                 )
                 user_id = cursor.lastrowid
 
-        return User(id=user_id, github_login=github_user["login"], github_name=github_user.get("name"))
+        return User(id=user_id, github_login=github_user.login, github_name=github_user.name)
+
+    def login_by_user_id(self, user_id: int) -> LoginResult:
+        """Session for an already-authenticated user (passkey or device grant)."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT id, github_login, github_name FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        if not row:
+            raise InvalidSession()
+        self._ensure_allowed(row["github_login"], is_new_user=False)
+        user = User(id=row["id"], github_login=row["github_login"], github_name=row["github_name"])
+        return LoginResult(token=self._create_session(user.id), user=user)
 
     def _create_session(self, user_id: int) -> str:
         token = _generate_session_token()

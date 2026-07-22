@@ -48,6 +48,13 @@ def main() -> None:
     with database.connect() as conn:
         SiteStore(conn, settings.sites_dir).reconcile()
         user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if settings.dev_mode:
+            # The dev-mode identity is User(id=1); back it with a real row so
+            # foreign keys (deploy tokens, passkeys) hold in --dev.
+            conn.execute(
+                "INSERT INTO users (id, github_id, github_login, github_name) "
+                "VALUES (1, 0, 'dev', 'Dev User') ON CONFLICT(id) DO NOTHING"
+            )
 
     if not settings.dev_mode:
         warning = access_control_warning(

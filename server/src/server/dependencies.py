@@ -6,6 +6,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from .auth_service import AccessDenied, AuthService, Identity, User
 from .cookies import COOKIE_NAME
 from .db import Database
+from .device_authorization import DeviceAuthorizationService
+from .github_login import GitHubDeviceFlow
+from .passkeys import PasskeyService
 from .settings import Settings
 
 bearer_scheme = HTTPBearer(
@@ -36,6 +39,18 @@ def get_database(request: Request) -> Database:
 
 def get_auth_service(request: Request) -> AuthService:
     return request.app.state.auth_service
+
+
+def get_passkey_service(request: Request) -> PasskeyService:
+    return request.app.state.passkeys
+
+
+def get_device_authorization(request: Request) -> DeviceAuthorizationService:
+    return request.app.state.device_authorization
+
+
+def get_github_device_flow(request: Request) -> GitHubDeviceFlow:
+    return request.app.state.github_device_flow
 
 
 def get_identity(

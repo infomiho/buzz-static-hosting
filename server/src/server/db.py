@@ -61,6 +61,28 @@ def _base_schema(conn: sqlite3.Connection) -> None:
     init_analytics_schema(conn)
 
 
+def _webauthn_credentials(conn: sqlite3.Connection) -> None:
+    conn.execute("ALTER TABLE users ADD COLUMN webauthn_user_handle BLOB")
+    conn.execute(
+        """CREATE UNIQUE INDEX idx_users_webauthn_user_handle
+        ON users(webauthn_user_handle) WHERE webauthn_user_handle IS NOT NULL"""
+    )
+    conn.execute("""CREATE TABLE webauthn_credentials (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        public_key BLOB NOT NULL,
+        sign_count INTEGER NOT NULL,
+        transports TEXT,
+        backed_up INTEGER NOT NULL DEFAULT 0,
+        name TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_used_at DATETIME,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
+    conn.execute(
+        "CREATE INDEX idx_webauthn_credentials_user_id ON webauthn_credentials(user_id)"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _base_schema,
     _custom_domain_claims,
@@ -73,6 +95,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _transition_target_ttl,
     _domain_path_evidence,
     _automatic_transition_retarget,
+    _webauthn_credentials,
 )
 
 

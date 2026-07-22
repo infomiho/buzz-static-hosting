@@ -10,16 +10,23 @@
 </head>
 <body class="flex min-h-screen flex-col bg-paper text-ink">
     <a href="#main" class="absolute left-4 top-4 z-10 -translate-y-24 border-2 border-ink bg-paper px-4 py-3 font-bold underline focus:translate-y-0 focus:focus-ring">Skip to main content</a>
-    <header class="border-b-4 border-ink bg-ink text-paper">
+    <header class="relative border-b-4 border-ink bg-ink text-paper">
         <div class="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
             <a href="/" class="text-2xl font-bold tracking-tight underline-offset-4 hover:underline focus-visible:focus-ring-inverted">Buzz</a>
             {% if user %}
-            <div class="flex items-center gap-5">
-                <span class="text-paper/80">{{ user.github_login }}</span>
-                <form action="/dashboard/logout" method="post">
-                    <button type="submit" class="cursor-pointer font-bold underline decoration-2 underline-offset-4 hover:decoration-4 focus-visible:focus-ring-inverted">Logout</button>
-                </form>
-            </div>
+            <details class="group sm:relative">
+                <summary class="flex min-h-11 cursor-pointer select-none list-none items-center gap-2.5 text-lg font-bold focus-visible:focus-ring-inverted [&::-webkit-details-marker]:hidden">
+                    <img alt="" class="size-7 border-2 border-paper" src="https://github.com/{{ user.github_login }}.png?size=56">
+                    <span class="sr-only">Account: </span>{{ user.github_login }}
+                    <svg aria-hidden="true" class="size-4 transition-transform duration-100 ease-out group-open:rotate-180" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m3 6 5 5 5-5" /></svg>
+                </summary>
+                <div class="absolute inset-x-0 top-full z-10 divide-y-2 divide-ink border-4 border-ink bg-paper text-ink sm:inset-x-auto sm:right-0 sm:min-w-56">
+                    <a class="menu-item" href="/account/">Account</a>
+                    <form action="/dashboard/logout" method="post">
+                        <button type="submit" class="menu-item cursor-pointer">Log out</button>
+                    </form>
+                </div>
+            </details>
             {% endif %}
         </div>
     </header>

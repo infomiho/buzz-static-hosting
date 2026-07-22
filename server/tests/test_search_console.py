@@ -5,9 +5,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from server.auth_service import AuthService
 from server.cookies import COOKIE_NAME
-from server.github import FakeGitHubClient
 from server.search_console import (
     FakeSearchConsoleClient,
     SearchConsoleError,
@@ -83,12 +81,8 @@ class TestCreateSearchConsoleClient:
 
 
 @pytest.fixture
-def app(make_app, database):
-    application = make_app()
-    application.state.auth_service = AuthService(
-        db=database.connect, github=FakeGitHubClient(), github_client_id="test-id"
-    )
-    return application
+def app(make_app):
+    return make_app()
 
 
 @pytest.fixture

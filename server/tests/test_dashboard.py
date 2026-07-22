@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from server.auth_service import AuthService
 from server.cookies import COOKIE_NAME
 from server.github import FakeGitHubClient
+from server.github_login import GitHubDeviceFlow
 
 
 def _hash(token: str) -> str:
@@ -18,9 +19,7 @@ def _hash(token: str) -> str:
 @pytest.fixture
 def app(make_app, database):
     application = make_app()
-    application.state.auth_service = AuthService(
-        db=database.connect, github=FakeGitHubClient(), github_client_id="test-id"
-    )
+    application.state.github_device_flow = GitHubDeviceFlow(FakeGitHubClient(), "test-id")
     return application
 
 
@@ -181,9 +180,6 @@ class TestCustomDomains:
             custom_domain_ingress_ips=frozenset({"8.8.8.8"}),
             max_custom_domains_per_site=10,
         )
-        app.state.auth_service = AuthService(
-            db=database.connect, github=FakeGitHubClient(), github_client_id="test-id"
-        )
         app.state.custom_domains.control = type(
             "ReadyControlPlane", (), {"is_ready": lambda self: True}
         )()
@@ -284,33 +280,33 @@ class TestCustomDomains:
 
 
 class TestLoginFlow:
-    def test_login_start_returns_device_code(self, client):
-        res = client.post("/dashboard/login/start")
+    def test_github_login_start_returns_device_code(self, client):
+        res = client.post("/dashboard/login/github/start")
         assert res.status_code == 200
         data = res.json()
         assert "device_code" in data
         assert "user_code" in data
         assert "verification_uri" in data
 
-    def test_login_poll_pending(self, app, client):
-        app.state.auth_service._github.poll_response = {"error": "authorization_pending"}
-        start = client.post("/dashboard/login/start").json()
-        res = client.post("/dashboard/login/poll", json={"device_code": start["device_code"]})
+    def test_github_login_poll_pending(self, app, client):
+        app.state.github_device_flow._github.poll_response = {"error": "authorization_pending"}
+        start = client.post("/dashboard/login/github/start").json()
+        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
         assert res.status_code == 200
         assert res.json()["status"] == "pending"
         assert COOKIE_NAME not in res.cookies
 
-    def test_login_poll_success_sets_cookie(self, client):
-        start = client.post("/dashboard/login/start").json()
-        res = client.post("/dashboard/login/poll", json={"device_code": start["device_code"]})
+    def test_github_login_poll_success_sets_cookie(self, client):
+        start = client.post("/dashboard/login/github/start").json()
+        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
         assert res.status_code == 200
         assert res.json()["status"] == "complete"
         assert COOKIE_NAME in res.cookies
 
-    def test_login_poll_expired(self, app, client):
-        app.state.auth_service._github.poll_response = {"error": "expired_token"}
-        start = client.post("/dashboard/login/start").json()
-        res = client.post("/dashboard/login/poll", json={"device_code": start["device_code"]})
+    def test_github_login_poll_expired(self, app, client):
+        app.state.github_device_flow._github.poll_response = {"error": "expired_token"}
+        start = client.post("/dashboard/login/github/start").json()
+        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
         assert res.status_code == 400
 
 
@@ -334,17 +330,15 @@ class TestAccessControl:
     def _lockout_auth(self, connect):
         return AuthService(
             db=connect,
-            github=FakeGitHubClient(),
-            github_client_id="test-id",
             allowed_github_users=frozenset({"someone-else"}),
         )
 
-    def test_login_poll_denied_returns_403_with_login(self, app, database):
+    def test_github_login_poll_denied_returns_403_with_login(self, app, database):
         app.state.auth_service = self._lockout_auth(database.connect)
         client = TestClient(app)
 
-        start = client.post("/dashboard/login/start").json()
-        res = client.post("/dashboard/login/poll", json={"device_code": start["device_code"]})
+        start = client.post("/dashboard/login/github/start").json()
+        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
 
         assert res.status_code == 403
         assert "alice" in res.json()["detail"]

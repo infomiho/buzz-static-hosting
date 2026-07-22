@@ -6,10 +6,9 @@ import pytest
 
 from server.auth_service import (
     AccessDenied, AuthService, Identity, User,
-    DeviceFlowDenied, DeviceFlowExpired, DeviceFlowPending, DeviceFlowSlowDown,
     InvalidSession, SiteNotFound, NotSiteOwner, TokenNotFound,
 )
-from server.github import FakeGitHubClient
+from server.github_login import GitHubUser
 
 
 def _hash(token: str) -> str:
@@ -151,72 +150,28 @@ class TestCanDeployTo:
         assert identity.can_deploy_to("other-site") is False
 
 
-class TestDeviceFlow:
-    def _make_auth(self, connect, **github_overrides):
-        github = FakeGitHubClient()
-        for k, v in github_overrides.items():
-            setattr(github, k, v)
-        return AuthService(db=connect, github=github, github_client_id="test-client-id")
+class TestLoginWithGitHub:
+    def test_creates_new_user_and_session(self, database):
+        auth = AuthService(db=database.connect)
+        result = auth.login_with_github(GitHubUser(id=99, login="newuser", name="New"))
 
-    def test_full_login_flow(self, database):
-        auth = self._make_auth(database.connect)
-
-        start = auth.start_device_flow()
-        assert "device_code" in start
-        assert "user_code" in start
-
-        result = auth.poll_device_flow(start["device_code"])
+        assert result.user.github_login == "newuser"
         assert result.token.startswith("buzz_sess_")
-        assert result.user.github_login == "alice"
 
-        # Session token works
         identity = auth.authenticate(f"Bearer {result.token}")
         assert identity is not None
-        assert identity.user.github_login == "alice"
+        assert identity.user.github_login == "newuser"
 
-    def test_poll_pending(self, database):
-        auth = self._make_auth(database.connect, poll_response={"error": "authorization_pending"})
-
-        start = auth.start_device_flow()
-        with pytest.raises(DeviceFlowPending):
-            auth.poll_device_flow(start["device_code"])
-
-    def test_poll_slow_down(self, database):
-        auth = self._make_auth(database.connect, poll_response={"error": "slow_down", "interval": 10})
-
-        start = auth.start_device_flow()
-        with pytest.raises(DeviceFlowSlowDown) as exc_info:
-            auth.poll_device_flow(start["device_code"])
-        assert exc_info.value.interval == 10
-
-    def test_poll_expired(self, database):
-        auth = self._make_auth(database.connect, poll_response={"error": "expired_token"})
-
-        start = auth.start_device_flow()
-        with pytest.raises(DeviceFlowExpired):
-            auth.poll_device_flow(start["device_code"])
-
-    def test_poll_denied(self, database):
-        auth = self._make_auth(database.connect, poll_response={"error": "access_denied"})
-
-        start = auth.start_device_flow()
-        with pytest.raises(DeviceFlowDenied):
-            auth.poll_device_flow(start["device_code"])
-
-    def test_poll_unknown_device_code(self, database):
-        auth = self._make_auth(database.connect)
-
-        with pytest.raises(DeviceFlowExpired):
-            auth.poll_device_flow("nonexistent")
+        with database.connect() as conn:
+            row = conn.execute("SELECT id FROM users WHERE github_id = 99").fetchone()
+        assert row is not None
 
     def test_upserts_existing_user(self, database):
         with database.connect() as conn:
             _insert_user(conn, github_id=42, login="old_login", name="Old Name")
 
-        auth = self._make_auth(database.connect, user={"id": 42, "login": "new_login", "name": "New Name"})
-
-        start = auth.start_device_flow()
-        result = auth.poll_device_flow(start["device_code"])
+        auth = AuthService(db=database.connect)
+        result = auth.login_with_github(GitHubUser(id=42, login="new_login", name="New Name"))
 
         assert result.user.github_login == "new_login"
         assert result.user.github_name == "New Name"
@@ -224,18 +179,6 @@ class TestDeviceFlow:
         with database.connect() as conn:
             row = conn.execute("SELECT github_login FROM users WHERE github_id = 42").fetchone()
         assert row["github_login"] == "new_login"
-
-    def test_creates_new_user(self, database):
-        auth = self._make_auth(database.connect, user={"id": 99, "login": "newuser", "name": "New"})
-
-        start = auth.start_device_flow()
-        result = auth.poll_device_flow(start["device_code"])
-
-        assert result.user.github_login == "newuser"
-
-        with database.connect() as conn:
-            row = conn.execute("SELECT id FROM users WHERE github_id = 99").fetchone()
-        assert row is not None
 
 
 class TestLogout:
@@ -333,21 +276,17 @@ class TestDeployTokenCrud:
 
 
 class TestAccessControl:
-    def _make_auth(self, connect, allow_registration=True, allowed_github_users=None, **github_overrides):
-        github = FakeGitHubClient()
-        for k, v in github_overrides.items():
-            setattr(github, k, v)
+    def _make_auth(self, connect, allow_registration=True, allowed_github_users=None):
         return AuthService(
             db=connect,
-            github=github,
-            github_client_id="test-client-id",
             allow_registration=allow_registration,
             allowed_github_users=allowed_github_users,
         )
 
-    def _login(self, auth):
-        start = auth.start_device_flow()
-        return auth.poll_device_flow(start["device_code"])
+    def _login(self, auth, github_user=None):
+        return auth.login_with_github(
+            github_user or GitHubUser(id=42, login="alice", name="Alice")
+        )
 
     def test_registration_off_keeps_existing_user(self, database):
         with database.connect() as conn:
@@ -387,13 +326,9 @@ class TestAccessControl:
             self._login(auth)
 
     def test_allowlist_matches_case_insensitively(self, database):
-        auth = self._make_auth(
-            database.connect,
-            allowed_github_users=frozenset({"alice"}),
-            user={"id": 42, "login": "AlIcE", "name": "Alice"},
-        )
+        auth = self._make_auth(database.connect, allowed_github_users=frozenset({"alice"}))
 
-        result = self._login(auth)
+        result = self._login(auth, GitHubUser(id=42, login="AlIcE", name="Alice"))
 
         assert result.user.github_login == "AlIcE"
 
@@ -442,16 +377,6 @@ class TestAccessControl:
         identity = auth.authenticate(f"Bearer {token}")
 
         assert identity is not None
-
-    def test_denied_login_consumes_device_code(self, database):
-        auth = self._make_auth(database.connect, allow_registration=False)
-        start = auth.start_device_flow()
-
-        with pytest.raises(AccessDenied):
-            auth.poll_device_flow(start["device_code"])
-
-        with pytest.raises(DeviceFlowExpired):
-            auth.poll_device_flow(start["device_code"])
 
     def test_revoked_deploy_token_does_not_update_last_used(self, database):
         token = "buzz_deploy_" + secrets.token_urlsafe(32)

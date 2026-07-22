@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Buzz - Approve CLI sign-in{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-xl py-4">
+    <div class="border-4 border-ink p-6 sm:p-8">
+        {% if outcome == "approved" %}
+        <h1 class="heading-m">Device connected</h1>
+        <p class="mt-2">The CLI is now signed in as <strong>{{ user.github_login }}</strong>. You can close this tab.</p>
+        {% else %}
+        <h1 class="heading-m">Approve CLI sign-in</h1>
+        <p class="mt-1 text-rule">Type the code shown in the terminal where you ran 'buzz login'. If you did not just start a sign-in, do not enter anything.</p>
+        {% if outcome == "invalid" %}
+        <div class="alert-destructive mt-5" role="alert">
+            <h2>There is a problem</h2>
+            <p class="mt-2">That code is not valid or has expired. Run 'buzz login' again to get a new one.</p>
+        </div>
+        {% endif %}
+        <form action="/device" method="post" class="mt-6 flex flex-col items-start gap-4">
+            <div class="flex w-full flex-col gap-1 sm:max-w-xs">
+                <label for="user_code" class="font-bold">Device code</label>
+                <input id="user_code" name="user_code" class="input font-mono text-2xl tracking-widest" autocomplete="off" placeholder="XXXX-XXXX" required autofocus>
+            </div>
+            <button type="submit" class="btn">Approve sign-in</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

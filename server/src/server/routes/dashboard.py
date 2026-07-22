@@ -3,27 +3,35 @@ import ipaddress
 import logging
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from ..analytics import AnalyticsStore
-from ..auth_service import (
-    AuthService,
-    DeviceFlowDenied,
-    DeviceFlowExpired,
-    DeviceFlowFailed,
-    DeviceFlowPending,
-    DeviceFlowSlowDown,
-    Identity,
-)
+from ..auth_service import AuthService, Identity, InvalidSession
 from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
 from ..custom_domains import DomainClaimLimits, DomainClaimStore, claim_views_for_site
 from ..db import Database
-from ..dependencies import get_auth_service, get_database, get_settings, require_user
+from ..dependencies import (
+    get_auth_service,
+    get_database,
+    get_github_device_flow,
+    get_passkey_service,
+    get_settings,
+    require_user,
+)
+from ..github_login import (
+    GitHubDeviceFlow,
+    GitHubDeviceFlowDenied,
+    GitHubDeviceFlowExpired,
+    GitHubDeviceFlowFailed,
+    GitHubDeviceFlowPending,
+    GitHubDeviceFlowSlowDown,
+)
+from ..passkeys import AuthenticationFailed, ChallengeExpired, PasskeyService
 from ..search_console import SearchConsoleError
 from ..settings import Settings
 from ..site_store import SiteStore
@@ -38,40 +46,78 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", include_in_schema=False)
 
 
-class PollRequest(BaseModel):
+def _session_response(token: str, settings: Settings) -> JSONResponse:
+    response = JSONResponse(content={"status": "complete"})
+    set_session_cookie(response, token, secure=not settings.dev_mode)
+    return response
+
+
+class GitHubLoginPollRequest(BaseModel):
     device_code: str
 
 
-@router.post("/login/start")
-async def login_start(auth: Annotated[AuthService, Depends(get_auth_service)]):
+@router.post("/login/github/start")
+async def github_login_start(
+    github_flow: Annotated[GitHubDeviceFlow, Depends(get_github_device_flow)],
+):
     try:
-        return auth.start_device_flow()
-    except DeviceFlowFailed as e:
+        return github_flow.start()
+    except GitHubDeviceFlowFailed as e:
         raise HTTPException(status_code=500, detail=e.detail)
 
 
-@router.post("/login/poll")
-async def login_poll(
-    data: PollRequest,
+@router.post("/login/github/poll")
+async def github_login_poll(
+    data: GitHubLoginPollRequest,
+    github_flow: Annotated[GitHubDeviceFlow, Depends(get_github_device_flow)],
     auth: Annotated[AuthService, Depends(get_auth_service)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     try:
-        result = auth.poll_device_flow(data.device_code)
-    except DeviceFlowPending:
+        github_user = github_flow.poll(data.device_code)
+    except GitHubDeviceFlowPending:
         return {"status": "pending"}
-    except DeviceFlowSlowDown as e:
+    except GitHubDeviceFlowSlowDown as e:
         return {"status": "pending", "interval": e.interval}
-    except DeviceFlowExpired:
+    except GitHubDeviceFlowExpired:
         raise HTTPException(status_code=400, detail="Device code expired")
-    except DeviceFlowDenied:
+    except GitHubDeviceFlowDenied:
         raise HTTPException(status_code=400, detail="User denied access")
-    except DeviceFlowFailed as e:
+    except GitHubDeviceFlowFailed as e:
         raise HTTPException(status_code=400, detail=e.detail)
 
-    response = JSONResponse(content={"status": "complete"})
-    set_session_cookie(response, result.token, secure=not settings.dev_mode)
-    return response
+    result = auth.login_with_github(github_user)
+    return _session_response(result.token, settings)
+
+
+class PasskeyLoginRequest(BaseModel):
+    credential: dict[str, Any]
+
+
+@router.post("/login/passkey/start")
+async def login_passkey_start(
+    passkeys: Annotated[PasskeyService, Depends(get_passkey_service)],
+):
+    return Response(
+        content=passkeys.authentication_options(),
+        media_type="application/json",
+    )
+
+
+@router.post("/login/passkey/finish")
+async def login_passkey_finish(
+    data: PasskeyLoginRequest,
+    passkeys: Annotated[PasskeyService, Depends(get_passkey_service)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    try:
+        user_id = passkeys.authenticate(data.credential)
+        result = auth.login_by_user_id(user_id)
+    except (ChallengeExpired, AuthenticationFailed, InvalidSession):
+        raise HTTPException(status_code=400, detail="Passkey sign-in failed, try again")
+
+    return _session_response(result.token, settings)
 
 
 @router.get("/sites/{name}", response_class=HTMLResponse)

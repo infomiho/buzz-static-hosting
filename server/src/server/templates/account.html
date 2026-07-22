@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Buzz - Account{% endblock %}
+
+{% block content %}
+<div class="mx-auto flex w-full max-w-3xl flex-col gap-8 py-4">
+    <div>
+        <h1 class="heading-l">Account</h1>
+        <p class="lead mt-2 text-rule">{{ user.github_login }}{% if user.github_name %} ({{ user.github_name }}){% endif %}, signed in with GitHub.</p>
+    </div>
+
+    <div class="card">
+        <header>
+            <h2>Passkeys</h2>
+            <p>Sign in to this Buzz server with your device instead of GitHub.</p>
+        </header>
+        <section class="flex flex-col gap-5">
+            <div id="passkey-error" class="alert-destructive hidden" role="alert">
+                <h2>There is a problem</h2>
+                <p id="passkey-error-message" class="mt-2"></p>
+            </div>
+            {% if passkeys %}
+            <div class="overflow-x-auto">
+                <table class="table">
+                    <thead>
+                        <tr><th>Name</th><th>Created</th><th>Last used</th><th><span class="sr-only">Actions</span></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for passkey in passkeys %}
+                        <tr>
+                            <td>{{ passkey.name }}{% if passkey.backed_up %} <span class="badge-outline">Synced</span>{% endif %}</td>
+                            <td>{{ passkey.created_at }}</td>
+                            <td>{{ passkey.last_used_at or "Never" }}</td>
+                            <td>
+                                <form action="/account/passkeys/{{ passkey.id }}/delete" method="post" onsubmit="return confirm('Remove passkey {{ passkey.name }}?')">
+                                    <button type="submit" class="btn-sm-outline">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-rule">No passkeys yet.</p>
+            {% endif %}
+            <form id="add-passkey-form" class="flex flex-col items-start gap-3 sm:flex-row sm:items-end">
+                <div class="flex w-full flex-col gap-1 sm:max-w-xs">
+                    <label for="passkey-name" class="font-bold">Name (optional)</label>
+                    <input id="passkey-name" class="input" type="text" maxlength="60" placeholder="MacBook">
+                </div>
+                <button type="submit" id="add-passkey" class="btn">Add passkey</button>
+            </form>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/simplewebauthn-browser.js"></script>
+<script src="/static/passkeys.js"></script>
+<script>
+if (!SimpleWebAuthnBrowser.browserSupportsWebAuthn()) {
+    document.getElementById('add-passkey').disabled = true;
+    showPasskeyError('This browser does not support passkeys');
+}
+
+document.getElementById('add-passkey-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = document.getElementById('add-passkey');
+    button.disabled = true;
+    const result = await buzzRegisterPasskey({
+        optionsUrl: '/account/passkeys/options',
+        registerUrl: '/account/passkeys',
+        name: document.getElementById('passkey-name').value,
+    });
+    if (result.ok) {
+        window.location.reload();
+        return;
+    }
+    button.disabled = false;
+    if (!result.cancelled) showPasskeyError(result.error);
+});
+
+function showPasskeyError(message) {
+    document.getElementById('passkey-error-message').textContent = message;
+    document.getElementById('passkey-error').classList.remove('hidden');
+}
+</script>
+{% endblock %}
