@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -15,7 +16,19 @@ from ..passkeys import (
     RegistrationFailed,
 )
 
+
+def _humandate(value: str | None, fallback: str = "") -> str:
+    if not value:
+        return fallback
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    return f"{parsed:%b} {parsed.day}, {parsed.year}"
+
+
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
+templates.env.filters["humandate"] = _humandate
 
 router = APIRouter(prefix="/account", include_in_schema=False)
 

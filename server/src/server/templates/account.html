@@ -3,57 +3,79 @@
 {% block title %}Buzz - Account{% endblock %}
 
 {% block content %}
-<div class="mx-auto flex w-full max-w-3xl flex-col gap-8 py-4">
+<div class="mx-auto flex w-full max-w-3xl flex-col gap-10 py-4">
     <div>
-        <h1 class="heading-l">Account</h1>
-        <p class="lead mt-2 text-rule">{{ user.github_login }}{% if user.github_name %} ({{ user.github_name }}){% endif %}, signed in with GitHub.</p>
+        <h1 class="heading-xl">Account</h1>
+        <p class="mt-3 text-lg text-rule">
+            Signed in as <span class="font-bold text-ink">{{ user.github_login }}</span>{% if user.github_name %} ({{ user.github_name }}){% endif %}.
+        </p>
     </div>
 
-    <div class="card">
+    <section class="card">
         <header>
             <h2>Passkeys</h2>
-            <p>Sign in to this Buzz server with your device instead of GitHub.</p>
+            <p>A quick, secure way to sign in to this Buzz server.</p>
         </header>
-        <section class="flex flex-col gap-5">
+        <section class="flex flex-col gap-6">
             <div id="passkey-error" class="alert-destructive hidden" role="alert">
                 <h2>There is a problem</h2>
                 <p id="passkey-error-message" class="mt-2"></p>
             </div>
+
             {% if passkeys %}
-            <div class="overflow-x-auto">
-                <table class="table">
-                    <thead>
-                        <tr><th>Name</th><th>Created</th><th>Last used</th><th><span class="sr-only">Actions</span></th></tr>
-                    </thead>
-                    <tbody>
-                        {% for passkey in passkeys %}
-                        <tr>
-                            <td>{{ passkey.name }}{% if passkey.backed_up %} <span class="badge-outline">Synced</span>{% endif %}</td>
-                            <td>{{ passkey.created_at }}</td>
-                            <td>{{ passkey.last_used_at or "Never" }}</td>
-                            <td>
-                                <form action="/account/passkeys/{{ passkey.id }}/delete" method="post" onsubmit="return confirm('Remove passkey {{ passkey.name }}?')">
-                                    <button type="submit" class="btn-sm-outline">Remove</button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+            <ul class="flex flex-col border-2 border-ink divide-y-2 divide-ink">
+                {% for passkey in passkeys %}
+                <li class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="truncate text-lg font-bold">{{ passkey.name }}</span>
+                            {% if passkey.backed_up %}<span class="badge-outline">Synced</span>{% endif %}
+                        </div>
+                        <dl class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-rule">
+                            <div class="flex gap-1.5">
+                                <dt class="font-bold">Added</dt>
+                                <dd>{{ passkey.created_at | humandate }}</dd>
+                            </div>
+                            <div class="flex gap-1.5">
+                                <dt class="font-bold">Last used</dt>
+                                <dd>{{ passkey.last_used_at | humandate("Never") }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <form action="/account/passkeys/{{ passkey.id }}/delete" method="post" id="remove-form-{{ passkey.id }}" class="contents">
+                        <button type="button" class="btn-sm-outline border-danger text-danger-dark"
+                                data-remove-passkey data-id="{{ passkey.id }}" data-name="{{ passkey.name }}">Remove</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
             {% else %}
-            <p class="text-rule">No passkeys yet.</p>
+            <p class="border-2 border-ink px-4 py-8 text-center text-rule">No passkeys yet.</p>
             {% endif %}
-            <form id="add-passkey-form" class="flex flex-col items-start gap-3 sm:flex-row sm:items-end">
-                <div class="flex w-full flex-col gap-1 sm:max-w-xs">
-                    <label for="passkey-name" class="font-bold">Name (optional)</label>
+
+            <form id="add-passkey-form" class="flex flex-col items-start gap-3 border-t-2 border-ink pt-6 sm:flex-row sm:items-end">
+                <div class="flex w-full flex-col gap-1.5 sm:max-w-xs">
+                    <label for="passkey-name" class="font-bold">Name <span class="font-normal text-rule">(optional)</span></label>
                     <input id="passkey-name" class="input" type="text" maxlength="60" placeholder="MacBook">
                 </div>
                 <button type="submit" id="add-passkey" class="btn">Add passkey</button>
             </form>
         </section>
-    </div>
+    </section>
 </div>
+
+<dialog id="remove-passkey-dialog" class="dialog">
+    <div>
+        <header>
+            <h2>Remove passkey</h2>
+            <p id="remove-passkey-text">This passkey will no longer be able to sign in to this server.</p>
+        </header>
+        <footer>
+            <button class="btn-outline" onclick="document.getElementById('remove-passkey-dialog').close()">Cancel</button>
+            <button class="btn-destructive" id="confirm-remove-passkey">Remove</button>
+        </footer>
+    </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
@@ -80,6 +102,23 @@ document.getElementById('add-passkey-form').addEventListener('submit', async (ev
     }
     button.disabled = false;
     if (!result.cancelled) showPasskeyError(result.error);
+});
+
+const removeDialog = document.getElementById('remove-passkey-dialog');
+const confirmRemove = document.getElementById('confirm-remove-passkey');
+let pendingRemoveId = null;
+
+document.querySelectorAll('[data-remove-passkey]').forEach((button) => {
+    button.addEventListener('click', () => {
+        pendingRemoveId = button.dataset.id;
+        document.getElementById('remove-passkey-text').textContent =
+            `"${button.dataset.name}" will no longer be able to sign in to this server.`;
+        removeDialog.showModal();
+    });
+});
+
+confirmRemove.addEventListener('click', () => {
+    if (pendingRemoveId) document.getElementById(`remove-form-${pendingRemoveId}`).submit();
 });
 
 function showPasskeyError(message) {
