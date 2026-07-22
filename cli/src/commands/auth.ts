@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { Command } from "commander";
 import {
   apiFetch,
@@ -33,6 +34,23 @@ function isDeviceStart(value: unknown): value is DeviceStart {
     (value.interval === undefined || typeof value.interval === "number") &&
     (value.expires_in === undefined || typeof value.expires_in === "number")
   );
+}
+
+function openInBrowser(url: string): void {
+  const command =
+    process.platform === "darwin"
+      ? "open"
+      : process.platform === "win32"
+        ? "cmd"
+        : "xdg-open";
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  try {
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    child.on("error", () => {});
+    child.unref();
+  } catch {
+    // Best effort; the URL is printed either way.
+  }
 }
 
 interface PollResult {
@@ -76,9 +94,10 @@ export async function login(cliOptions: CliOptions = {}) {
     { auth: "none", cliOptions, errors: { fallback: "Failed to start login" } }
   );
 
-  console.log(`\nVisit: ${start.verification_uri}`);
-  console.log(`Enter code: ${start.user_code}\n`);
-  console.log("Waiting for authorization...");
+  console.log(`\nOpen: ${start.verification_uri}`);
+  console.log(`Enter this code to approve: ${start.user_code}\n`);
+  console.log("Approve the sign-in in your browser. Waiting...");
+  openInBrowser(start.verification_uri);
 
   const interval = (start.interval || 5) * 1000;
   const maxAttempts = Math.ceil((start.expires_in || 900) / (start.interval || 5));
@@ -170,7 +189,7 @@ export async function whoami(cliOptions: CliOptions = {}) {
 export function registerAuthCommands(program: Command) {
   program
     .command("login")
-    .description("Sign in with GitHub")
+    .description("Sign in via your browser")
     .action(() => login(program.opts()));
 
   program
