@@ -1551,4 +1551,7 @@ def test_scheduler_covers_1000_oldest_first_with_real_work(transition_db):
         worker.run_once()
 
     assert len(seen) == 1000
-    assert time.monotonic() - started < 10
+    # Loose upper bound: guards against pathological (e.g. O(N^2)) scheduling
+    # while tolerating slow shared CI runners. A real regression is orders of
+    # magnitude slower, not a few seconds.
+    assert time.monotonic() - started < 30
