@@ -1090,19 +1090,9 @@
               }
             },
             "description": "Successful Response"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "GitHub authentication is unavailable."
           }
         },
-        "summary": "Start GitHub device authorization",
+        "summary": "Start device authorization",
         "tags": [
           "Authentication"
         ]
@@ -1148,7 +1138,7 @@
                 }
               }
             },
-            "description": "The device flow failed or expired."
+            "description": "The device code expired or was already used."
           },
           "403": {
             "content": {
@@ -1158,7 +1148,7 @@
                 }
               }
             },
-            "description": "The GitHub account is not allowed on this server."
+            "description": "The approving account is not allowed on this server."
           },
           "422": {
             "content": {
@@ -1171,7 +1161,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Poll GitHub device authorization",
+        "summary": "Poll device authorization",
         "tags": [
           "Authentication"
         ]

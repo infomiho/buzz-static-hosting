@@ -15,7 +15,7 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz delete`](#buzz-delete): Delete a deployed site
 - [`buzz config`](#buzz-config): View or set configuration (server)
 - [`buzz url`](#buzz-url): Show the URL for the current directory
-- [`buzz login`](#buzz-login): Sign in with GitHub
+- [`buzz login`](#buzz-login): Sign in via your browser
 - [`buzz logout`](#buzz-logout): Sign out and clear the stored session
 - [`buzz whoami`](#buzz-whoami): Show the current signed-in user
 - [`buzz tokens`](#buzz-tokens): Manage deployment tokens
@@ -49,7 +49,7 @@ Commands:
   delete [options] <subdomain>  Delete a deployed site
   config [key] [value]          View or set configuration (server)
   url                           Show the URL for the current directory
-  login                         Sign in with GitHub
+  login                         Sign in via your browser
   logout                        Sign out and clear the stored session
   whoami                        Show the current signed-in user
   tokens                        Manage deployment tokens
@@ -119,7 +119,7 @@ Options:
 ```text
 Usage: buzz login [options]
 
-Sign in with GitHub
+Sign in via your browser
 
 Options:
   -h, --help  display help for command
