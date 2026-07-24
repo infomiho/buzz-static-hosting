@@ -1,99 +1,79 @@
 ---
 title: Deploy Your First Site
-description: Install Buzz, sign in, publish a static build directory, and verify the site.
+description: Get a Buzz server, sign the CLI in, and publish a build directory.
 sidebar:
   order: 1
 ---
 
-Install the Buzz CLI, connect it to a Buzz server, and deploy your first static site. The CLI packages your build directory and sends it to the server, which publishes the files at a site URL.
+Buzz is two parts: a server that hosts your sites, and a CLI that uploads directories to it. This page gets you from nothing to a live site URL.
 
-## Prerequisites
+## Get A Buzz Server
 
-You need:
+There's no hosted Buzz to sign up for, so a server has to exist first. Two ways to get one:
 
-- Node.js 22 or later and npm.
-- A GitHub account.
-- A server URL supplied by your Buzz server operator, such as `https://buzz.example.com`.
-- A project whose `./dist/index.html` file is ready to publish.
+- Run your own. Follow [Self-Hosting Overview](../../self-hosting/overview/), then come back with your Buzz domain. You do this once.
+- Use someone else's. Ask whoever operates it for the server URL, such as `https://buzz.example.com`.
+
+The rest of this page takes a couple of minutes.
 
 ## Install The CLI
 
-1. Install the CLI globally:
+You need Node.js 22 or later, npm, and a GitHub account.
 
-   ```bash
-   npm install --global @infomiho/buzz-cli
-   ```
+```bash
+npm install --global @infomiho/buzz-cli
+buzz --version
+```
 
-2. Confirm that the command is available:
+## Sign In
 
-   ```bash
-   buzz --version
-   ```
+Point the CLI at your server, then sign in:
 
-## Connect To The Server
+```bash
+buzz config server https://buzz.example.com
+buzz login
+```
 
-1. Replace the example URL with the server URL supplied by your operator:
+`buzz login` opens your browser and prints a code. Enter the code, approve access, and the CLI saves the session to `~/.buzz.config.json`. Confirm it worked:
 
-   ```bash
-   buzz config server https://buzz.example.com
-   ```
+```bash
+buzz whoami
+```
 
-2. Start GitHub sign-in:
+## Deploy
 
-   ```bash
-   buzz login
-   ```
-
-3. Open the URL printed by the CLI, enter the displayed code, and approve access.
-
-4. Verify the resulting session:
-
-   ```bash
-   buzz whoami
-   ```
-
-## Deploy The Site
-
-`my-site` is a replaceable example site name. Choose a globally unique name on your Buzz server using lowercase letters, numbers, and hyphens.
-
-1. Confirm that the entry page exists:
-
-   ```bash
-   test -f ./dist/index.html
-   ```
-
-2. Deploy the build directory with your chosen site name:
-
-   ```bash
-   buzz deploy ./dist --subdomain my-site
-   ```
-
-3. Confirm that the CLI prints the site URL:
-
-   ```text
-   Deployed to https://my-site.buzz.example.com
-   ```
-
-   Your site's Buzz domain may differ from `buzz.example.com`.
-
-4. Open the printed URL, then verify it over HTTP:
-
-   ```bash
-   curl --fail --show-error https://my-site.buzz.example.com/
-   ```
-
-If another user owns the site, choose a different name. If you own it through another GitHub account, sign out, sign in with that account, confirm it with `buzz whoami`, and retry.
-
-## Redeploy The Site
-
-After a successful deployment, Buzz writes `my-site` to a `CNAME` file in the directory where you ran the command. This file stores the Buzz site name. It is not a DNS CNAME record.
-
-Build the site again, then redeploy from the same project:
+Point `buzz deploy` at the directory that contains `index.html`:
 
 ```bash
 buzz deploy ./dist
 ```
 
-A successful redeployment completely replaces the previous file set. Files absent from the new build are removed. If Buzz cannot validate or publish the new deployment, the previous deployment remains available.
+The CLI zips the directory, uploads it, and prints the site URL:
 
-Read [Deploy Sites](../../guides/deploy-sites/) for archive exclusions and advanced deployment behavior. To keep a name stable across different working directories, read [Choose A Site Name](../../guides/choose-a-site-name/).
+```text
+Deployed to https://calm-hub-4821.buzz.example.com
+```
+
+Buzz picked that site name because you didn't supply one. To choose it yourself, use lowercase letters, numbers, and hyphens:
+
+```bash
+buzz deploy ./dist --subdomain my-site
+```
+
+Site names are unique across a Buzz server. If someone else already owns the name, pick another. If you own it under a different GitHub account, run `buzz logout`, sign in with that account, and deploy again.
+
+## Redeploy
+
+A successful deployment writes the site name to a `CNAME` file in the directory you ran the command from. It's not a DNS CNAME record; it tells the CLI which site this project belongs to. Rebuild and run the same command to publish again:
+
+```bash
+buzz deploy ./dist
+```
+
+Each redeployment replaces the entire file set, so files missing from the new build disappear from the site. If Buzz can't validate or publish the new upload, the previous deployment keeps serving.
+
+## Next Steps
+
+- [Deploy Sites](../../guides/deploy-sites/) covers archive exclusions and the rest of the deployment behavior.
+- [Choose A Site Name](../../guides/choose-a-site-name/) keeps one name stable across machines and directories.
+- [Automate Deployments](../../guides/automate-deployments/) deploys from CI with a deployment token.
