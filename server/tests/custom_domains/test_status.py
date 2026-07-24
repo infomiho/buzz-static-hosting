@@ -28,7 +28,7 @@ def connection(status: str, *, can_retry: bool = False) -> DomainConnection:
         ("verified", "routed", "connected", False, "connected", "visit", False),
         ("verified", "routed", "updating", False, "updating", "wait", False),
         ("verified", "routed", "action_needed", True, "action_needed", "retry", True),
-        ("verified", "removing", "connected", False, "removing", "wait", True),
+        ("verified", "removing", "connected", False, "removing", "wait", False),
     ],
 )
 def test_domain_task_projects_one_user_phase_and_next_action(
@@ -108,5 +108,5 @@ def test_domain_task_points_directly_when_cloudflare_unsupported():
     task = project_domain_task(claim, connection("securing"))
 
     assert task.phase == "configure_dns"
-    assert task.label == "Point the domain directly to Buzz"
+    assert task.label == "Update DNS"
     assert task.next_action == "configure_dns"

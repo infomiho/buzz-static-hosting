@@ -23,16 +23,6 @@ class DomainConnection:
     transition_state: str | None
 
     @property
-    def status_label(self) -> str:
-        return {
-            "waiting_for_dns": "Waiting for DNS",
-            "securing": "Securing connection",
-            "connected": "Connected",
-            "updating": "Updating connection",
-            "action_needed": "Action needed",
-        }[self.status]
-
-    @property
     def has_cloudflare_path(self) -> bool:
         return "cloudflare" in {
             self.effective_mode,
@@ -47,13 +37,6 @@ class DomainConnection:
     @property
     def can_cancel(self) -> bool:
         return self.transition_state in DomainClaimStateMachine.ACTIVE_STATES
-
-    @property
-    def show_paths(self) -> bool:
-        return bool(
-            self.transition_state in DomainClaimStateMachine.ACTIVE_STATES
-            or self.transition_state == "failed"
-        )
 
 
 @dataclass(frozen=True)
@@ -72,7 +55,7 @@ def project_domain_task(claim: DomainClaim, connection: DomainConnection) -> Dom
             "Removing",
             "Buzz is safely withdrawing this domain.",
             "wait",
-            True,
+            False,
         )
     if claim.status == "pending":
         return DomainTask(
@@ -85,7 +68,7 @@ def project_domain_task(claim: DomainClaim, connection: DomainConnection) -> Dom
     if claim.last_error == "cloudflare_unsupported":
         return DomainTask(
             "configure_dns",
-            "Point the domain directly to Buzz",
+            "Update DNS",
             "This server can't connect Cloudflare-proxied domains right now. "
             "Point DNS directly to Buzz using the records below.",
             "configure_dns",
@@ -114,7 +97,7 @@ def project_domain_task(claim: DomainClaim, connection: DomainConnection) -> Dom
                 "Action needed",
                 "Buzz could not check DNS right now. It will retry automatically.",
                 "wait",
-                True,
+                False,
             )
         return DomainTask(
             "action_needed",

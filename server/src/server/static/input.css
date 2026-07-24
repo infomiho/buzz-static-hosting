@@ -11,6 +11,7 @@
   --color-success: #0f7a52;
   --color-danger: #ca3535;
   --color-danger-dark: #982828;
+  --color-attention: #8a5a00;
   --color-info: #1d70b8;
   --color-cloudflare: oklch(0.722 0.192 50.313);
   --font-sans: Arial, ui-sans-serif, system-ui, sans-serif;
@@ -313,6 +314,10 @@
 
   .domain-actions {
     @apply mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center;
+  }
+
+  .domain-danger {
+    @apply mt-6 border-t-2 border-ink pt-5;
   }
 
   .manage-domain {

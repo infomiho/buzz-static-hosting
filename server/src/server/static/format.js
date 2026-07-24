@@ -3,10 +3,12 @@ function formatDate(iso) {
 }
 
 function timeAgo(iso) {
-    const diff = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(diff / 86400000);
-    if (days < 1) return 'Today';
-    if (days === 1) return 'Yesterday';
+    const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return minutes + 'm ago';
+    if (minutes < 1440) return Math.floor(minutes / 60) + 'h ago';
+    const days = Math.floor(minutes / 1440);
+    if (days === 1) return 'yesterday';
     if (days < 30) return days + 'd ago';
     return formatDate(iso);
 }

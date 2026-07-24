@@ -243,13 +243,21 @@ class TestCustomDomains:
             assert match
             return match.group(0)
 
+        def domain_panel(claim_id):
+            """Markup for one claim, from its <details> tag up to the next claim's."""
+            tag = domain_tag(claim_id)
+            start = response.text.index(tag)
+            body_start = start + len(tag)
+            next_claim = response.text.find("data-domain-claim=", body_start)
+            return response.text[body_start:next_claim if next_claim != -1 else len(response.text)]
+
         assert " open" in domain_tag(1)
         assert " open" not in domain_tag(2)
         assert " open" in domain_tag(3)
         assert " open" in domain_tag(4)
-        assert " open" in domain_tag(5)
+        assert " open" not in domain_tag(5)
         assert " open" not in domain_tag(6)
-        assert " open" in domain_tag(7)
+        assert " open" not in domain_tag(7)
         assert " open" not in domain_tag(8)
 
         assert 'data-domain-state="verify_ownership"' in domain_tag(1)
@@ -258,6 +266,7 @@ class TestCustomDomains:
         assert 'data-next-action="visit"' in domain_tag(2)
         assert "Buzz is serving your site on this domain." in response.text
         assert "Visit domain" in response.text
+        assert "Check status" in domain_panel(3)
         assert 'data-domain-state="configure_dns"' in domain_tag(3)
         assert 'data-next-action="configure_dns"' in domain_tag(3)
         assert "Buzz detected DNS settings that do not match" in response.text
@@ -286,8 +295,16 @@ class TestCustomDomains:
         assert response.text.count('<span aria-hidden="true">&#10003;</span>') == 1
         assert 'class="sr-only">Connected</span>' in response.text
         assert re.search(r'<details[^>]*class="[^"]*manage-domain', response.text)
-        assert response.text.index("Manage domain") < response.text.index("Cancel update")
-        assert response.text.index("Manage domain") < response.text.index("Remove domain")
+        checked_actions = 0
+        for claim_id in range(1, 9):
+            panel = domain_panel(claim_id)
+            if "Technical details" not in panel:
+                continue
+            for action in ("Cancel update", "Remove domain"):
+                if action in panel:
+                    assert panel.index(action) < panel.index("Technical details")
+                    checked_actions += 1
+        assert checked_actions >= 2
         assert "Cancel transition" not in response.text
         assert "Consecutive failures" not in response.text
         assert 'name="mode"' not in response.text
