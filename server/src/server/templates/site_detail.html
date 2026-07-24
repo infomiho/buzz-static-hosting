@@ -12,24 +12,27 @@
     <!-- Back link -->
     <a href="/" class="link w-fit">Back to dashboard</a>
 
-    <!-- Site metadata header -->
+    <!-- Site header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+        <div class="min-w-0">
             <h1 class="heading-l">
                 <a href="{{ site_url }}" target="_blank" class="text-link underline decoration-2 underline-offset-4 hover:decoration-4">{{ site.name }}</a><span>.{{ domain }}</span>
             </h1>
-            <p class="mt-2 text-rule">{{ site.created_at[:10] }} &middot; {{ file_count }} file{{ 's' if file_count != 1 }} &middot; {{ site.size_bytes | filesizeformat }}</p>
+            <p class="mt-2 text-rule">
+                Last deployed <span id="site-deployed-at">{{ site.created_at[:10] }}</span>
+                &middot; {{ file_count }} file{{ 's' if file_count != 1 }}
+                &middot; {{ site.size_bytes | filesizeformat }}
+            </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
             <button class="btn-sm-outline" onclick="openDeployDialog('{{ site.name }}')">Redeploy</button>
-            <button class="btn-sm-outline border-danger text-danger-dark" onclick="document.getElementById('delete-site-dialog').showModal()">Delete site</button>
         </div>
     </div>
 
-    <!-- Analytics -->
+    <!-- Stats -->
     <div class="card">
         <header>
-            <h2>Analytics</h2>
+            <h2>Stats</h2>
         </header>
         <section class="flex flex-col gap-6" id="analytics-container">
             <div>
@@ -76,7 +79,7 @@
         </section>
     </div>
 
-    <!-- File tree -->
+    <!-- Files -->
     <div class="card">
         <details id="files-details">
             <summary class="flex cursor-pointer flex-wrap items-baseline gap-3 px-5 py-4">
@@ -136,6 +139,7 @@
     </div>
     {% endmacro %}
 
+    {% if custom_domains_configured or domain_claims %}
     <!-- Custom domains -->
     <div class="card" id="custom-domains">
         <header class="flex flex-wrap items-start justify-between gap-4">
@@ -284,6 +288,15 @@
             <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark" id="domain-action-error" role="alert"></p>
         </section>
     </div>
+    {% endif %}
+
+    <div class="danger-zone">
+        <h3>Danger zone</h3>
+        <p class="mt-2 text-pretty text-rule">Deleting this site removes all deployed files and cannot be undone.</p>
+        <div class="mt-5">
+            <button class="btn-sm-outline border-danger text-danger-dark" onclick="document.getElementById('delete-site-dialog').showModal()">Delete site</button>
+        </div>
+    </div>
 </div>
 
 {% include "_deploy_modal.html" %}
@@ -347,6 +360,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/format.js"></script>
 <script>
 const SITE_NAME = {{ site.name | tojson }};
 let analyticsChart;
@@ -644,6 +658,10 @@ async function loadSearchTerms() {
     }
 }
 
+function initDeployedAt() {
+    document.getElementById('site-deployed-at').textContent = timeAgo({{ site.created_at | tojson }});
+}
+
 function initDisclosure(id, storageKey, onOpen) {
     const el = document.getElementById(id);
     try {
@@ -701,6 +719,7 @@ document.getElementById('confirm-delete-site').addEventListener('click', async f
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    initDeployedAt();
     initCustomDomains();
     loadAnalytics();
     initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown', loadSearchTerms);

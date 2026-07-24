@@ -227,6 +227,14 @@
     @apply border-b-0;
   }
 
+  .danger-zone {
+    @apply mt-8 border-t-2 border-ink pt-6;
+  }
+
+  .danger-zone h3 {
+    @apply text-xl font-bold text-danger-dark;
+  }
+
   .dialog {
     @apply m-auto w-full max-w-lg border-4 border-ink bg-paper p-0 text-ink;
   }

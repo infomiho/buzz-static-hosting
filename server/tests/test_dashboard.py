@@ -94,7 +94,7 @@ class TestCookieAuthOnApiRoutes:
 
 
 class TestCustomDomains:
-    def test_site_detail_shows_disabled_operator_state(
+    def test_site_detail_hides_domains_section_when_feature_disabled(
         self, client, database, user_and_token, tmp_path
     ):
         user_id, token = user_and_token
@@ -107,6 +107,29 @@ class TestCustomDomains:
         client.cookies.set(COOKIE_NAME, token)
 
         response = client.get("/dashboard/sites/my-site")
+
+        assert response.status_code == 200
+        assert ">Stats<" in response.text
+        assert ">Files<" in response.text
+        assert "Custom domains" not in response.text
+        assert "Custom-domain services are disabled or not ready" not in response.text
+        assert "Add custom domain" not in response.text
+
+    def test_site_detail_shows_domains_section_when_enabled_but_unready(
+        self, make_app, database, user_and_token, tmp_path
+    ):
+        user_id, token = user_and_token
+        with database.connect() as conn:
+            conn.execute(
+                "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('my-site', ?, 0)",
+                (user_id,),
+            )
+        (tmp_path / "my-site").mkdir()
+        app = make_app(custom_domains_enabled=True)
+        unready_client = TestClient(app)
+        unready_client.cookies.set(COOKIE_NAME, token)
+
+        response = unready_client.get("/dashboard/sites/my-site")
 
         assert response.status_code == 200
         assert "Custom domains" in response.text
@@ -269,8 +292,8 @@ class TestCustomDomains:
         assert "Consecutive failures" not in response.text
         assert 'name="mode"' not in response.text
         assert "Buzz detects direct and Cloudflare connections automatically" in response.text
-        assert response.text.index("Analytics") < response.text.index("Custom domains")
-        assert response.text.index("Files") < response.text.index("Custom domains")
+        assert response.text.index(">Stats<") < response.text.index(">Files<")
+        assert response.text.index(">Files<") < response.text.index(">Custom domains<")
         assert 'id="remove-domain-dialog"' in response.text
         assert "Buzz will stop serving this hostname" in response.text
         assert 'id="remove-domain-error"' in response.text

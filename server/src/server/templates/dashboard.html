@@ -69,6 +69,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/format.js"></script>
 <script>
 const DOMAIN = '{{ domain }}';
 
@@ -83,19 +84,6 @@ function formatSize(bytes) {
     const units = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
-}
-
-function formatDate(iso) {
-    return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function timeAgo(iso) {
-    const diff = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(diff / 86400000);
-    if (days < 1) return 'Today';
-    if (days === 1) return 'Yesterday';
-    if (days < 30) return days + 'd ago';
-    return formatDate(iso);
 }
 
 function siteUrl(name) {
@@ -132,7 +120,7 @@ async function loadSites() {
         }
 
         let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-        html += '<th>Name</th><th>Created</th><th>Total Views</th><th class="text-right">Actions</th>';
+        html += '<th>Name</th><th>Last deployed</th><th>Total Views</th><th class="text-right">Actions</th>';
         html += '</tr></thead><tbody>';
 
         for (const site of sites) {

@@ -131,6 +131,7 @@ async def site_detail(
     domain = settings.domain or "localhost:8080"
     capability = request.app.state.custom_domains.capabilities()
     custom_domains_available = capability.control_ready
+    custom_domains_configured = capability.status != "disabled"
     with database.connect() as conn:
         store = SiteStore(conn, settings.sites_dir)
         site = store.get_by_name(name, identity.user.id)
@@ -180,6 +181,7 @@ async def site_detail(
         "files": files,
         "domain": domain,
         "custom_domains_available": custom_domains_available,
+        "custom_domains_configured": custom_domains_configured,
         "custom_domain_can_add": custom_domain_can_add,
         "domain_routing_targets": domain_routing_targets,
         "custom_domain_quota": domain_quota,
