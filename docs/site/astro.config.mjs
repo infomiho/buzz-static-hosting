@@ -4,14 +4,27 @@ import starlight from '@astrojs/starlight';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
 
+const site = 'https://buzzstatic.dev';
+const ogImage = new URL('/og-image.png', site).href;
+const ogImageAlt = 'Buzz deploys a static build directory from the CLI to a stable site URL.';
+
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://buzzstatic.dev',
+	site,
 	integrations: [
 		starlight({
 			title: 'Buzz',
 			description: 'Deploy and operate self-hosted static sites with Buzz.',
 			favicon: '/favicon.svg',
+			head: [
+				{ tag: 'meta', attrs: { property: 'og:image', content: ogImage } },
+				{ tag: 'meta', attrs: { property: 'og:image:type', content: 'image/png' } },
+				{ tag: 'meta', attrs: { property: 'og:image:width', content: '2400' } },
+				{ tag: 'meta', attrs: { property: 'og:image:height', content: '1260' } },
+				{ tag: 'meta', attrs: { property: 'og:image:alt', content: ogImageAlt } },
+				{ tag: 'meta', attrs: { name: 'twitter:image', content: ogImage } },
+				{ tag: 'meta', attrs: { name: 'twitter:image:alt', content: ogImageAlt } },
+			],
 			social: [
 				{
 					icon: 'github',
