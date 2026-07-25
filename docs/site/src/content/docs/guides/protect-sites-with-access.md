@@ -1,11 +1,11 @@
 ---
-title: Protect Sites With Buzz Access
+title: Protect Sites With Access
 description: Restrict a whole site or matching paths to the site owner.
 sidebar:
   order: 7
 ---
 
-Buzz Access uses the normal Buzz login to let only the site owner view protected pages.
+Access uses the normal Buzz login to let only the site owner view private pages.
 
 ## Protect A Site
 
@@ -21,7 +21,7 @@ To publish a new site without briefly exposing it, enable Access as part of its 
 buzz deploy ./dist --access
 ```
 
-Protection remains enabled across later deployments. A deployment token can update files but cannot change Buzz Access.
+Protection remains enabled across later deployments. A deployment token can update files but cannot change access settings.
 
 ## Protect Matching Paths
 
@@ -60,7 +60,7 @@ buzz access status
 buzz access disable
 ```
 
-You can manage the same settings from the site's **Buzz Access** card in the dashboard.
+You can manage the same settings from the site's **Access** card in the dashboard.
 
 Disabling Access makes the affected pages public immediately. Changing or disabling the policy invalidates existing Access sessions.
 

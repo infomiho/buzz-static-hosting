@@ -29,10 +29,10 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz domains retry`](#buzz-domains-retry): Retry a failed connection transition
 - [`buzz domains cancel-transition`](#buzz-domains-cancel-transition): Cancel an active connection transition
 - [`buzz domains remove`](#buzz-domains-remove): Remove a custom domain without changing DNS records
-- [`buzz access`](#buzz-access): Manage Buzz Access
-- [`buzz access enable`](#buzz-access-enable): Protect a site
-- [`buzz access status`](#buzz-access-status): Show Buzz Access
-- [`buzz access disable`](#buzz-access-disable): Disable Buzz Access
+- [`buzz access`](#buzz-access): Manage site access
+- [`buzz access enable`](#buzz-access-enable): Make a site or matching paths private
+- [`buzz access status`](#buzz-access-status): Show access settings
+- [`buzz access disable`](#buzz-access-disable): Make a site public
 
 ## buzz
 
@@ -58,7 +58,7 @@ Commands:
   whoami                        Show the current signed-in user
   tokens                        Manage deployment tokens
   domains                       Manage custom domains
-  access                        Manage Buzz Access
+  access                        Manage site access
   help [command]                display help for command
 ```
 
@@ -71,9 +71,8 @@ Deploy a directory to the server
 
 Options:
   --subdomain <name>   Site name to use as the subdomain
-  --access             Enable Buzz Access as part of the deployment
-  --include <pattern>  Buzz Access path pattern to protect (repeatable)
-                       (default: [])
+  --access             Enable owner-only access as part of the deployment
+  --include <pattern>  Access path pattern to protect (repeatable) (default: [])
   -h, --help           display help for command
 ```
 
@@ -300,15 +299,15 @@ Options:
 ```text
 Usage: buzz access [options] [command]
 
-Manage Buzz Access
+Manage site access
 
 Options:
   -h, --help         display help for command
 
 Commands:
-  enable [options]   Protect a site
-  status [options]   Show Buzz Access
-  disable [options]  Disable Buzz Access
+  enable [options]   Make a site or matching paths private
+  status [options]   Show access settings
+  disable [options]  Make a site public
   help [command]     display help for command
 ```
 
@@ -317,7 +316,7 @@ Commands:
 ```text
 Usage: buzz access enable [options]
 
-Protect a site
+Make a site or matching paths private
 
 Options:
   --site <site>        Site name (defaults to the current CNAME)
@@ -330,7 +329,7 @@ Options:
 ```text
 Usage: buzz access status [options]
 
-Show Buzz Access
+Show access settings
 
 Options:
   --site <site>  Site name (defaults to the current CNAME)
@@ -342,7 +341,7 @@ Options:
 ```text
 Usage: buzz access disable [options]
 
-Disable Buzz Access
+Make a site public
 
 Options:
   --site <site>  Site name (defaults to the current CNAME)

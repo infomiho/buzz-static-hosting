@@ -1386,7 +1386,7 @@
             }
           },
           {
-            "description": "JSON array of Buzz Access path patterns to apply atomically.",
+            "description": "JSON array of access path patterns to apply atomically.",
             "in": "header",
             "name": "x-buzz-access-patterns",
             "required": false,
@@ -1399,7 +1399,7 @@
                   "type": "null"
                 }
               ],
-              "description": "JSON array of Buzz Access path patterns to apply atomically.",
+              "description": "JSON array of access path patterns to apply atomically.",
               "title": "X-Buzz-Access-Patterns"
             }
           }
@@ -1694,7 +1694,7 @@
         ],
         "summary": "Disable owner access protection",
         "tags": [
-          "Buzz Access"
+          "Access"
         ]
       },
       "get": {
@@ -1739,7 +1739,7 @@
         ],
         "summary": "Get owner access protection",
         "tags": [
-          "Buzz Access"
+          "Access"
         ]
       },
       "put": {
@@ -1794,7 +1794,7 @@
         ],
         "summary": "Enable or update owner access protection",
         "tags": [
-          "Buzz Access"
+          "Access"
         ]
       }
     },
@@ -2566,7 +2566,7 @@
     },
     {
       "description": "Owner-only protection for hosted site paths.",
-      "name": "Buzz Access"
+      "name": "Access"
     },
     {
       "description": "Server health.",
