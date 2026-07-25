@@ -168,6 +168,19 @@
     @apply min-h-11 w-full border-2 border-ink bg-paper px-3 py-2 text-lg;
   }
 
+  .choice-list {
+    @apply grid gap-3 text-xl;
+  }
+
+  .choice-list label {
+    @apply flex items-start gap-3;
+  }
+
+  .choice-list input {
+    @apply size-[1lh] shrink-0;
+    accent-color: var(--color-ink);
+  }
+
   .table {
     @apply w-full border-collapse text-left;
   }

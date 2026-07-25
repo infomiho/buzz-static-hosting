@@ -44,7 +44,7 @@ describe("access commands", () => {
         body: JSON.stringify({ patterns: ["/"] }),
       })
     );
-    expect(console.log).toHaveBeenCalledWith("Buzz Access for 'my-site': entire site");
+    expect(console.log).toHaveBeenCalledWith("my-site: entire site");
   });
 
   it("preserves repeated include patterns and uses an explicit site", async () => {
@@ -54,14 +54,14 @@ describe("access commands", () => {
     await enableAccess({ site: "other-site", include: patterns }, cliOptions);
 
     expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ patterns }));
-    expect(console.log).toHaveBeenCalledWith("Buzz Access for 'other-site':");
+    expect(console.log).toHaveBeenCalledWith("other-site:");
     expect(console.log).toHaveBeenCalledWith("  /drafts/**");
     expect(console.log).toHaveBeenCalledTimes(4);
   });
 
   it.each([
-    [{ enabled: false, patterns: [] }, "Buzz Access for 'my-site': disabled"],
-    [{ enabled: true, patterns: ["/"] }, "Buzz Access for 'my-site': entire site"],
+    [{ enabled: false, patterns: [] }, "my-site: off"],
+    [{ enabled: true, patterns: ["/"] }, "my-site: entire site"],
   ])("prints the access status", async (state, output) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(state));
 
@@ -77,7 +77,7 @@ describe("access commands", () => {
     await disableAccess({ site: "my-site" }, cliOptions, { confirm });
 
     expect(confirm).toHaveBeenCalledWith(
-      "Make site 'my-site' public by disabling access protection?"
+      "Disable Buzz Access for 'my-site'? The site will be public."
     );
     expect(fetchMock).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith("Aborted.");
@@ -91,7 +91,7 @@ describe("access commands", () => {
 
     expect(confirm).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls[0][1]?.method).toBe("DELETE");
-    expect(console.log).toHaveBeenCalledWith("Buzz Access for 'my-site': disabled");
+    expect(console.log).toHaveBeenCalledWith("my-site: off");
   });
 
   it("explains that access management requires a full session", async () => {

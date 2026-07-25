@@ -30,9 +30,9 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz domains cancel-transition`](#buzz-domains-cancel-transition): Cancel an active connection transition
 - [`buzz domains remove`](#buzz-domains-remove): Remove a custom domain without changing DNS records
 - [`buzz access`](#buzz-access): Manage Buzz Access
-- [`buzz access enable`](#buzz-access-enable): Require Buzz authentication for a site or selected paths
-- [`buzz access status`](#buzz-access-status): Show site access protection
-- [`buzz access disable`](#buzz-access-disable): Make a site public
+- [`buzz access enable`](#buzz-access-enable): Protect a site
+- [`buzz access status`](#buzz-access-status): Show Buzz Access
+- [`buzz access disable`](#buzz-access-disable): Disable Buzz Access
 
 ## buzz
 
@@ -306,9 +306,9 @@ Options:
   -h, --help         display help for command
 
 Commands:
-  enable [options]   Require Buzz authentication for a site or selected paths
-  status [options]   Show site access protection
-  disable [options]  Make a site public
+  enable [options]   Protect a site
+  status [options]   Show Buzz Access
+  disable [options]  Disable Buzz Access
   help [command]     display help for command
 ```
 
@@ -317,7 +317,7 @@ Commands:
 ```text
 Usage: buzz access enable [options]
 
-Require Buzz authentication for a site or selected paths
+Protect a site
 
 Options:
   --site <site>        Site name (defaults to the current CNAME)
@@ -330,7 +330,7 @@ Options:
 ```text
 Usage: buzz access status [options]
 
-Show site access protection
+Show Buzz Access
 
 Options:
   --site <site>  Site name (defaults to the current CNAME)
@@ -342,7 +342,7 @@ Options:
 ```text
 Usage: buzz access disable [options]
 
-Make a site public
+Disable Buzz Access
 
 Options:
   --site <site>  Site name (defaults to the current CNAME)

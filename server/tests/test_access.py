@@ -295,7 +295,7 @@ def test_protected_paths_require_owner_handoff(make_app, database, tmp_path):
         },
     )
     assert authorize.status_code == 200
-    assert "Continue to private-site.localhost?" in authorize.text
+    assert "Open private-site.localhost?" in authorize.text
 
     handoff = client.post(
         "/access/authorize",

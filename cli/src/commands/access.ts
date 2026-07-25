@@ -88,11 +88,11 @@ async function getAccess(site: string, cliOptions: CliOptions): Promise<AccessSt
 
 function printAccess(site: string, state: AccessState): void {
   if (!state.enabled) {
-    console.log(`Buzz Access for '${site}': disabled`);
+    console.log(`${site}: off`);
   } else if (state.patterns.includes("/")) {
-    console.log(`Buzz Access for '${site}': entire site`);
+    console.log(`${site}: entire site`);
   } else {
-    console.log(`Buzz Access for '${site}':`);
+    console.log(`${site}:`);
     for (const pattern of state.patterns) console.log(`  ${pattern}`);
   }
 }
@@ -139,7 +139,7 @@ export async function disableAccess(
   const site = resolveSite(options.site);
   if (
     !options.yes &&
-    !(await dependencies.confirm(`Make site '${site}' public by disabling access protection?`))
+    !(await dependencies.confirm(`Disable Buzz Access for '${site}'? The site will be public.`))
   ) {
     console.log("Aborted.");
     return;
@@ -152,7 +152,7 @@ export async function disableAccess(
       fallback: "Could not disable site access",
     },
   });
-  console.log(`Buzz Access for '${site}': disabled`);
+  console.log(`${site}: off`);
 }
 
 function collect(value: string, previous: string[]): string[] {
@@ -163,18 +163,18 @@ export function registerAccessCommand(program: Command): void {
   const access = program.command("access").description("Manage Buzz Access");
   access
     .command("enable")
-    .description("Require Buzz authentication for a site or selected paths")
+    .description("Protect a site")
     .option("--site <site>", "Site name (defaults to the current CNAME)")
     .option("--include <pattern>", "Path pattern to protect (repeatable)", collect, [])
     .action((options: EnableOptions) => enableAccess(options, program.opts()));
   access
     .command("status")
-    .description("Show site access protection")
+    .description("Show Buzz Access")
     .option("--site <site>", "Site name (defaults to the current CNAME)")
     .action((options: SiteOption) => accessStatus(options, program.opts()));
   access
     .command("disable")
-    .description("Make a site public")
+    .description("Disable Buzz Access")
     .option("--site <site>", "Site name (defaults to the current CNAME)")
     .option("-y, --yes", "Skip confirmation prompt")
     .action((options: DisableOptions) => disableAccess(options, program.opts()));

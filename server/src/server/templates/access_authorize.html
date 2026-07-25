@@ -5,13 +5,13 @@
 {% block content %}
 <div class="mx-auto w-full max-w-2xl border-4 border-ink p-6 sm:p-8">
     <p class="font-bold uppercase tracking-wide">Buzz Access</p>
-    <h1 class="heading-l mt-3">Continue to {{ hostname }}?</h1>
-    <p class="mt-4 text-rule">Signed in as {{ user.github_login }}. Buzz confirmed that you own this site.</p>
+    <h1 class="heading-l mt-3">Open {{ hostname }}?</h1>
+    <p class="mt-4 text-rule">Signed in as {{ user.github_login }}</p>
     <form method="post" action="/access/authorize" class="mt-6">
         <input type="hidden" name="site" value="{{ site }}">
         <input type="hidden" name="host" value="{{ hostname }}">
         <input type="hidden" name="path" value="{{ return_path }}">
-        <button class="btn" type="submit">Continue to site</button>
+        <button class="btn" type="submit">Open site</button>
     </form>
 </div>
 {% endblock %}

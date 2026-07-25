@@ -84,17 +84,17 @@
         <header class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <h2>Buzz Access</h2>
-                <p class="mt-1 text-rule">Let only the site owner view the entire site or matching paths.</p>
+                <p class="mt-1 text-rule">Owner-only access.</p>
             </div>
-            <button class="btn-sm-outline" id="edit-access">{{ 'Edit protection' if access_policy else 'Enable Buzz Access' }}</button>
+            <button class="btn-sm-outline" id="edit-access">{{ 'Edit' if access_policy else 'Enable' }}</button>
         </header>
         <section>
             {% if access_policy %}
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <p class="font-bold">Owner access is enabled</p>
+                    <p class="font-bold">Enabled</p>
                     {% if '/' in access_policy.patterns %}
-                    <p class="mt-1 text-rule">The entire site is protected.</p>
+                    <p class="mt-1 text-rule">Entire site</p>
                     {% else %}
                     <ul class="mt-3 space-y-1 font-mono">
                         {% for pattern in access_policy.patterns %}<li>{{ pattern }}</li>{% endfor %}
@@ -104,8 +104,8 @@
                 <button class="btn-sm-outline border-danger text-danger-dark" id="disable-access">Disable</button>
             </div>
             {% else %}
-            <h3 class="text-xl font-bold">Public</h3>
-            <p class="mt-2 text-rule">Anyone who knows a site URL can view it.</p>
+            <h3 class="text-xl font-bold">Off</h3>
+            <p class="mt-2 text-rule">Site is public.</p>
             {% endif %}
             <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark" id="access-action-error" role="alert"></p>
         </section>
@@ -367,29 +367,30 @@
     <div>
         <header>
             <h2>{{ 'Edit Buzz Access' if access_policy else 'Enable Buzz Access' }}</h2>
-            <p>Only the current site owner will be able to view protected pages.</p>
         </header>
         <section>
-            <form id="access-form" class="flex flex-col gap-5">
-                <label class="flex min-h-11 cursor-pointer items-start gap-3 font-bold">
-                    <input type="radio" name="scope" value="entire" class="mt-1 size-7 shrink-0 accent-ink focus-visible:focus-ring"{% if not access_policy or '/' in access_policy.patterns %} checked{% endif %}>
-                    <span>Protect the entire site</span>
-                </label>
-                <label class="flex min-h-11 cursor-pointer items-start gap-3 font-bold">
-                    <input type="radio" name="scope" value="patterns" class="mt-1 size-7 shrink-0 accent-ink focus-visible:focus-ring"{% if access_policy and '/' not in access_policy.patterns %} checked{% endif %}>
-                    <span>Protect matching paths</span>
-                </label>
+            <form id="access-form" class="grid gap-5">
+                <div class="choice-list">
+                    <label>
+                        <input type="radio" name="scope" value="entire"{% if not access_policy or '/' in access_policy.patterns %} checked{% endif %}>
+                        <span>Entire site</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="scope" value="patterns"{% if access_policy and '/' not in access_policy.patterns %} checked{% endif %}>
+                        <span>Matching paths</span>
+                    </label>
+                </div>
                 <div id="access-pattern-fields">
-                    <label for="access-patterns" class="font-bold">Path patterns</label>
+                    <label for="access-patterns" class="font-bold">Patterns</label>
                     <textarea id="access-patterns" class="input mt-1 min-h-32 font-mono" placeholder="/admin/**&#10;/reports/*" spellcheck="false">{% if access_policy and '/' not in access_policy.patterns %}{{ access_policy.patterns | join('\n') }}{% endif %}</textarea>
-                    <p class="mt-2 text-rule"><span class="font-mono">*</span> matches one path segment. <span class="font-mono">**</span> matches any number of segments. Files loaded from other paths remain public.</p>
+                    <p class="mt-2 text-rule"><span class="font-mono">*</span> one segment. <span class="font-mono">**</span> any depth. Other paths stay public.</p>
                 </div>
                 <p class="hidden border-l-4 border-danger pl-3 text-danger-dark" id="access-dialog-error" role="alert"></p>
             </form>
         </section>
         <footer>
             <button type="button" class="btn-outline" id="cancel-access">Cancel</button>
-            <button type="submit" form="access-form" class="btn" id="save-access">Save protection</button>
+            <button type="submit" form="access-form" class="btn" id="save-access">Save</button>
         </footer>
     </div>
 </dialog>
