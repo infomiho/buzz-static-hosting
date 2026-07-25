@@ -8,6 +8,7 @@ import struct
 import tempfile
 import threading
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -17,7 +18,6 @@ from typing import BinaryIO
 from .custom_domains import ClaimConflict, DomainClaimStore
 from .environment import environment_value
 from .exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
-
 
 _ARCHIVE_CHUNK_BYTES = 1024 * 1024
 _EOCD_SIGNATURE = b"PK\x05\x06"
@@ -65,7 +65,13 @@ class SiteStore:
         self._sites_dir = sites_dir
         self._limits = limits or DeploymentLimits()
 
-    def deploy(self, subdomain: str, archive: BinaryIO, owner_id: int) -> SiteRecord:
+    def deploy(
+        self,
+        subdomain: str,
+        archive: BinaryIO,
+        owner_id: int,
+        configure: Callable[[Connection], None] | None = None,
+    ) -> SiteRecord:
         with self._site_lock(subdomain):
             self._ensure_can_deploy(subdomain, owner_id)
             self._sites_dir.mkdir(parents=True, exist_ok=True)
@@ -74,7 +80,9 @@ class SiteStore:
             ) as tmp_dir:
                 staging_dir = Path(tmp_dir)
                 size_bytes = self._extract_archive(archive, staging_dir)
-                return self._publish(subdomain, staging_dir, size_bytes, owner_id)
+                return self._publish(
+                    subdomain, staging_dir, size_bytes, owner_id, configure
+                )
 
     def list_for_owner(self, owner_id: int) -> list[SiteRecord]:
         rows = self._conn.execute(
@@ -166,11 +174,9 @@ class SiteStore:
 
     def reconcile(self) -> None:
         operations_dir = self._sites_dir / _OPERATIONS_DIR
-        if not operations_dir.is_dir():
-            return
-
         unresolved_operations: list[Path] = []
-        for journal_path in operations_dir.glob("*.json"):
+        journal_paths = operations_dir.glob("*.json") if operations_dir.is_dir() else ()
+        for journal_path in journal_paths:
             try:
                 operation = json.loads(journal_path.read_text())
                 name = operation["site"]
@@ -185,6 +191,11 @@ class SiteStore:
                         raise ValueError("unknown operation type")
                 if reconciled:
                     self._clear_operation(name)
+                    self._conn.execute(
+                        "DELETE FROM site_access_publication_guards WHERE site_name = ?",
+                        (name,),
+                    )
+                    self._conn.commit()
                 else:
                     unresolved_operations.append(journal_path)
             except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
@@ -199,6 +210,17 @@ class SiteStore:
             raise RuntimeError(
                 f"Could not reconcile {len(unresolved_operations)} deployment operation(s)"
             )
+
+        guarded_sites = self._conn.execute(
+            "SELECT site_name FROM site_access_publication_guards"
+        ).fetchall()
+        for row in guarded_sites:
+            if not self._operation_path(row["site_name"]).exists():
+                self._conn.execute(
+                    "DELETE FROM site_access_publication_guards WHERE site_name = ?",
+                    (row["site_name"],),
+                )
+        self._conn.commit()
 
     def _site_row(self, name: str) -> Row | None:
         return self._conn.execute(
@@ -417,6 +439,7 @@ class SiteStore:
         staging_dir: Path,
         size_bytes: int,
         owner_id: int,
+        configure: Callable[[Connection], None] | None = None,
     ) -> SiteRecord:
         site_dir = self._sites_dir / subdomain
         backup_dir: Path | None = None
@@ -424,6 +447,15 @@ class SiteStore:
         published = False
         transaction_started = False
         now = datetime.now().isoformat()
+        publication_guarded = configure is not None
+
+        if publication_guarded:
+            self._conn.execute(
+                "INSERT INTO site_access_publication_guards (site_name) VALUES (?) "
+                "ON CONFLICT(site_name) DO UPDATE SET created_at = CURRENT_TIMESTAMP",
+                (subdomain,),
+            )
+            self._conn.commit()
 
         try:
             self._begin_write()
@@ -445,6 +477,13 @@ class SiteStore:
                 self._conn.execute(
                     "INSERT INTO sites (name, size_bytes, created_at, owner_id) VALUES (?, ?, ?, ?)",
                     (subdomain, size_bytes, now, owner_id),
+                )
+
+            if configure:
+                configure(self._conn)
+                self._conn.execute(
+                    "DELETE FROM site_access_publication_guards WHERE site_name = ?",
+                    (subdomain,),
                 )
 
             if site_dir.exists() or site_dir.is_symlink():
@@ -480,6 +519,12 @@ class SiteStore:
                     self._conn.rollback()
             if operation_written:
                 self._clear_operation(subdomain)
+            if publication_guarded:
+                self._conn.execute(
+                    "DELETE FROM site_access_publication_guards WHERE site_name = ?",
+                    (subdomain,),
+                )
+                self._conn.commit()
             raise
         else:
             cleanup_succeeded = not backup_dir or self._discard_path(backup_dir)
@@ -631,4 +676,3 @@ class SiteStore:
             except OperationalError as exc:
                 if "no such table" not in str(exc).lower():
                     raise
-

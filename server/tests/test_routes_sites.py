@@ -41,7 +41,7 @@ class TestBuildSiteUrl:
 def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
     monkeypatch.setattr(
         "server.routes.sites._deploy_site",
-        lambda database, settings, subdomain, archive, owner_id: SiteRecord(
+        lambda database, settings, subdomain, archive, owner_id, access_patterns: SiteRecord(
             name=subdomain,
             owner_id=owner_id,
             size_bytes=0,
@@ -61,6 +61,45 @@ def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
         "name": "my-site",
         "url": "http://my-site.localhost:8080",
     }
+
+
+def test_deploy_passes_validated_access_patterns(make_app, monkeypatch):
+    captured = {}
+
+    def deploy_stub(database, settings, subdomain, archive, owner_id, access_patterns):
+        captured["patterns"] = access_patterns
+        return SiteRecord(subdomain, owner_id, 0, "2026-07-16T00:00:00Z")
+
+    monkeypatch.setattr("server.routes.sites._deploy_site", deploy_stub)
+    client = TestClient(make_app(dev_mode=True))
+
+    response = client.post(
+        "/deploy",
+        headers={
+            "x-subdomain": "private-site",
+            "x-buzz-access-patterns": '["/admin/**", "/reports/*"]',
+        },
+        files={"file": ("site.zip", b"zip", "application/zip")},
+    )
+
+    assert response.status_code == 200
+    assert captured["patterns"] == ("/admin/**", "/reports/*")
+
+
+def test_deploy_rejects_invalid_access_patterns(make_app):
+    client = TestClient(make_app(dev_mode=True))
+
+    response = client.post(
+        "/deploy",
+        headers={
+            "x-subdomain": "private-site",
+            "x-buzz-access-patterns": '["/admin*"]',
+        },
+        files={"file": ("site.zip", b"zip", "application/zip")},
+    )
+
+    assert response.status_code == 400
+    assert "Wildcards must occupy an entire path segment" in response.json()["detail"]
 
 
 def test_deploy_rejects_compressed_upload_over_limit(make_app):

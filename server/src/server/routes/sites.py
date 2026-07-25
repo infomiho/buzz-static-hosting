@@ -1,13 +1,21 @@
+import json
 from typing import Annotated, BinaryIO
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
+from ..access import AccessService, InvalidAccessPattern, validate_patterns
 from ..analytics import AnalyticsStore
 from ..api_models import DeploymentResponse, ErrorResponse, SiteResponse
 from ..db import Database
-from ..dependencies import Identity, get_database, get_settings, require_user, require_identity
+from ..dependencies import (
+    Identity,
+    get_database,
+    get_settings,
+    require_identity,
+    require_user,
+)
 from ..exceptions import BadRequest, Forbidden, PayloadTooLarge
 from ..settings import Settings
 from ..site_path import InvalidSubdomain, validated_subdomain
@@ -40,11 +48,21 @@ def _deployment_limits(settings: Settings) -> DeploymentLimits:
 
 
 def _deploy_site(
-    database: Database, settings: Settings, subdomain: str, archive: BinaryIO, owner_id: int
+    database: Database,
+    settings: Settings,
+    subdomain: str,
+    archive: BinaryIO,
+    owner_id: int,
+    access_patterns: tuple[str, ...] | None,
 ) -> SiteRecord:
     with database.connect() as conn:
         store = SiteStore(conn, settings.sites_dir, _deployment_limits(settings))
-        return store.deploy(subdomain, archive, owner_id)
+        configure = None
+        if access_patterns is not None:
+            configure = lambda publish_conn: AccessService.set_policy_on_connection(
+                publish_conn, subdomain, owner_id, access_patterns
+            )
+        return store.deploy(subdomain, archive, owner_id, configure)
 
 
 def _delete_site(database: Database, settings: Settings, name: str, owner_id: int) -> None:
@@ -106,12 +124,29 @@ async def deploy(
         default=None,
         description="Site name to create or replace. Buzz generates a name when omitted.",
     ),
+    x_buzz_access_patterns: str | None = Header(
+        default=None,
+        description="JSON array of Buzz Access path patterns to apply atomically.",
+    ),
 ):
     subdomain = validate_subdomain(x_subdomain) if x_subdomain else generate_subdomain()
     if not identity.can_deploy_to(subdomain):
         raise Forbidden(
             f"Deploy token is scoped to site '{identity.site_name}', cannot deploy to '{subdomain}'"
         )
+    access_patterns: tuple[str, ...] | None = None
+    if x_buzz_access_patterns is not None:
+        if identity.token_type != "session":
+            raise Forbidden("Deployment tokens cannot manage Buzz Access")
+        try:
+            raw_patterns = json.loads(x_buzz_access_patterns)
+            if not isinstance(raw_patterns, list) or not all(
+                isinstance(pattern, str) for pattern in raw_patterns
+            ):
+                raise ValueError
+            access_patterns = validate_patterns(raw_patterns)
+        except (InvalidAccessPattern, json.JSONDecodeError, ValueError) as error:
+            raise BadRequest(f"Invalid Buzz Access patterns: {error}")
 
     async with request.form(max_files=1, max_fields=1) as form:
         file = form.get("file")
@@ -124,7 +159,13 @@ async def deploy(
 
         await file.seek(0)
         record = await run_in_threadpool(
-            _deploy_site, database, settings, subdomain, file.file, identity.user.id
+            _deploy_site,
+            database,
+            settings,
+            subdomain,
+            file.file,
+            identity.user.id,
+            access_patterns,
         )
 
     return {

@@ -8,7 +8,8 @@ import { resolveSubdomain, packSite, uploadSite } from "../deploy.js";
 export async function deploy(
   directory: string,
   subdomain: string | undefined,
-  cliOptions: CliOptions = {}
+  cliOptions: CliOptions = {},
+  accessPatterns?: string[]
 ) {
   const options = getOptions(cliOptions);
 
@@ -44,7 +45,14 @@ export async function deploy(
   uploadSpinner.start();
 
   try {
-    const result = await uploadSite(options.server, options.token, zipBuffer, subdomain);
+    const result = await uploadSite(
+      options.server,
+      options.token,
+      zipBuffer,
+      subdomain,
+      globalThis.fetch,
+      accessPatterns
+    );
     uploadSpinner.stop("✓ Uploaded");
     console.log(`Deployed to ${result.url}`);
     writeFileSync(join(process.cwd(), "CNAME"), result.subdomain + "\n");
@@ -54,12 +62,39 @@ export async function deploy(
   }
 }
 
+function deploymentAccessPatterns(options: {
+  access?: boolean;
+  include: string[];
+}): string[] | undefined {
+  if (options.include.length && !options.access) {
+    throw new CliError("--include requires --access");
+  }
+  if (!options.access) return undefined;
+  return options.include.length ? options.include : ["/"];
+}
+
 export function registerDeployCommand(program: Command) {
   program
     .command("deploy <directory>")
     .description("Deploy a directory to the server")
     .option("--subdomain <name>", "Site name to use as the subdomain")
-    .action((directory: string, cmdOptions: { subdomain?: string }) =>
-      deploy(directory, cmdOptions.subdomain, program.opts())
+    .option("--access", "Enable Buzz Access as part of the deployment")
+    .option(
+      "--include <pattern>",
+      "Buzz Access path pattern to protect (repeatable)",
+      (value: string, previous: string[]) => [...previous, value],
+      []
+    )
+    .action(
+      (
+        directory: string,
+        cmdOptions: { subdomain?: string; access?: boolean; include: string[] }
+      ) =>
+        deploy(
+          directory,
+          cmdOptions.subdomain,
+          program.opts(),
+          deploymentAccessPatterns(cmdOptions)
+        )
     );
 }

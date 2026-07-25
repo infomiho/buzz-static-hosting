@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Buzz Access denied{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-2xl border-4 border-ink p-6 sm:p-8">
+    <p class="font-bold uppercase tracking-wide">Buzz Access</p>
+    <h1 class="heading-l mt-3">You do not have access</h1>
+    <p class="mt-4 text-rule">Only the owner of {{ hostname }} can continue.</p>
+</div>
+{% endblock %}

@@ -993,6 +993,43 @@
         "title": "LogoutResponse",
         "type": "object"
       },
+      "SiteAccessRequest": {
+        "properties": {
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Patterns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "patterns"
+        ],
+        "title": "SiteAccessRequest",
+        "type": "object"
+      },
+      "SiteAccessResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Patterns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "patterns"
+        ],
+        "title": "SiteAccessResponse",
+        "type": "object"
+      },
       "SiteResponse": {
         "properties": {
           "created": {
@@ -1347,6 +1384,24 @@
               "description": "Site name to create or replace. Buzz generates a name when omitted.",
               "title": "X-Subdomain"
             }
+          },
+          {
+            "description": "JSON array of Buzz Access path patterns to apply atomically.",
+            "in": "header",
+            "name": "x-buzz-access-patterns",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON array of Buzz Access path patterns to apply atomically.",
+              "title": "X-Buzz-Access-Patterns"
+            }
           }
         ],
         "requestBody": {
@@ -1600,6 +1655,146 @@
         "summary": "Delete a site",
         "tags": [
           "Sites"
+        ]
+      }
+    },
+    "/sites/{site_name}/access": {
+      "delete": {
+        "operationId": "disableSiteAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Disable owner access protection",
+        "tags": [
+          "Buzz Access"
+        ]
+      },
+      "get": {
+        "operationId": "getSiteAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get owner access protection",
+        "tags": [
+          "Buzz Access"
+        ]
+      },
+      "put": {
+        "operationId": "setSiteAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteAccessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Enable or update owner access protection",
+        "tags": [
+          "Buzz Access"
         ]
       }
     },
@@ -2368,6 +2563,10 @@
     {
       "description": "Site-scoped credentials for automated deployment.",
       "name": "Deployment Tokens"
+    },
+    {
+      "description": "Owner-only protection for hosted site paths.",
+      "name": "Buzz Access"
     },
     {
       "description": "Server health.",

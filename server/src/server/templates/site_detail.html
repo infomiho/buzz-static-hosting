@@ -79,6 +79,38 @@
         </section>
     </div>
 
+    <!-- Buzz Access -->
+    <div class="card" id="buzz-access">
+        <header class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h2>Buzz Access</h2>
+                <p class="mt-1 text-rule">Let only the site owner view the entire site or matching paths.</p>
+            </div>
+            <button class="btn-sm-outline" id="edit-access">{{ 'Edit protection' if access_policy else 'Enable Buzz Access' }}</button>
+        </header>
+        <section>
+            {% if access_policy %}
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <p class="font-bold">Owner access is enabled</p>
+                    {% if '/' in access_policy.patterns %}
+                    <p class="mt-1 text-rule">The entire site is protected.</p>
+                    {% else %}
+                    <ul class="mt-3 space-y-1 font-mono">
+                        {% for pattern in access_policy.patterns %}<li>{{ pattern }}</li>{% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+                <button class="btn-sm-outline border-danger text-danger-dark" id="disable-access">Disable</button>
+            </div>
+            {% else %}
+            <h3 class="text-xl font-bold">Public</h3>
+            <p class="mt-2 text-rule">Anyone who knows a site URL can view it.</p>
+            {% endif %}
+            <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark" id="access-action-error" role="alert"></p>
+        </section>
+    </div>
+
     <!-- Files -->
     <div class="card">
         <details id="files-details">
@@ -331,6 +363,37 @@
 
 {% include "_deploy_modal.html" %}
 
+<dialog id="access-dialog" class="dialog">
+    <div>
+        <header>
+            <h2>{{ 'Edit Buzz Access' if access_policy else 'Enable Buzz Access' }}</h2>
+            <p>Only the current site owner will be able to view protected pages.</p>
+        </header>
+        <section>
+            <form id="access-form" class="flex flex-col gap-5">
+                <label class="flex min-h-11 cursor-pointer items-start gap-3 font-bold">
+                    <input type="radio" name="scope" value="entire" class="mt-1 size-7 shrink-0 accent-ink focus-visible:focus-ring"{% if not access_policy or '/' in access_policy.patterns %} checked{% endif %}>
+                    <span>Protect the entire site</span>
+                </label>
+                <label class="flex min-h-11 cursor-pointer items-start gap-3 font-bold">
+                    <input type="radio" name="scope" value="patterns" class="mt-1 size-7 shrink-0 accent-ink focus-visible:focus-ring"{% if access_policy and '/' not in access_policy.patterns %} checked{% endif %}>
+                    <span>Protect matching paths</span>
+                </label>
+                <div id="access-pattern-fields">
+                    <label for="access-patterns" class="font-bold">Path patterns</label>
+                    <textarea id="access-patterns" class="input mt-1 min-h-32 font-mono" placeholder="/admin/**&#10;/reports/*" spellcheck="false">{% if access_policy and '/' not in access_policy.patterns %}{{ access_policy.patterns | join('\n') }}{% endif %}</textarea>
+                    <p class="mt-2 text-rule"><span class="font-mono">*</span> matches one path segment. <span class="font-mono">**</span> matches any number of segments. Files loaded from other paths remain public.</p>
+                </div>
+                <p class="hidden border-l-4 border-danger pl-3 text-danger-dark" id="access-dialog-error" role="alert"></p>
+            </form>
+        </section>
+        <footer>
+            <button type="button" class="btn-outline" id="cancel-access">Cancel</button>
+            <button type="submit" form="access-form" class="btn" id="save-access">Save protection</button>
+        </footer>
+    </div>
+</dialog>
+
 {% if custom_domain_can_add %}
 <dialog id="add-domain-dialog" class="dialog">
     <div>
@@ -435,6 +498,68 @@ function showClaimError(button, message) {
     const error = button.closest('[data-domain-claim]').querySelector('.claim-action-error');
     error.textContent = message;
     error.classList.remove('hidden');
+}
+
+function initBuzzAccess() {
+    const dialog = document.getElementById('access-dialog');
+    const form = document.getElementById('access-form');
+    const fields = document.getElementById('access-pattern-fields');
+    const dialogError = document.getElementById('access-dialog-error');
+    const actionError = document.getElementById('access-action-error');
+
+    function updateScope() {
+        fields.classList.toggle('hidden', form.elements.scope.value !== 'patterns');
+    }
+
+    document.getElementById('edit-access').addEventListener('click', () => {
+        dialogError.classList.add('hidden');
+        updateScope();
+        dialog.showModal();
+    });
+    document.getElementById('cancel-access').addEventListener('click', () => dialog.close());
+    form.querySelectorAll('input[name="scope"]').forEach(input => input.addEventListener('change', updateScope));
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const save = document.getElementById('save-access');
+        const patterns = form.elements.scope.value === 'entire'
+            ? ['/']
+            : document.getElementById('access-patterns').value.split('\n').map(value => value.trim()).filter(Boolean);
+        save.disabled = true;
+        dialogError.classList.add('hidden');
+        try {
+            const response = await fetch('/sites/' + encodeURIComponent(SITE_NAME) + '/access', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ patterns }),
+            });
+            if (!response.ok) {
+                const body = await response.json().catch(() => ({}));
+                throw new Error(body.detail || 'Buzz could not update Access.');
+            }
+            location.reload();
+        } catch (error) {
+            dialogError.textContent = error.message;
+            dialogError.classList.remove('hidden');
+            save.disabled = false;
+        }
+    });
+
+    const disable = document.getElementById('disable-access');
+    if (disable) {
+        disable.addEventListener('click', async () => {
+            if (!confirm('Disable Buzz Access and make these paths public?')) return;
+            disable.disabled = true;
+            try {
+                const response = await fetch('/sites/' + encodeURIComponent(SITE_NAME) + '/access', { method: 'DELETE' });
+                if (!response.ok) throw new Error('Buzz could not disable Access.');
+                location.reload();
+            } catch (error) {
+                actionError.textContent = error.message;
+                actionError.classList.remove('hidden');
+                disable.disabled = false;
+            }
+        });
+    }
 }
 
 function initCustomDomains() {
@@ -754,6 +879,7 @@ document.getElementById('confirm-delete-site').addEventListener('click', async f
 document.addEventListener('DOMContentLoaded', () => {
     initDeployedAt();
     initRelativeTimes();
+    initBuzzAccess();
     initCustomDomains();
     loadAnalytics();
     initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown', loadSearchTerms);

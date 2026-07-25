@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from ..analytics import AnalyticsStore
 from ..auth_service import AuthService, Identity, InvalidSession
-from ..cookies import COOKIE_NAME, set_session_cookie, clear_session_cookie
+from ..cookies import clear_session_cookie, session_cookie_name, set_session_cookie
 from ..custom_domains import DomainClaimLimits, DomainClaimStore, claim_views_for_site
 from ..db import Database
 from ..dependencies import (
@@ -158,6 +158,7 @@ async def site_detail(
         )
 
     custom_domain_can_add = capability.automatic_ready and not domain_quota.error
+    access_policy = request.app.state.access.get_policy(name, identity.user.id)
     domain_routing_targets = [
         {
             "type": "A" if ipaddress.ip_address(address).version == 4 else "AAAA",
@@ -189,6 +190,7 @@ async def site_detail(
         "domain_connections": domain_connections,
         "domain_tasks": domain_tasks,
         "cloudflare_diagnostics": cloudflare_diagnostics,
+        "access_policy": access_policy,
     })
 
 
@@ -235,7 +237,7 @@ async def logout(
     auth: Annotated[AuthService, Depends(get_auth_service)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
-    cookie_token = request.cookies.get(COOKIE_NAME)
+    cookie_token = request.cookies.get(session_cookie_name(not settings.dev_mode))
     if cookie_token:
         try:
             auth.logout(f"Bearer {cookie_token}")

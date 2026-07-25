@@ -40,6 +40,10 @@ describe("createProgram", () => {
       "domains retry",
       "domains cancel-transition",
       "domains remove",
+      "access",
+      "access enable",
+      "access status",
+      "access disable",
     ]);
   });
 

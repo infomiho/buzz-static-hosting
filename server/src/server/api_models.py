@@ -55,6 +55,15 @@ class SiteResponse(BaseModel):
     total_views: int
 
 
+class SiteAccessRequest(BaseModel):
+    patterns: list[str]
+
+
+class SiteAccessResponse(BaseModel):
+    enabled: bool
+    patterns: list[str]
+
+
 class CreateDomainClaimRequest(BaseModel):
     hostname: str
 

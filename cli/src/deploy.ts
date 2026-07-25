@@ -62,7 +62,8 @@ export async function uploadSite(
   token: string,
   zip: Buffer,
   subdomain?: string,
-  fetchFn: typeof fetch = globalThis.fetch
+  fetchFn: typeof fetch = globalThis.fetch,
+  accessPatterns?: string[]
 ): Promise<UploadResult> {
   const body = new FormData();
   body.append("file", new Blob([zip], { type: "application/zip" }), "site.zip");
@@ -70,6 +71,9 @@ export async function uploadSite(
   const headers: Record<string, string> = {};
   if (subdomain) {
     headers["x-subdomain"] = subdomain;
+  }
+  if (accessPatterns) {
+    headers["x-buzz-access-patterns"] = JSON.stringify(accessPatterns);
   }
 
   const data = await requestJson(

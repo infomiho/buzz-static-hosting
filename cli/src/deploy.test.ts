@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -121,6 +121,33 @@ describe("uploadSite", () => {
 
     expect(result.url).toBe("https://custom.example.com");
     expect(result.subdomain).toBe("my-site");
+  });
+
+  it("sends Buzz Access patterns with the deployment", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({ name: "my-site", url: "https://my-site.example.com" }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await uploadSite(
+      "https://buzz.example.com",
+      "test-token",
+      zip,
+      "my-site",
+      fetchFn,
+      ["/admin/**", "/reports/*"]
+    );
+
+    expect(fetchFn).toHaveBeenCalledWith(
+      "https://buzz.example.com/deploy",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-buzz-access-patterns": '["/admin/**","/reports/*"]',
+        }),
+      })
+    );
   });
 
   it("rejects a deployment response without a site name", async () => {

@@ -1,6 +1,11 @@
 import pytest
 
-from server.site_path import InvalidSubdomain, validated_subdomain, resolve_site_file
+from server.site_path import (
+    InvalidSubdomain,
+    resolve_normalized_site_file,
+    resolve_site_file,
+    validated_subdomain,
+)
 
 
 class TestValidatedSubdomain:
@@ -139,6 +144,15 @@ class TestResolveSiteFile:
         (site / "200.html").write_text("spa")
 
         result = resolve_site_file(tmp_path, "my-site", "/..%2F..%2Fetc/passwd")
+        assert result is None
+
+    def test_normalized_resolver_does_not_decode_again(self, tmp_path):
+        site = tmp_path / "my-site"
+        site.mkdir()
+        (site / "admin.html").write_text("private")
+
+        result = resolve_normalized_site_file(tmp_path, "my-site", "/%61dmin")
+
         assert result is None
 
     def test_strips_query_string(self, tmp_path):

@@ -29,6 +29,10 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz domains retry`](#buzz-domains-retry): Retry a failed connection transition
 - [`buzz domains cancel-transition`](#buzz-domains-cancel-transition): Cancel an active connection transition
 - [`buzz domains remove`](#buzz-domains-remove): Remove a custom domain without changing DNS records
+- [`buzz access`](#buzz-access): Manage Buzz Access
+- [`buzz access enable`](#buzz-access-enable): Require Buzz authentication for a site or selected paths
+- [`buzz access status`](#buzz-access-status): Show site access protection
+- [`buzz access disable`](#buzz-access-disable): Make a site public
 
 ## buzz
 
@@ -54,6 +58,7 @@ Commands:
   whoami                        Show the current signed-in user
   tokens                        Manage deployment tokens
   domains                       Manage custom domains
+  access                        Manage Buzz Access
   help [command]                display help for command
 ```
 
@@ -65,8 +70,11 @@ Usage: buzz deploy [options] <directory>
 Deploy a directory to the server
 
 Options:
-  --subdomain <name>  Site name to use as the subdomain
-  -h, --help          display help for command
+  --subdomain <name>   Site name to use as the subdomain
+  --access             Enable Buzz Access as part of the deployment
+  --include <pattern>  Buzz Access path pattern to protect (repeatable)
+                       (default: [])
+  -h, --help           display help for command
 ```
 
 ## buzz list
@@ -285,4 +293,59 @@ Remove a custom domain without changing DNS records
 Options:
   -y, --yes   Skip confirmation prompt
   -h, --help  display help for command
+```
+
+## buzz access
+
+```text
+Usage: buzz access [options] [command]
+
+Manage Buzz Access
+
+Options:
+  -h, --help         display help for command
+
+Commands:
+  enable [options]   Require Buzz authentication for a site or selected paths
+  status [options]   Show site access protection
+  disable [options]  Make a site public
+  help [command]     display help for command
+```
+
+## buzz access enable
+
+```text
+Usage: buzz access enable [options]
+
+Require Buzz authentication for a site or selected paths
+
+Options:
+  --site <site>        Site name (defaults to the current CNAME)
+  --include <pattern>  Path pattern to protect (repeatable) (default: [])
+  -h, --help           display help for command
+```
+
+## buzz access status
+
+```text
+Usage: buzz access status [options]
+
+Show site access protection
+
+Options:
+  --site <site>  Site name (defaults to the current CNAME)
+  -h, --help     display help for command
+```
+
+## buzz access disable
+
+```text
+Usage: buzz access disable [options]
+
+Make a site public
+
+Options:
+  --site <site>  Site name (defaults to the current CNAME)
+  -y, --yes      Skip confirmation prompt
+  -h, --help     display help for command
 ```

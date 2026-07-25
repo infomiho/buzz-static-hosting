@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Generator
 
+from .access.schema import _buzz_access
 from .analytics import init_analytics_schema
 from .custom_domains.schema import (
+    _automatic_domain_transitions,
+    _automatic_transition_retarget,
+    _cloudflare_activation,
+    _cloudflare_diagnostics,
+    _custom_domain_activation,
     _custom_domain_claims,
     _custom_domain_routing,
-    _custom_domain_activation,
-    _multiple_custom_domains,
-    _cloudflare_diagnostics,
-    _cloudflare_activation,
-    _automatic_domain_transitions,
-    _transition_target_ttl,
     _domain_path_evidence,
-    _automatic_transition_retarget,
+    _multiple_custom_domains,
+    _transition_target_ttl,
 )
 
 Migration = Callable[[sqlite3.Connection], None]
@@ -96,6 +97,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _domain_path_evidence,
     _automatic_transition_retarget,
     _webauthn_credentials,
+    _buzz_access,
 )
 
 

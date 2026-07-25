@@ -9,6 +9,8 @@ Self-hosted static site hosting with CLI deployment.
 - `docs/site/` - Starlight docs site. `reference/configuration.md`, `server/.env.example`, and `public/openapi.json` are generated from `server/src/server/environment.py` via `npm run generate:server` in `docs/site`; the Docs CI job fails if they are stale.
 - `docs/agents/` - instructions for agent skills.
 
+Buzz Access is the owner-only protection layer for hosted sites. Policies persist independently of deployments and protect either the entire site or URL paths using literal segments, `*` for one segment, and `**` for zero or more segments. The control-host Buzz session authorizes a short-lived, single-use handoff to a separate host-only Access grant; dashboard cookies are never shared with hosted sites. `buzz access` manages policies, while `buzz deploy --access` can publish and protect a site atomically. Deployment tokens cannot change Access.
+
 ## Server
 
 Run locally:
