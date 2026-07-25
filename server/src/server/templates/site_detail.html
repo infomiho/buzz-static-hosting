@@ -79,33 +79,35 @@
         </section>
     </div>
 
-    <!-- Buzz Access -->
+    <!-- Access -->
     <div class="card" id="buzz-access">
         <header class="flex flex-wrap items-start justify-between gap-4">
             <div>
-                <h2>Buzz Access</h2>
-                <p class="mt-1 text-rule">Owner-only access.</p>
+                <h2>Access</h2>
+                <p class="mt-1 text-rule">Control who can view this site.</p>
             </div>
-            <button class="btn-sm-outline" id="edit-access">{{ 'Edit' if access_policy else 'Enable' }}</button>
+            <button class="btn-sm-outline" id="edit-access">{{ 'Edit' if access_policy else 'Make private' }}</button>
         </header>
         <section>
             {% if access_policy %}
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <p class="font-bold">Enabled</p>
                     {% if '/' in access_policy.patterns %}
-                    <p class="mt-1 text-rule">Entire site</p>
+                    <h3 class="text-xl font-bold">Private</h3>
+                    <p class="mt-2 text-rule">Only you can view this site.</p>
                     {% else %}
+                    <h3 class="text-xl font-bold">Partly private</h3>
+                    <p class="mt-2 text-rule">Only you can view:</p>
                     <ul class="mt-3 space-y-1 font-mono">
                         {% for pattern in access_policy.patterns %}<li>{{ pattern }}</li>{% endfor %}
                     </ul>
                     {% endif %}
                 </div>
-                <button class="btn-sm-outline border-danger text-danger-dark" id="disable-access">Disable</button>
+                <button class="btn-sm-outline border-danger text-danger-dark" id="disable-access">Make public</button>
             </div>
             {% else %}
-            <h3 class="text-xl font-bold">Off</h3>
-            <p class="mt-2 text-rule">Site is public.</p>
+            <h3 class="text-xl font-bold">Public</h3>
+            <p class="mt-2 text-rule">Anyone can view this site.</p>
             {% endif %}
             <p class="mt-4 hidden border-l-4 border-danger pl-3 text-danger-dark" id="access-action-error" role="alert"></p>
         </section>
@@ -366,24 +368,28 @@
 <dialog id="access-dialog" class="dialog">
     <div>
         <header>
-            <h2>{{ 'Edit Buzz Access' if access_policy else 'Enable Buzz Access' }}</h2>
+            <h2>{{ 'Edit access' if access_policy else 'Make private' }}</h2>
+            <p>Only the site owner can view private pages.</p>
         </header>
         <section>
             <form id="access-form" class="grid gap-5">
-                <div class="choice-list">
-                    <label>
-                        <input type="radio" name="scope" value="entire"{% if not access_policy or '/' in access_policy.patterns %} checked{% endif %}>
-                        <span>Entire site</span>
-                    </label>
-                    <label>
-                        <input type="radio" name="scope" value="patterns"{% if access_policy and '/' not in access_policy.patterns %} checked{% endif %}>
-                        <span>Matching paths</span>
-                    </label>
-                </div>
-                <div id="access-pattern-fields">
+                <fieldset class="grid gap-2">
+                    <legend class="mb-3 text-xl font-bold">Make private</legend>
+                    <div class="choice-list">
+                        <label>
+                            <input type="radio" name="scope" value="entire"{% if not access_policy or '/' in access_policy.patterns %} checked{% endif %}>
+                            <span>Entire site</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="scope" value="patterns"{% if access_policy and '/' not in access_policy.patterns %} checked{% endif %}>
+                            <span>Matching paths only</span>
+                        </label>
+                    </div>
+                </fieldset>
+                <div id="access-pattern-fields" class="grid gap-2">
                     <label for="access-patterns" class="font-bold">Patterns</label>
-                    <textarea id="access-patterns" class="input mt-1 min-h-32 font-mono" placeholder="/admin/**&#10;/reports/*" spellcheck="false">{% if access_policy and '/' not in access_policy.patterns %}{{ access_policy.patterns | join('\n') }}{% endif %}</textarea>
-                    <p class="mt-2 text-rule"><span class="font-mono">*</span> one segment. <span class="font-mono">**</span> any depth. Other paths stay public.</p>
+                    <textarea id="access-patterns" class="input font-mono" rows="3" placeholder="/admin/**&#10;/reports/*" spellcheck="false">{% if access_policy and '/' not in access_policy.patterns %}{{ access_policy.patterns | join('\n') }}{% endif %}</textarea>
+                    <p class="text-rule"><span class="font-mono">*</span> one segment. <span class="font-mono">**</span> any depth. Other paths stay public.</p>
                 </div>
                 <p class="hidden border-l-4 border-danger pl-3 text-danger-dark" id="access-dialog-error" role="alert"></p>
             </form>
@@ -394,6 +400,24 @@
         </footer>
     </div>
 </dialog>
+
+{% if access_policy %}
+<dialog id="disable-access-dialog" class="dialog">
+    <div>
+        <header>
+            <h2>Make public</h2>
+        </header>
+        <section>
+            <p>{% if '/' in access_policy.patterns %}Anyone will be able to view this site.{% else %}Anyone will be able to view the protected paths.{% endif %}</p>
+            <p class="hidden border-l-4 border-danger pl-3 text-danger-dark" id="disable-access-error" role="alert"></p>
+        </section>
+        <footer>
+            <button type="button" class="btn-outline" id="cancel-disable-access">Cancel</button>
+            <button type="button" class="btn-destructive" id="confirm-disable-access">Make public</button>
+        </footer>
+    </div>
+</dialog>
+{% endif %}
 
 {% if custom_domain_can_add %}
 <dialog id="add-domain-dialog" class="dialog">
@@ -506,7 +530,6 @@ function initBuzzAccess() {
     const form = document.getElementById('access-form');
     const fields = document.getElementById('access-pattern-fields');
     const dialogError = document.getElementById('access-dialog-error');
-    const actionError = document.getElementById('access-action-error');
 
     function updateScope() {
         fields.classList.toggle('hidden', form.elements.scope.value !== 'patterns');
@@ -547,17 +570,25 @@ function initBuzzAccess() {
 
     const disable = document.getElementById('disable-access');
     if (disable) {
-        disable.addEventListener('click', async () => {
-            if (!confirm('Disable Buzz Access and make these paths public?')) return;
-            disable.disabled = true;
+        const disableDialog = document.getElementById('disable-access-dialog');
+        const cancelDisable = document.getElementById('cancel-disable-access');
+        const confirmDisable = document.getElementById('confirm-disable-access');
+        const disableError = document.getElementById('disable-access-error');
+        disable.addEventListener('click', () => {
+            disableError.classList.add('hidden');
+            disableDialog.showModal();
+        });
+        cancelDisable.addEventListener('click', () => disableDialog.close());
+        confirmDisable.addEventListener('click', async () => {
+            confirmDisable.disabled = true;
             try {
                 const response = await fetch('/sites/' + encodeURIComponent(SITE_NAME) + '/access', { method: 'DELETE' });
-                if (!response.ok) throw new Error('Buzz could not disable Access.');
+                if (!response.ok) throw new Error('Buzz could not make these pages public.');
                 location.reload();
             } catch (error) {
-                actionError.textContent = error.message;
-                actionError.classList.remove('hidden');
-                disable.disabled = false;
+                disableError.textContent = error.message;
+                disableError.classList.remove('hidden');
+                confirmDisable.disabled = false;
             }
         });
     }

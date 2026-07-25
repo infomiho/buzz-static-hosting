@@ -82,7 +82,7 @@ def _destination_origin(hostname: str, settings: Settings) -> str:
     response_model=SiteAccessResponse,
     operation_id="getSiteAccess",
     summary="Get owner access protection",
-    tags=["Buzz Access"],
+    tags=["Access"],
 )
 async def get_site_access(
     request: Request,
@@ -104,7 +104,7 @@ async def get_site_access(
     response_model=SiteAccessResponse,
     operation_id="setSiteAccess",
     summary="Enable or update owner access protection",
-    tags=["Buzz Access"],
+    tags=["Access"],
 )
 async def set_site_access(
     request: Request,
@@ -126,7 +126,7 @@ async def set_site_access(
     status_code=204,
     operation_id="disableSiteAccess",
     summary="Disable owner access protection",
-    tags=["Buzz Access"],
+    tags=["Access"],
 )
 async def disable_site_access(
     request: Request,
@@ -169,7 +169,7 @@ async def authorize_access(
             headers={"Cache-Control": "no-store"},
         )
     if not policy:
-        raise HTTPException(status_code=409, detail="Buzz Access is not enabled")
+        raise HTTPException(status_code=409, detail="Access is not enabled")
     return templates.TemplateResponse(
         request,
         "access_authorize.html",
@@ -201,7 +201,7 @@ async def confirm_access(
     except (AccessSiteNotFound, AccessNotSiteOwner) as error:
         _raise_access_error(error)
     except AccessPolicyNotFound:
-        raise HTTPException(status_code=409, detail="Buzz Access is not enabled")
+        raise HTTPException(status_code=409, detail="Access is not enabled")
 
     settings: Settings = request.app.state.settings
     callback = (

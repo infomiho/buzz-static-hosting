@@ -123,7 +123,7 @@ describe("uploadSite", () => {
     expect(result.subdomain).toBe("my-site");
   });
 
-  it("sends Buzz Access patterns with the deployment", async () => {
+  it("sends access patterns with the deployment", async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({ name: "my-site", url: "https://my-site.example.com" }),

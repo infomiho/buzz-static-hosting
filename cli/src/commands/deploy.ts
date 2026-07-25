@@ -78,10 +78,10 @@ export function registerDeployCommand(program: Command) {
     .command("deploy <directory>")
     .description("Deploy a directory to the server")
     .option("--subdomain <name>", "Site name to use as the subdomain")
-    .option("--access", "Enable Buzz Access as part of the deployment")
+    .option("--access", "Enable owner-only access as part of the deployment")
     .option(
       "--include <pattern>",
-      "Buzz Access path pattern to protect (repeatable)",
+      "Access path pattern to protect (repeatable)",
       (value: string, previous: string[]) => [...previous, value],
       []
     )

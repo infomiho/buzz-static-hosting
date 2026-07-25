@@ -126,7 +126,7 @@ async def deploy(
     ),
     x_buzz_access_patterns: str | None = Header(
         default=None,
-        description="JSON array of Buzz Access path patterns to apply atomically.",
+        description="JSON array of access path patterns to apply atomically.",
     ),
 ):
     subdomain = validate_subdomain(x_subdomain) if x_subdomain else generate_subdomain()
@@ -137,7 +137,7 @@ async def deploy(
     access_patterns: tuple[str, ...] | None = None
     if x_buzz_access_patterns is not None:
         if identity.token_type != "session":
-            raise Forbidden("Deployment tokens cannot manage Buzz Access")
+            raise Forbidden("Deployment tokens cannot manage access")
         try:
             raw_patterns = json.loads(x_buzz_access_patterns)
             if not isinstance(raw_patterns, list) or not all(
@@ -146,7 +146,7 @@ async def deploy(
                 raise ValueError
             access_patterns = validate_patterns(raw_patterns)
         except (InvalidAccessPattern, json.JSONDecodeError, ValueError) as error:
-            raise BadRequest(f"Invalid Buzz Access patterns: {error}")
+            raise BadRequest(f"Invalid access patterns: {error}")
 
     async with request.form(max_files=1, max_fields=1) as form:
         file = form.get("file")

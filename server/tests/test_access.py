@@ -164,7 +164,7 @@ def test_deploy_token_cannot_manage_access(make_app, database, tmp_path):
     assert deploy_response.status_code == 403
     assert (
         deploy_response.json()["detail"]
-        == "Deployment tokens cannot manage Buzz Access"
+        == "Deployment tokens cannot manage access"
     )
 
 
@@ -281,7 +281,7 @@ def test_protected_paths_require_owner_handoff(make_app, database, tmp_path):
     assert public.status_code == 200
     assert public.text == "public home"
     assert gated.status_code == 401
-    assert "Buzz Access" in gated.text
+    assert "Access control" in gated.text
     assert gated.headers["cache-control"] == "private, no-store"
     assert gated.headers["x-robots-tag"] == "noindex, nofollow"
 

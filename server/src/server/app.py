@@ -173,7 +173,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 "description": "Site-scoped credentials for automated deployment.",
             },
             {
-                "name": "Buzz Access",
+                "name": "Access",
                 "description": "Owner-only protection for hosted site paths.",
             },
             {"name": "System", "description": "Server health."},
@@ -404,7 +404,7 @@ async def complete_access_callback(
         # The short-lived code is single-use and bound to this exact hostname.
         # Origin varies across browser form redirects, so it is diagnostic only.
         logger.info(
-            "Buzz Access handoff received origin %r instead of %s://%s",
+            "Access handoff received origin %r instead of %s://%s",
             origin,
             control_scheme,
             control_host,
@@ -462,9 +462,9 @@ async def serve_site(request: Request, site_name: str, settings: Settings) -> Re
             request.cookies.get(access_cookie_name(not settings.dev_mode)),
         )
     except Exception:
-        logger.exception("Buzz Access check failed for site %s", site_name)
+        logger.exception("Access check failed for site %s", site_name)
         return Response(
-            content="Buzz Access is temporarily unavailable",
+            content="Access is temporarily unavailable",
             status_code=503,
             media_type="text/plain",
             headers={"Cache-Control": "no-store"},
