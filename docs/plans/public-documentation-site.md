@@ -184,18 +184,15 @@ Both are community plugins. Pin their versions, keep generated-output checks in 
 
 ### GitHub Pages
 
-Deploy from GitHub Actions with a custom workflow because reference generation requires the CLI and server toolchains. For the repository's default project site, configure:
+Deploy from GitHub Actions with a custom workflow because reference generation requires the CLI and server toolchains. Configure the custom documentation domain:
 
 ```js
 export default defineConfig({
-  site: "https://infomiho.github.io",
-  base: "/buzz-static-hosting",
+  site: "https://buzzstatic.dev",
 });
 ```
 
-This publishes the site at `https://infomiho.github.io/buzz-static-hosting/`. If Buzz gets a documentation subdomain, set `site` to that origin, remove `base`, and add `public/CNAME`.
-
-A custom documentation domain is preferable for LLM discovery because the proposed conventional location is `/llms.txt`. GitHub project hosting places it at `/buzz-static-hosting/llms.txt`, which the proposal permits but tools may be less likely to discover automatically.
+This publishes the site at `https://buzzstatic.dev/` and places the LLM discovery file at the conventional `/llms.txt` path. The custom domain is configured in the repository's GitHub Pages settings because Actions deployments ignore repository `CNAME` files.
 
 ### LLM-Friendly Output
 

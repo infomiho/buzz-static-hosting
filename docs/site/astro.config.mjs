@@ -6,8 +6,7 @@ import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://infomiho.github.io',
-	base: '/buzz-static-hosting',
+	site: 'https://buzzstatic.dev',
 	integrations: [
 		starlight({
 			title: 'Buzz',

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const siteRoot = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(siteRoot, 'dist');
-const base = '/buzz-static-hosting';
+const site = new URL('https://buzzstatic.dev');
 const requiredFiles = ['index.html', 'llms.txt', 'llms-small.txt', 'llms-full.txt'];
 const failures = [];
 
@@ -16,10 +16,11 @@ function filesBelow(directory) {
 }
 
 function outputPath(pathname) {
-	const withoutBase = pathname.slice(base.length).replace(/^\//, '');
-	if (!withoutBase || pathname.endsWith('/')) return join(dist, withoutBase, 'index.html');
-	if (extname(withoutBase)) return join(dist, withoutBase);
-	return join(dist, withoutBase, 'index.html');
+	const relativePath = pathname.replace(/^\//, '');
+	if (relativePath === '404/') return join(dist, '404.html');
+	if (!relativePath || pathname.endsWith('/')) return join(dist, relativePath, 'index.html');
+	if (extname(relativePath)) return join(dist, relativePath);
+	return join(dist, relativePath, 'index.html');
 }
 
 for (const required of requiredFiles) {
@@ -29,7 +30,7 @@ for (const required of requiredFiles) {
 for (const htmlPath of filesBelow(dist).filter((path) => path.endsWith('.html'))) {
 	const html = readFileSync(htmlPath, 'utf8');
 	const pagePath = `/${relative(dist, htmlPath).replaceAll('\\', '/').replace(/index\.html$/, '')}`;
-	const pageUrl = new URL(`${base}${pagePath}`, 'https://docs.example');
+	const pageUrl = new URL(pagePath, site);
 
 	for (const match of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
 		const value = match[1];
@@ -37,10 +38,6 @@ for (const htmlPath of filesBelow(dist).filter((path) => path.endsWith('.html'))
 
 		const url = new URL(value, pageUrl);
 		if (url.origin !== pageUrl.origin) continue;
-		if (!url.pathname.startsWith(`${base}/`) && url.pathname !== base) {
-			failures.push(`${relative(dist, htmlPath)} escapes the site base: ${value}`);
-			continue;
-		}
 
 		const target = outputPath(url.pathname);
 		if (!existsSync(target)) {
@@ -61,8 +58,8 @@ for (const htmlPath of filesBelow(dist).filter((path) => path.endsWith('.html'))
 for (const llmsFile of ['llms.txt', 'llms-small.txt', 'llms-full.txt']) {
 	const content = readFileSync(join(dist, llmsFile), 'utf8');
 	if (!content.includes('Buzz')) failures.push(`${llmsFile} does not identify Buzz`);
-	if (content.includes('https://infomiho.github.io/') && !content.includes(`${base}/`)) {
-		failures.push(`${llmsFile} contains a GitHub Pages URL without the project base`);
+	if (content.includes('https://infomiho.github.io/')) {
+		failures.push(`${llmsFile} contains the old GitHub Pages URL`);
 	}
 }
 

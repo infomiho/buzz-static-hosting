@@ -1,6 +1,6 @@
 # Coolify Deployment
 
-Follow the public [Coolify deployment guide](https://infomiho.github.io/buzz-static-hosting/self-hosting/coolify/) to configure the app, DNS, TLS, and persistent data.
+Follow the public [Coolify deployment guide](https://buzzstatic.dev/self-hosting/coolify/) to configure the app, DNS, TLS, and persistent data.
 
 ## Repository Deployment
 

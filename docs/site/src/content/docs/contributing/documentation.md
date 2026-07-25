@@ -35,7 +35,7 @@ Follow the repository's [Documentation Writing Guide](https://github.com/infomih
 
 Hand-written pages live under `docs/site/src/content/docs/`. Add frontmatter with a concise `title` and `description`. The Starlight sidebar discovers pages from their section directories.
 
-Use repository-relative links for source files and relative documentation links for other pages. Check links from the generated site because Buzz is published below the `/buzz-static-hosting/` GitHub Pages base path.
+Use repository-relative links for source files and relative documentation links for other pages. Check links from the generated site at `https://buzzstatic.dev`.
 
 ## Update Generated Reference
 

@@ -42,13 +42,13 @@ Buzz prints the URL and stores `my-site` in the current directory's `CNAME`. Lat
 
 ## Documentation
 
-- [Buzz documentation](https://infomiho.github.io/buzz-static-hosting/)
-- [Self-host Buzz](https://infomiho.github.io/buzz-static-hosting/self-hosting/overview/)
-- [CLI reference](https://infomiho.github.io/buzz-static-hosting/reference/cli/)
+- [Buzz documentation](https://buzzstatic.dev/)
+- [Self-host Buzz](https://buzzstatic.dev/self-hosting/overview/)
+- [CLI reference](https://buzzstatic.dev/reference/cli/)
 - [Changelog](cli/CHANGELOG.md)
 
 ## Contributing
 
-- [Set up a development environment](https://infomiho.github.io/buzz-static-hosting/contributing/development/)
-- [Write and test documentation](https://infomiho.github.io/buzz-static-hosting/contributing/documentation/)
-- [Understand the release process](https://infomiho.github.io/buzz-static-hosting/contributing/releases/)
+- [Set up a development environment](https://buzzstatic.dev/contributing/development/)
+- [Write and test documentation](https://buzzstatic.dev/contributing/documentation/)
+- [Understand the release process](https://buzzstatic.dev/contributing/releases/)
