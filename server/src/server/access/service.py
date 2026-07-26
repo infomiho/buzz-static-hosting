@@ -6,8 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .patterns import matches_any, validate_patterns
-
 ACCESS_CODE_PREFIX = "buzz_access_code_"
 ACCESS_GRANT_PREFIX = "buzz_access_"
 ACCESS_CODE_LIFETIME = timedelta(minutes=1)
@@ -34,8 +32,10 @@ class InvalidAccessCode(Exception):
 class AccessPolicy:
     id: int
     site_name: str
+    # Fenced against a policy row ever being reused for a later privacy period.
+    # Today going public deletes the row and cascades its codes and grants, so
+    # generation never advances; the checks below keep holding if that changes.
     generation: int
-    patterns: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -64,50 +64,39 @@ class AccessService:
             self._require_owner(conn, site_name, user_id)
             return self._policy(conn, site_name)
 
-    def set_policy(
-        self, site_name: str, user_id: int, patterns: list[str]
-    ) -> AccessPolicy:
-        validated = validate_patterns(patterns)
+    def set_policy(self, site_name: str, user_id: int) -> AccessPolicy:
         with self._db() as conn:
-            return self.set_policy_on_connection(conn, site_name, user_id, validated)
+            return self.set_policy_on_connection(conn, site_name, user_id)
 
     @classmethod
     def set_policy_on_connection(
-        cls, conn, site_name: str, user_id: int, patterns: tuple[str, ...]
+        cls, conn, site_name: str, user_id: int
     ) -> AccessPolicy:
+        """Make a site private. Idempotent: an already-private site keeps its
+        policy, so redeploying with --private does not invalidate the owner's
+        existing Access session. Concurrent callers race on the site_name
+        unique index, so insert-or-ignore and then read back the winner."""
         cls._require_owner(conn, site_name, user_id)
-        existing = conn.execute(
-            "SELECT id, generation FROM site_access_policies WHERE site_name = ?",
+        conn.execute(
+            "INSERT INTO site_access_policies (site_name) VALUES (?) "
+            "ON CONFLICT(site_name) DO NOTHING",
             (site_name,),
-        ).fetchone()
-        if existing:
-            policy_id = existing["id"]
-            generation = existing["generation"] + 1
-            conn.execute(
-                "UPDATE site_access_policies "
-                "SET generation = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (generation, policy_id),
-            )
-            conn.execute(
-                "DELETE FROM site_access_patterns WHERE policy_id = ?", (policy_id,)
-            )
-        else:
-            cursor = conn.execute(
-                "INSERT INTO site_access_policies (site_name) VALUES (?)", (site_name,)
-            )
-            policy_id = cursor.lastrowid
-            generation = 1
-        conn.executemany(
-            "INSERT INTO site_access_patterns (policy_id, position, pattern) "
-            "VALUES (?, ?, ?)",
-            [
-                (policy_id, position, pattern)
-                for position, pattern in enumerate(patterns)
-            ],
         )
-        conn.execute("DELETE FROM site_access_grants WHERE policy_id = ?", (policy_id,))
-        conn.execute("DELETE FROM site_access_codes WHERE policy_id = ?", (policy_id,))
-        return AccessPolicy(policy_id, site_name, generation, patterns)
+        policy = cls._policy(conn, site_name)
+        if policy is None:
+            raise AccessPolicyNotFound(site_name)
+        return policy
+
+    @staticmethod
+    def private_site_names_on_connection(conn, site_names: list[str]) -> set[str]:
+        if not site_names:
+            return set()
+        placeholders = ",".join("?" * len(site_names))
+        rows = conn.execute(
+            f"SELECT site_name FROM site_access_policies WHERE site_name IN ({placeholders})",
+            site_names,
+        ).fetchall()
+        return {row["site_name"] for row in rows}
 
     def delete_policy(self, site_name: str, user_id: int) -> bool:
         with self._db() as conn:
@@ -118,8 +107,15 @@ class AccessService:
             return cursor.rowcount > 0
 
     def check_request(
-        self, site_name: str, hostname: str, path: str, raw_grant: str | None
+        self, site_name: str, hostname: str, raw_grant: str | None
     ) -> AccessDecision:
+        """Decide access for a whole site.
+
+        Deliberately takes no request path. The static resolver serves one file
+        under several URLs, so any decision derived from the path can disagree
+        with the file that is ultimately served. Keeping the path out of this
+        signature makes that disagreement unrepresentable.
+        """
         with self._db() as conn:
             guarded = conn.execute(
                 "SELECT 1 FROM site_access_publication_guards WHERE site_name = ?",
@@ -128,7 +124,7 @@ class AccessService:
             if guarded:
                 return AccessDecision(protected=True, authorized=False)
             policy = self._policy(conn, site_name)
-            if not policy or not matches_any(policy.patterns, path):
+            if not policy:
                 return AccessDecision(protected=False, authorized=True)
             if not raw_grant or not raw_grant.startswith(ACCESS_GRANT_PREFIX):
                 return AccessDecision(protected=True, authorized=False)
@@ -258,12 +254,4 @@ class AccessService:
         ).fetchone()
         if not row:
             return None
-        patterns = tuple(
-            item["pattern"]
-            for item in conn.execute(
-                "SELECT pattern FROM site_access_patterns "
-                "WHERE policy_id = ? ORDER BY position",
-                (row["id"],),
-            ).fetchall()
-        )
-        return AccessPolicy(row["id"], row["site_name"], row["generation"], patterns)
+        return AccessPolicy(row["id"], row["site_name"], row["generation"])

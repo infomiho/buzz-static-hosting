@@ -4,23 +4,21 @@ from urllib.parse import quote, urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
+from ..templating import templates
 from ..access import (
     AccessNotSiteOwner,
     AccessPolicyNotFound,
     AccessService,
     AccessSiteNotFound,
-    InvalidAccessPattern,
 )
-from ..api_models import SiteAccessRequest, SiteAccessResponse
+from ..api_models import SiteAccessResponse
 from ..auth_service import Identity
 from ..dependencies import get_identity, require_user
 from ..settings import Settings
 from ..site_path import InvalidPath, normalized_url_path
 from ..utils import extract_subdomain
 
-templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 router = APIRouter()
 
 
@@ -33,8 +31,6 @@ def _raise_access_error(error: Exception) -> None:
         raise HTTPException(status_code=404, detail="Site not found")
     if isinstance(error, AccessNotSiteOwner):
         raise HTTPException(status_code=403, detail="You do not own this site")
-    if isinstance(error, InvalidAccessPattern):
-        raise HTTPException(status_code=400, detail=str(error))
     raise error
 
 
@@ -81,7 +77,7 @@ def _destination_origin(hostname: str, settings: Settings) -> str:
     "/sites/{site_name}/access",
     response_model=SiteAccessResponse,
     operation_id="getSiteAccess",
-    summary="Get owner access protection",
+    summary="Get site visibility",
     tags=["Access"],
 )
 async def get_site_access(
@@ -93,39 +89,33 @@ async def get_site_access(
         policy = _service(request).get_policy(site_name, identity.user.id)
     except (AccessSiteNotFound, AccessNotSiteOwner) as error:
         _raise_access_error(error)
-    return {
-        "enabled": policy is not None,
-        "patterns": list(policy.patterns) if policy else [],
-    }
+    return {"private": policy is not None}
 
 
 @router.put(
     "/sites/{site_name}/access",
     response_model=SiteAccessResponse,
-    operation_id="setSiteAccess",
-    summary="Enable or update owner access protection",
+    operation_id="makeSitePrivate",
+    summary="Make a site private",
     tags=["Access"],
 )
 async def set_site_access(
     request: Request,
     site_name: str,
-    data: SiteAccessRequest,
     identity: Annotated[Identity, Depends(require_user)],
 ):
     try:
-        policy = _service(request).set_policy(
-            site_name, identity.user.id, data.patterns
-        )
-    except (AccessSiteNotFound, AccessNotSiteOwner, InvalidAccessPattern) as error:
+        _service(request).set_policy(site_name, identity.user.id)
+    except (AccessSiteNotFound, AccessNotSiteOwner) as error:
         _raise_access_error(error)
-    return {"enabled": True, "patterns": list(policy.patterns)}
+    return {"private": True}
 
 
 @router.delete(
     "/sites/{site_name}/access",
     status_code=204,
-    operation_id="disableSiteAccess",
-    summary="Disable owner access protection",
+    operation_id="makeSitePublic",
+    summary="Make a site public",
     tags=["Access"],
 )
 async def disable_site_access(
@@ -164,21 +154,16 @@ async def authorize_access(
         return templates.TemplateResponse(
             request,
             "access_denied.html",
-            {"hostname": hostname},
+            {"hostname": hostname, "user": identity.user},
             status_code=403,
             headers={"Cache-Control": "no-store"},
         )
     if not policy:
-        raise HTTPException(status_code=409, detail="Access is not enabled")
+        raise HTTPException(status_code=409, detail="This site is not private")
     return templates.TemplateResponse(
         request,
         "access_authorize.html",
-        {
-            "site": site,
-            "hostname": hostname,
-            "return_path": return_path,
-            "user": identity.user,
-        },
+        {"site": site, "hostname": hostname, "return_path": return_path},
         headers={"Cache-Control": "no-store"},
     )
 
@@ -201,7 +186,7 @@ async def confirm_access(
     except (AccessSiteNotFound, AccessNotSiteOwner) as error:
         _raise_access_error(error)
     except AccessPolicyNotFound:
-        raise HTTPException(status_code=409, detail="Access is not enabled")
+        raise HTTPException(status_code=409, detail="This site is not private")
 
     settings: Settings = request.app.state.settings
     callback = (

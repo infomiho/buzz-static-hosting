@@ -116,17 +116,19 @@ describe("uploadSite", () => {
       fakeFetch(200, {
         name: "my-site",
         url: "https://custom.example.com",
+        private: false,
       })
     );
 
     expect(result.url).toBe("https://custom.example.com");
     expect(result.subdomain).toBe("my-site");
+    expect(result.private).toBe(false);
   });
 
-  it("sends access patterns with the deployment", async () => {
+  it("asks for a private site with the deployment", async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
-        JSON.stringify({ name: "my-site", url: "https://my-site.example.com" }),
+        JSON.stringify({ name: "my-site", url: "https://my-site.example.com", private: false }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
     );
@@ -137,17 +139,30 @@ describe("uploadSite", () => {
       zip,
       "my-site",
       fetchFn,
-      ["/admin/**", "/reports/*"]
+      true
     );
 
     expect(fetchFn).toHaveBeenCalledWith(
       "https://buzz.example.com/deploy",
       expect.objectContaining({
-        headers: expect.objectContaining({
-          "x-buzz-access-patterns": '["/admin/**","/reports/*"]',
-        }),
+        headers: expect.objectContaining({ "x-buzz-access": "private" }),
       })
     );
+  });
+
+  it("omits the access header for a public deployment", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({ name: "my-site", url: "https://my-site.example.com", private: false }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await uploadSite("https://buzz.example.com", "test-token", zip, "my-site", fetchFn);
+
+    const headers = (fetchFn.mock.calls[0][1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(headers).not.toHaveProperty("x-buzz-access");
   });
 
   it("rejects a deployment response without a site name", async () => {
@@ -198,7 +213,7 @@ describe("uploadSite", () => {
       expect.unreachable();
     } catch (error: any) {
       expect(error.tip).toBe(
-        "Choose a different subdomain with --subdomain <name>"
+        "Choose a different name with --site <name>"
       );
     }
   });

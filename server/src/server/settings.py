@@ -7,8 +7,11 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .environment import environment_value
+
+LOCAL_CONTROL_ORIGIN = "http://localhost:8080"
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,20 @@ class Settings:
     max_archive_path_bytes: int
     gsc_credentials: str | None
     gsc_property: str | None
+
+    @property
+    def control_origin(self) -> str:
+        """Where the dashboard lives. A configured domain is served over TLS;
+        without one, Buzz is running locally. The only place this is decided."""
+        return f"https://{self.domain}" if self.domain else LOCAL_CONTROL_ORIGIN
+
+    @property
+    def control_scheme(self) -> str:
+        return urlsplit(self.control_origin).scheme
+
+    @property
+    def control_host(self) -> str:
+        return urlsplit(self.control_origin).netloc
 
     @classmethod
     def from_environment(cls) -> "Settings":

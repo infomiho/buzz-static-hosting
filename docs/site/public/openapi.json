@@ -431,6 +431,10 @@
             "title": "Name",
             "type": "string"
           },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -438,7 +442,8 @@
         },
         "required": [
           "name",
-          "url"
+          "url",
+          "private"
         ],
         "title": "DeploymentResponse",
         "type": "object"
@@ -993,39 +998,15 @@
         "title": "LogoutResponse",
         "type": "object"
       },
-      "SiteAccessRequest": {
-        "properties": {
-          "patterns": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Patterns",
-            "type": "array"
-          }
-        },
-        "required": [
-          "patterns"
-        ],
-        "title": "SiteAccessRequest",
-        "type": "object"
-      },
       "SiteAccessResponse": {
         "properties": {
-          "enabled": {
-            "title": "Enabled",
+          "private": {
+            "title": "Private",
             "type": "boolean"
-          },
-          "patterns": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Patterns",
-            "type": "array"
           }
         },
         "required": [
-          "enabled",
-          "patterns"
+          "private"
         ],
         "title": "SiteAccessResponse",
         "type": "object"
@@ -1039,6 +1020,10 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
           },
           "size_bytes": {
             "anyOf": [
@@ -1060,7 +1045,8 @@
           "name",
           "created",
           "size_bytes",
-          "total_views"
+          "total_views",
+          "private"
         ],
         "title": "SiteResponse",
         "type": "object"
@@ -1364,13 +1350,13 @@
     },
     "/deploy": {
       "post": {
-        "description": "Upload a ZIP archive to create or replace a site. A deployment token may deploy only to its assigned site and must send that name in X-Subdomain.",
+        "description": "Upload a ZIP archive to create or replace a site. A deployment token may deploy only to its assigned site and must send that name in X-Buzz-Site.",
         "operationId": "deploySite",
         "parameters": [
           {
             "description": "Site name to create or replace. Buzz generates a name when omitted.",
             "in": "header",
-            "name": "x-subdomain",
+            "name": "x-buzz-site",
             "required": false,
             "schema": {
               "anyOf": [
@@ -1382,13 +1368,13 @@
                 }
               ],
               "description": "Site name to create or replace. Buzz generates a name when omitted.",
-              "title": "X-Subdomain"
+              "title": "X-Buzz-Site"
             }
           },
           {
-            "description": "JSON array of access path patterns to apply atomically.",
+            "description": "Set to 'private' to publish the site and protect it atomically.",
             "in": "header",
-            "name": "x-buzz-access-patterns",
+            "name": "x-buzz-access",
             "required": false,
             "schema": {
               "anyOf": [
@@ -1399,8 +1385,8 @@
                   "type": "null"
                 }
               ],
-              "description": "JSON array of access path patterns to apply atomically.",
-              "title": "X-Buzz-Access-Patterns"
+              "description": "Set to 'private' to publish the site and protect it atomically.",
+              "title": "X-Buzz-Access"
             }
           }
         ],
@@ -1660,7 +1646,7 @@
     },
     "/sites/{site_name}/access": {
       "delete": {
-        "operationId": "disableSiteAccess",
+        "operationId": "makeSitePublic",
         "parameters": [
           {
             "in": "path",
@@ -1692,7 +1678,7 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Disable owner access protection",
+        "summary": "Make a site public",
         "tags": [
           "Access"
         ]
@@ -1737,13 +1723,13 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Get owner access protection",
+        "summary": "Get site visibility",
         "tags": [
           "Access"
         ]
       },
       "put": {
-        "operationId": "setSiteAccess",
+        "operationId": "makeSitePrivate",
         "parameters": [
           {
             "in": "path",
@@ -1755,16 +1741,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SiteAccessRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
@@ -1792,7 +1768,7 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Enable or update owner access protection",
+        "summary": "Make a site private",
         "tags": [
           "Access"
         ]
@@ -2565,7 +2541,7 @@
       "name": "Deployment Tokens"
     },
     {
-      "description": "Owner-only protection for hosted site paths.",
+      "description": "Owner-only protection for hosted sites.",
       "name": "Access"
     },
     {

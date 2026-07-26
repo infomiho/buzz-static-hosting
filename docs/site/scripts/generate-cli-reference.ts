@@ -11,11 +11,20 @@ const outputDirectory = join(
   "../src/content/docs/reference/cli"
 );
 
+/** Hidden subcommands (like the default `access status`) and Commander's
+ *  implicit `help` are not part of the surface we document. */
+function visibleCommands(command: BuzzCommand): BuzzCommand[] {
+  return command
+    .createHelp()
+    .visibleCommands(command)
+    .filter((child) => child.name() !== "help") as BuzzCommand[];
+}
+
 function configureHelp(command: BuzzCommand): void {
   command.configureOutput({
     getOutHelpWidth: () => 80,
   });
-  command.commands.forEach(configureHelp);
+  visibleCommands(command).forEach(configureHelp);
 }
 
 function commandPath(command: BuzzCommand): string[] {
@@ -33,7 +42,7 @@ function title(command: BuzzCommand): string {
 }
 
 function commandList(command: BuzzCommand): BuzzCommand[] {
-  return command.commands.flatMap((child) => [child, ...commandList(child)]);
+  return visibleCommands(command).flatMap((child) => [child, ...commandList(child)]);
 }
 
 function commandAnchor(command: BuzzCommand): string {

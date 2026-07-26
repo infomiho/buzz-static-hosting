@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from server.db import Database, MIGRATIONS
+from server.db import Database, MIGRATIONS, _configure_connection
 
 
 def test_fresh_database_runs_all_migrations(tmp_path):
@@ -317,3 +317,45 @@ def test_existing_foreign_key_violation_blocks_startup(tmp_path):
 
     with pytest.raises(RuntimeError, match="foreign-key violations"):
         Database(path).init()
+
+
+def test_site_level_access_migration_widens_existing_policies(tmp_path):
+    """A legacy path-scoped policy must widen to the whole site, never narrow."""
+    path = tmp_path / "data.db"
+    conn = sqlite3.connect(path)
+    _configure_connection(conn)
+    for version, migration in enumerate(MIGRATIONS[:-1], start=1):
+        migration(conn)
+        conn.execute(f"PRAGMA user_version = {version}")
+    conn.execute("INSERT INTO users (id, github_id, github_login) VALUES (1, 5, 'owner')")
+    conn.execute("INSERT INTO sites (name, owner_id, size_bytes) VALUES ('legacy', 1, 1)")
+    policy_id = conn.execute(
+        "INSERT INTO site_access_policies (site_name) VALUES ('legacy')"
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO site_access_patterns (policy_id, position, pattern) VALUES (?, 0, '/admin/**')",
+        (policy_id,),
+    )
+    conn.execute(
+        "INSERT INTO sessions (id, user_id, expires_at) VALUES ('s', 1, '9999-01-01')"
+    )
+    conn.execute(
+        "INSERT INTO site_access_grants "
+        "(id, policy_id, generation, user_id, session_id, hostname, expires_at) "
+        "VALUES ('g', ?, 1, 1, 's', 'legacy.example.com', '9999-01-01')",
+        (policy_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    Database(path).init()
+
+    with Database(path).connect() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM site_access_policies WHERE site_name = 'legacy'"
+        ).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM site_access_grants").fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'site_access_patterns'"
+        ).fetchone()[0] == 0
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []

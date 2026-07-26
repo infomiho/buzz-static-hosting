@@ -6,18 +6,21 @@ import { createZipBuffer } from "./lib.js";
 interface UploadResult {
   url: string;
   subdomain: string;
+  private: boolean;
 }
 
 interface DeploymentResponse {
   name: string;
   url: string;
+  private: boolean;
 }
 
 function isDeploymentResponse(value: unknown): value is DeploymentResponse {
   return (
     isRecord(value) &&
     typeof value.name === "string" &&
-    typeof value.url === "string"
+    typeof value.url === "string" &&
+    typeof value.private === "boolean"
   );
 }
 
@@ -63,17 +66,17 @@ export async function uploadSite(
   zip: Buffer,
   subdomain?: string,
   fetchFn: typeof fetch = globalThis.fetch,
-  accessPatterns?: string[]
+  makePrivate = false
 ): Promise<UploadResult> {
   const body = new FormData();
   body.append("file", new Blob([zip], { type: "application/zip" }), "site.zip");
 
   const headers: Record<string, string> = {};
   if (subdomain) {
-    headers["x-subdomain"] = subdomain;
+    headers["x-buzz-site"] = subdomain;
   }
-  if (accessPatterns) {
-    headers["x-buzz-access-patterns"] = JSON.stringify(accessPatterns);
+  if (makePrivate) {
+    headers["x-buzz-access"] = "private";
   }
 
   const data = await requestJson(
@@ -92,7 +95,7 @@ export async function uploadSite(
           new CliError(
             message,
             message.includes("owned by another user")
-              ? "Choose a different subdomain with --subdomain <name>"
+              ? "Choose a different name with --site <name>"
               : undefined
           ),
         fallback: "Unknown error",
@@ -100,5 +103,5 @@ export async function uploadSite(
     }
   );
 
-  return { url: data.url, subdomain: data.name };
+  return { url: data.url, subdomain: data.name, private: data.private };
 }

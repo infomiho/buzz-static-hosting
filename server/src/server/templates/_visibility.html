@@ -1,0 +1,8 @@
+{% import "_icons.html" as icons %}
+<script>
+    // The one visibility marker used across the dashboard.
+    window.visibilityBadge = function (isPrivate) {
+        const icon = isPrivate ? {{ icons.lock() | tojson }} : {{ icons.globe() | tojson }};
+        return '<span class="visibility-badge">' + icon + (isPrivate ? 'Private' : 'Public') + '</span>';
+    };
+</script>

@@ -7,9 +7,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from ..templating import templates
 from ..analytics import AnalyticsStore
 from ..auth_service import AuthService, Identity, InvalidSession
 from ..cookies import clear_session_cookie, session_cookie_name, set_session_cookie
@@ -39,7 +39,6 @@ from ..site_store import SiteStore
 SEARCH_TERMS_LAG_DAYS = 2
 SEARCH_TERMS_WINDOW_DAYS = 30
 
-templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +127,7 @@ async def site_detail(
     database: Annotated[Database, Depends(get_database)],
     settings: Annotated[Settings, Depends(get_settings)],
 ):
-    domain = settings.domain or "localhost:8080"
+    domain = settings.control_host
     capability = request.app.state.custom_domains.capabilities()
     custom_domains_available = capability.control_ready
     custom_domains_configured = capability.status != "disabled"
@@ -223,7 +222,7 @@ async def site_search_terms(
 
     end = date.today() - timedelta(days=SEARCH_TERMS_LAG_DAYS)
     start = end - timedelta(days=SEARCH_TERMS_WINDOW_DAYS - 1)
-    domain = settings.domain or "localhost:8080"
+    domain = settings.control_host
     try:
         terms = await asyncio.to_thread(client.query_search_terms, f"{name}.{domain}", start, end)
     except SearchConsoleError:

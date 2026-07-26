@@ -49,3 +49,16 @@ def _buzz_access(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX idx_site_access_grants_expiry ON site_access_grants(expires_at)"
     )
+
+
+def _buzz_access_site_level(conn: sqlite3.Connection) -> None:
+    """Access protects a whole site rather than URL path patterns.
+
+    Path patterns were unsound: the static resolver serves one file under
+    several URLs, so a pattern written for the clean URL left the underlying
+    file readable. Existing path-scoped policies widen to cover the whole site.
+    Outstanding codes and grants are dropped so every owner re-authorizes once.
+    """
+    conn.execute("DROP TABLE site_access_patterns")
+    conn.execute("DELETE FROM site_access_codes")
+    conn.execute("DELETE FROM site_access_grants")

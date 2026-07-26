@@ -16,12 +16,13 @@ export async function list(cliOptions: CliOptions = {}) {
   }
 
   console.log(
-    `${"NAME".padEnd(24)} ${"CREATED".padEnd(20)} ${"SIZE".padEnd(10)}`
+    `${"NAME".padEnd(24)} ${"CREATED".padEnd(20)} ${"SIZE".padEnd(10)} ${"VISIBILITY".padEnd(10)}`
   );
   for (const site of sites) {
     const created = site.created.slice(0, 19).replace("T", " ");
+    const visibility = site.private ? "private" : "public";
     console.log(
-      `${site.name.padEnd(24)} ${created.padEnd(20)} ${formatSize(site.size_bytes).padEnd(10)}`
+      `${site.name.padEnd(24)} ${created.padEnd(20)} ${formatSize(site.size_bytes).padEnd(10)} ${visibility.padEnd(10)}`
     );
   }
 }

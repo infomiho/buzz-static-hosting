@@ -1,11 +1,22 @@
 import pytest
 
 from server.site_path import (
+    InvalidPath,
     InvalidSubdomain,
+    normalized_url_path,
     resolve_normalized_site_file,
-    resolve_site_file,
     validated_subdomain,
 )
+
+
+def resolve_site_file(sites_dir, subdomain, url_path):
+    """Compose the two shipped steps so each case below reads as one lookup.
+    Both are exercised directly; only this composition is test-local."""
+    try:
+        normalized = normalized_url_path(url_path)
+    except InvalidPath:
+        return None
+    return resolve_normalized_site_file(sites_dir, subdomain, normalized)
 
 
 class TestValidatedSubdomain:

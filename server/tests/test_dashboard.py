@@ -51,8 +51,26 @@ class TestRootRoute:
         assert res.status_code == 200
         assert "Login with GitHub" in res.text
 
-    def test_authenticated_shows_dashboard(self, client, user_and_token):
+    def test_authenticated_without_sites_shows_first_run(self, client, user_and_token):
         _, token = user_and_token
+        client.cookies.set(COOKIE_NAME, token)
+        res = client.get("/")
+        assert res.status_code == 200
+        assert "Deploy your first site" in res.text
+        assert "buzz config server" in res.text
+        # A brand-new account has nothing to count and no token to revoke.
+        assert "Welcome back" not in res.text
+        assert "Deploy Tokens" not in res.text
+
+    def test_authenticated_with_sites_shows_dashboard(
+        self, client, database, user_and_token
+    ):
+        user_id, token = user_and_token
+        with database.connect() as conn:
+            conn.execute(
+                "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('a-site', ?, 1)",
+                (user_id,),
+            )
         client.cookies.set(COOKIE_NAME, token)
         res = client.get("/")
         assert res.status_code == 200
@@ -60,6 +78,7 @@ class TestRootRoute:
         assert "alice" in res.text
         assert "Sites" in res.text
         assert "Deploy Tokens" in res.text
+        assert "Deploy your first site" not in res.text
 
     def test_expired_cookie_shows_login(self, database, client):
         with database.connect() as conn:

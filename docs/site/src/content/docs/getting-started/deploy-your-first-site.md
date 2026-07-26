@@ -57,7 +57,7 @@ Deployed to https://calm-hub-4821.buzz.example.com
 Buzz picked that site name because you didn't supply one. To choose it yourself, use lowercase letters, numbers, and hyphens:
 
 ```bash
-buzz deploy ./dist --subdomain my-site
+buzz deploy ./dist --site my-site
 ```
 
 Site names are unique across a Buzz server. If someone else already owns the name, pick another. If you own it under a different GitHub account, run `buzz logout`, sign in with that account, and deploy again.

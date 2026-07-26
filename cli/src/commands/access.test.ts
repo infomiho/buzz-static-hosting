@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { accessStatus, disableAccess, enableAccess } from "./access.js";
+import { accessStatus, makePrivate, makePublic } from "./access.js";
+import { createProgram } from "../program.js";
 
 const cliOptions = { server: "https://buzz.example.com", token: "session-token" };
 
@@ -29,39 +30,35 @@ describe("access commands", () => {
     vi.unstubAllGlobals();
   });
 
-  it("enables the entire site inferred from CNAME", async () => {
+  it("makes the site inferred from CNAME private", async () => {
     const directory = mkdtempSync(join(tmpdir(), "buzz-access-test-"));
     writeFileSync(join(directory, "CNAME"), "my-site\n");
     process.chdir(directory);
-    fetchMock.mockResolvedValueOnce(jsonResponse({ enabled: true, patterns: ["/"] }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ private: true }));
 
-    await enableAccess({ include: [] }, cliOptions);
+    await makePrivate({}, cliOptions);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://buzz.example.com/sites/my-site/access",
-      expect.objectContaining({
-        method: "PUT",
-        body: JSON.stringify({ patterns: ["/"] }),
-      })
+      expect.objectContaining({ method: "PUT" })
     );
     expect(console.log).toHaveBeenCalledWith("my-site: private");
   });
 
-  it("preserves repeated include patterns and uses an explicit site", async () => {
-    const patterns = ["/admin/*", "/drafts/**", "/admin/*"];
-    fetchMock.mockResolvedValueOnce(jsonResponse({ enabled: true, patterns }));
+  it("makes an explicitly named site private", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ private: true }));
 
-    await enableAccess({ site: "other-site", include: patterns }, cliOptions);
+    await makePrivate({ site: "other-site" }, cliOptions);
 
-    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ patterns }));
-    expect(console.log).toHaveBeenCalledWith("other-site: private paths");
-    expect(console.log).toHaveBeenCalledWith("  /drafts/**");
-    expect(console.log).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://buzz.example.com/sites/other-site/access"
+    );
+    expect(console.log).toHaveBeenCalledWith("other-site: private");
   });
 
   it.each([
-    [{ enabled: false, patterns: [] }, "my-site: public"],
-    [{ enabled: true, patterns: ["/"] }, "my-site: private"],
+    [{ private: false }, "my-site: public"],
+    [{ private: true }, "my-site: private"],
   ])("prints the access status", async (state, output) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(state));
 
@@ -71,27 +68,57 @@ describe("access commands", () => {
     expect(console.log).toHaveBeenCalledWith(output);
   });
 
-  it("does not disable access without confirmation", async () => {
+  it("does not make a site public without confirmation", async () => {
     const confirm = vi.fn().mockResolvedValue(false);
 
-    await disableAccess({ site: "my-site" }, cliOptions, { confirm });
+    await makePublic({ site: "my-site" }, cliOptions, { confirm });
 
-    expect(confirm).toHaveBeenCalledWith(
-      "Make 'my-site' public?"
-    );
+    expect(confirm).toHaveBeenCalledWith("Make 'my-site' public?");
     expect(fetchMock).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith("Aborted.");
   });
 
-  it("disables access without prompting when --yes is set", async () => {
+  it("makes a site public without prompting when --yes is set", async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     const confirm = vi.fn();
 
-    await disableAccess({ site: "my-site", yes: true }, cliOptions, { confirm });
+    await makePublic({ site: "my-site", yes: true }, cliOptions, { confirm });
 
     expect(confirm).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls[0][1]?.method).toBe("DELETE");
     expect(console.log).toHaveBeenCalledWith("my-site: public");
+  });
+
+  // Driving real argv, because --site is the difference between changing the
+  // site you named and changing whichever site the current directory points at.
+  it.each([
+    [["access", "--site", "named-site"], "GET"],
+    [["access", "private", "--site", "named-site"], "PUT"],
+    [["access", "public", "--site", "named-site", "-y"], "DELETE"],
+  ])("routes %j to the named site", async (argv, method) => {
+    const directory = mkdtempSync(join(tmpdir(), "buzz-access-test-"));
+    writeFileSync(join(directory, "CNAME"), "cname-site\n");
+    process.chdir(directory);
+    fetchMock.mockResolvedValue(
+      method === "DELETE"
+        ? new Response(null, { status: 204 })
+        : jsonResponse({ private: true })
+    );
+
+    await createProgram().parseAsync([
+      "node",
+      "buzz",
+      "--server",
+      "https://buzz.example.com",
+      "--token",
+      "session-token",
+      ...argv,
+    ]);
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://buzz.example.com/sites/named-site/access"
+    );
+    expect(fetchMock.mock.calls[0][1]?.method ?? "GET").toBe(method);
   });
 
   it("explains that access management requires a full session", async () => {

@@ -12,7 +12,6 @@ from fastapi.responses import (
     Response,
 )
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .access import ACCESS_GRANT_LIFETIME, AccessService, InvalidAccessCode
@@ -39,15 +38,16 @@ from .pending_store import PendingStore
 from .routes import access, account, auth, dashboard, device, domains, sites, tokens
 from .search_console import create_search_console_client
 from .settings import Settings
+from .site_store import SiteStore
 from .site_path import (
     InvalidPath,
     InvalidSubdomain,
     normalized_url_path,
     resolve_normalized_site_file,
 )
+from .templating import STATIC_DIR, templates
 from .utils import extract_subdomain, is_control_host
 
-templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 logger = logging.getLogger(__name__)
 
 CONTENT_TYPES = {
@@ -64,6 +64,17 @@ CONTENT_TYPES = {
     ".txt": "text/plain",
     ".xml": "application/xml",
 }
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    """Dashboard assets are served from stable filenames, so without an explicit
+    Cache-Control browsers apply heuristic freshness and keep serving a stale
+    stylesheet after an upgrade. Force a revalidation; the ETag keeps it cheap."""
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 class DeploymentBodyLimitMiddleware:
@@ -174,7 +185,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             },
             {
                 "name": "Access",
-                "description": "Owner-only protection for hosted site paths.",
+                "description": "Owner-only protection for hosted sites.",
             },
             {"name": "System", "description": "Server health."},
         ],
@@ -204,7 +215,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         database.connect, user_allowed=app.state.auth_service.user_is_allowed
     )
     app.state.github_device_flow = GitHubDeviceFlow(github_client, settings.github_client_id)
-    control_origin = f"https://{settings.domain}" if settings.domain else "http://localhost:8080"
+    control_origin = settings.control_origin
     app.state.passkeys = PasskeyService(
         db=database.connect,
         store=PendingStore(),
@@ -344,7 +355,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
         return response
 
-    app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+    app.mount("/static", RevalidatedStaticFiles(directory=STATIC_DIR), name="static")
 
     app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
     app.include_router(access.router)
@@ -368,17 +379,23 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing(request: Request, identity: Identity | None = Depends(get_identity)):
-        domain = settings.domain or "localhost:8080"
-
+        page_context = {
+            "domain": settings.control_host,
+            "server_url": settings.control_origin,
+        }
         if identity:
-            return templates.TemplateResponse(request, "dashboard.html", {
-                "user": identity.user,
-                "domain": domain,
-            })
-
-        return templates.TemplateResponse(request, "login.html", {
-            "domain": domain,
-        })
+            # Decided server-side so the first-run screen cannot flash in after
+            # the sites request resolves.
+            with database.connect() as conn:
+                has_sites = bool(
+                    SiteStore(conn, settings.sites_dir).list_for_owner(identity.user.id)
+                )
+            return templates.TemplateResponse(
+                request,
+                "dashboard.html",
+                {**page_context, "user": identity.user, "has_sites": has_sites},
+            )
+        return templates.TemplateResponse(request, "login.html", page_context)
 
     @app.get("/{path:path}", include_in_schema=False)
     async def catch_all(request: Request, path: str):
@@ -398,16 +415,15 @@ async def complete_access_callback(
             media_type="text/plain",
         )
     origin = request.headers.get("origin")
-    control_host = settings.domain or "localhost:8080"
-    control_scheme = "http" if settings.dev_mode else "https"
-    if origin and not origin_matches_host(origin, control_host, control_scheme):
+    if origin and not origin_matches_host(
+        origin, settings.control_host, settings.control_scheme
+    ):
         # The short-lived code is single-use and bound to this exact hostname.
         # Origin varies across browser form redirects, so it is diagnostic only.
         logger.info(
-            "Access handoff received origin %r instead of %s://%s",
+            "Access handoff received origin %r instead of %s",
             origin,
-            control_scheme,
-            control_host,
+            settings.control_origin,
         )
     async with request.form(max_files=0, max_fields=1) as form:
         code = form.get("code")
@@ -441,24 +457,20 @@ async def complete_access_callback(
     return response
 
 
-async def serve_site(request: Request, site_name: str, settings: Settings) -> Response:
+def requested_site_path(request: Request) -> str | None:
+    """The normalized path this request asks for, or None if it is unusable."""
     try:
-        raw_path = request.scope.get("raw_path", b"")
-        path = normalized_url_path(raw_path.decode("ascii"))
+        return normalized_url_path(request.scope.get("raw_path", b"").decode("ascii"))
     except (InvalidPath, UnicodeDecodeError):
-        return Response(
-            content="404 Not Found",
-            status_code=404,
-            media_type="text/plain",
-            headers={"Cache-Control": "no-store"},
-        )
+        return None
 
+
+async def serve_site(request: Request, site_name: str, settings: Settings) -> Response:
     hostname = request.url.hostname or ""
     try:
         decision = request.app.state.access.check_request(
             site_name,
             hostname,
-            path,
             request.cookies.get(access_cookie_name(not settings.dev_mode)),
         )
     except Exception:
@@ -469,27 +481,50 @@ async def serve_site(request: Request, site_name: str, settings: Settings) -> Re
             media_type="text/plain",
             headers={"Cache-Control": "no-store"},
         )
+
+    # Deliberately ahead of path handling: every URL on a private site reaches
+    # the same gate, so no path can steer the decision or reveal what exists.
     if decision.protected and not decision.authorized:
-        control_origin = (
-            f"https://{settings.domain}" if settings.domain else "http://localhost:8080"
+        return access_gate(request, site_name, hostname, settings)
+
+    path = requested_site_path(request)
+    if path is None:
+        return Response(
+            content="404 Not Found",
+            status_code=404,
+            media_type="text/plain",
+            headers={"Cache-Control": "no-store"},
         )
-        return_path = path + (f"?{request.url.query}" if request.url.query else "")
-        authorize_url = (
-            f"{control_origin}/access/authorize?"
-            + urlencode({"site": site_name, "host": hostname, "path": return_path})
-        )
-        return templates.TemplateResponse(
-            request,
-            "access_gate.html",
-            {"authorize_url": authorize_url, "control_origin": control_origin},
-            status_code=401,
-            headers={
-                "Cache-Control": "private, no-store",
-                "X-Robots-Tag": "noindex, nofollow",
-                "Content-Security-Policy": f"default-src 'none'; style-src {control_origin}; base-uri 'none'; frame-ancestors 'none'",
-            },
-        )
-    return await serve_static(request, site_name, path, settings, private=decision.protected)
+    return await serve_static(
+        request, site_name, path, settings, private=decision.protected
+    )
+
+
+def access_gate(
+    request: Request, site_name: str, hostname: str, settings: Settings
+) -> Response:
+    control_origin = settings.control_origin
+    path = requested_site_path(request) or "/"
+    return_path = path + (f"?{request.url.query}" if request.url.query else "")
+    authorize_url = (
+        f"{control_origin}/access/authorize?"
+        + urlencode({"site": site_name, "host": hostname, "path": return_path})
+    )
+    return templates.TemplateResponse(
+        request,
+        "access_gate.html",
+        {
+            "authorize_url": authorize_url,
+            "control_origin": control_origin,
+            "hostname": hostname,
+        },
+        status_code=401,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Robots-Tag": "noindex, nofollow",
+            "Content-Security-Policy": f"default-src 'none'; style-src {control_origin}; base-uri 'none'; frame-ancestors 'none'",
+        },
+    )
 
 
 async def serve_static(
@@ -497,7 +532,7 @@ async def serve_static(
     subdomain: str,
     path: str,
     settings: Settings,
-    private: bool = False,
+    private: bool,
 ) -> Response:
     try:
         filepath = resolve_normalized_site_file(settings.sites_dir, subdomain, path)

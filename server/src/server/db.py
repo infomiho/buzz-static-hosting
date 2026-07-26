@@ -5,7 +5,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 
-from .access.schema import _buzz_access
+from .access.schema import _buzz_access, _buzz_access_site_level
 from .analytics import init_analytics_schema
 from .custom_domains.schema import (
     _automatic_domain_transitions,
@@ -98,6 +98,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _automatic_transition_retarget,
     _webauthn_credentials,
     _buzz_access,
+    _buzz_access_site_level,
 )
 
 

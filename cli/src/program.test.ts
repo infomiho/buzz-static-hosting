@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
+import type { Command } from "commander";
 import { createProgram } from "./program.js";
 
 function commandPaths() {
   const program = createProgram();
-  return program.commands.flatMap((command) => [
+  const help = program.createHelp();
+  // visibleCommands drops hidden subcommands but adds Commander's implicit
+  // `help`, which is not part of the CLI surface we document.
+  const documented = (command: Command) =>
+    help.visibleCommands(command).filter((child) => child.name() !== "help");
+  return documented(program).flatMap((command) => [
     command.name(),
-    ...command.commands.map((child) => `${command.name()} ${child.name()}`),
+    ...documented(command).map((child) => `${command.name()} ${child.name()}`),
   ]);
 }
 
@@ -23,16 +29,12 @@ describe("createProgram", () => {
     expect(commandPaths()).toEqual([
       "deploy",
       "list",
-      "delete",
-      "config",
       "url",
-      "login",
-      "logout",
-      "whoami",
-      "tokens",
-      "tokens list",
-      "tokens create",
-      "tokens delete",
+      "delete",
+      "access",
+      "access status",
+      "access private",
+      "access public",
       "domains",
       "domains list",
       "domains add",
@@ -40,10 +42,14 @@ describe("createProgram", () => {
       "domains retry",
       "domains cancel-transition",
       "domains remove",
-      "access",
-      "access enable",
-      "access status",
-      "access disable",
+      "tokens",
+      "tokens list",
+      "tokens create",
+      "tokens delete",
+      "login",
+      "logout",
+      "whoami",
+      "config",
     ]);
   });
 

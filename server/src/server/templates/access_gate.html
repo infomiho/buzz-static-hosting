@@ -1,19 +1,27 @@
-<!doctype html>
+{% import "_icons.html" as icons %}<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>Private site</title>
-    <link rel="stylesheet" href="{{ control_origin }}/static/style.css">
+    <link rel="stylesheet" href="{{ control_origin }}/static/style.css?v={{ asset_version }}">
 </head>
 <body>
-    <main class="mx-auto flex min-h-screen w-full max-w-3xl items-center px-5 py-12">
-        <div class="w-full border-4 border-ink bg-paper p-6 sm:p-8">
-            <p class="text-lg font-bold uppercase tracking-wide">Access control</p>
-            <h1 class="heading-xl mt-3">Private site</h1>
-            <p class="lead mt-5 text-rule">Owner only.</p>
-            <a class="btn mt-7" href="{{ authorize_url }}">Sign in</a>
+    <main class="grid min-h-screen place-items-center px-5 py-12">
+        <div class="w-full max-w-md border-4 border-ink bg-paper">
+            <div class="border-b-2 border-ink px-6 py-5">
+                <div class="flex items-center gap-3">
+                    {{ icons.lock(size=22, classes="shrink-0") }}
+                    <h1 class="heading-m">Private site</h1>
+                </div>
+                <p class="mt-2 break-all font-mono text-rule">{{ hostname }}</p>
+            </div>
+            <div class="px-6 py-5">
+                <p class="text-rule">Only the owner can view this site.</p>
+                <a class="btn mt-4 w-full" href="{{ authorize_url }}">Sign in</a>
+            </div>
+            <p class="border-t-2 border-ink bg-mist px-6 py-3 text-sm font-bold uppercase tracking-[0.08em] text-rule">Buzz</p>
         </div>
     </main>
 </body>

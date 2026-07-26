@@ -9,7 +9,7 @@ export async function deploy(
   directory: string,
   subdomain: string | undefined,
   cliOptions: CliOptions = {},
-  accessPatterns?: string[]
+  makePrivate = false
 ) {
   const options = getOptions(cliOptions);
 
@@ -51,10 +51,12 @@ export async function deploy(
       zipBuffer,
       subdomain,
       globalThis.fetch,
-      accessPatterns
+      makePrivate
     );
     uploadSpinner.stop("✓ Uploaded");
-    console.log(`Deployed to ${result.url}`);
+    console.log(
+      `Deployed to ${result.url} (${result.private ? "private" : "public"})`
+    );
     writeFileSync(join(process.cwd(), "CNAME"), result.subdomain + "\n");
   } catch (error) {
     uploadSpinner.stop("✗ Upload failed");
@@ -62,39 +64,14 @@ export async function deploy(
   }
 }
 
-function deploymentAccessPatterns(options: {
-  access?: boolean;
-  include: string[];
-}): string[] | undefined {
-  if (options.include.length && !options.access) {
-    throw new CliError("--include requires --access");
-  }
-  if (!options.access) return undefined;
-  return options.include.length ? options.include : ["/"];
-}
-
 export function registerDeployCommand(program: Command) {
   program
     .command("deploy <directory>")
     .description("Deploy a directory to the server")
-    .option("--subdomain <name>", "Site name to use as the subdomain")
-    .option("--access", "Enable owner-only access as part of the deployment")
-    .option(
-      "--include <pattern>",
-      "Access path pattern to protect (repeatable)",
-      (value: string, previous: string[]) => [...previous, value],
-      []
-    )
+    .option("--site <name>", "Site name to create or replace")
+    .option("--private", "Publish the site so only you can view it")
     .action(
-      (
-        directory: string,
-        cmdOptions: { subdomain?: string; access?: boolean; include: string[] }
-      ) =>
-        deploy(
-          directory,
-          cmdOptions.subdomain,
-          program.opts(),
-          deploymentAccessPatterns(cmdOptions)
-        )
+      (directory: string, cmdOptions: { site?: string; private?: boolean }) =>
+        deploy(directory, cmdOptions.site, program.opts(), cmdOptions.private)
     );
 }

@@ -40,8 +40,8 @@ def test_openapi_uses_stable_unique_operation_ids():
         "listSites",
         "deleteSite",
         "getSiteAccess",
-        "setSiteAccess",
-        "disableSiteAccess",
+        "makeSitePrivate",
+        "makeSitePublic",
         "getCustomDomainCapability",
         "listDomainClaims",
         "createDomainClaim",
@@ -78,10 +78,11 @@ def test_openapi_documents_deployment_upload():
     assert file_schema["type"] == "string"
     assert file_schema["format"] == "binary"
     headers = {parameter["name"] for parameter in operation["parameters"]}
-    assert headers == {"x-subdomain", "x-buzz-access-patterns"}
+    assert headers == {"x-buzz-site", "x-buzz-access"}
     assert set(schema["components"]["schemas"]["DeploymentResponse"]["required"]) == {
         "name",
         "url",
+        "private",
     }
 
 

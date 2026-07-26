@@ -41,14 +41,6 @@ def normalized_url_path(raw: str) -> str:
     return path
 
 
-def resolve_site_file(sites_dir: Path, subdomain: str, url_path: str) -> Path | None:
-    try:
-        url_path = normalized_url_path(url_path)
-    except InvalidPath:
-        return None
-    return resolve_normalized_site_file(sites_dir, subdomain, url_path)
-
-
 def resolve_normalized_site_file(
     sites_dir: Path, subdomain: str, url_path: str
 ) -> Path | None:

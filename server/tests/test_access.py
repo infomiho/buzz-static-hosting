@@ -8,14 +8,10 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from server.access import (
-    AccessService,
-    InvalidAccessCode,
-    InvalidAccessPattern,
-    matches_pattern,
-    validate_patterns,
-)
+from server.access import AccessService, InvalidAccessCode
 from server.site_store import SiteStore
+
+SITE_HOST = {"host": "private-site.localhost:8080"}
 
 
 def _session_token(database, *, github_id: int = 1, login: str = "owner") -> str:
@@ -49,8 +45,13 @@ def _create_site(database, tmp_path, token: str, name: str = "private-site") -> 
         )
     site_dir = tmp_path / name
     (site_dir / "admin").mkdir(parents=True)
+    (site_dir / "assets").mkdir()
     (site_dir / "index.html").write_text("public home")
     (site_dir / "admin" / "index.html").write_text("private admin")
+    # The shapes real generators emit, each reachable under several URLs.
+    (site_dir / "reports.html").write_text("private reports")
+    (site_dir / "assets" / "app-a1b2c3.js").write_text("const SECRET = 1;")
+    (site_dir / "200.html").write_text("spa shell")
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -64,64 +65,93 @@ def _site_archive() -> bytes:
     return archive.getvalue()
 
 
-class TestAccessPatterns:
-    @pytest.mark.parametrize(
-        ("pattern", "path", "expected"),
-        [
-            ("/admin/**", "/admin", True),
-            ("/admin/**", "/admin/users/1", True),
-            ("/admin/**", "/administrator", False),
-            ("/teams/*/settings", "/teams/red/settings", True),
-            ("/teams/*/settings", "/teams/red/internal/settings", False),
-            ("/reports/*", "/reports/july", True),
-            ("/reports/*", "/reports/2026/july", False),
-            ("/", "/anything", True),
-        ],
-    )
-    def test_matching(self, pattern, path, expected):
-        assert matches_pattern(pattern, path) is expected
-
-    def test_validation_deduplicates_patterns(self):
-        assert validate_patterns([" /admin/** ", "/admin/**", "/reports/*/"]) == (
-            "/admin/**",
-            "/reports/*",
-        )
-
-    @pytest.mark.parametrize(
-        "pattern",
-        [
-            "admin/**",
-            "/admin*",
-            "/admin//users",
-            "/../admin",
-            "/admin?draft=1",
-            "/private%20docs/**",
-        ],
-    )
-    def test_validation_rejects_ambiguous_patterns(self, pattern):
-        with pytest.raises(InvalidAccessPattern):
-            validate_patterns([pattern])
+# What every URL reaches while the fixture site is public, covering the aliases
+# the resolver invents (<path>.html, <path>/index.html) and the SPA catch-all.
+# The private test walks the same URLs, so the two can never drift apart.
+PUBLIC_RESPONSES = [
+    ("/", "public home"),
+    ("/index.html", "public home"),
+    ("/index", "public home"),
+    ("/admin", "private admin"),
+    ("/admin/", "private admin"),
+    ("/admin/index.html", "private admin"),
+    ("/admin/index", "private admin"),
+    ("/reports", "private reports"),
+    ("/reports.html", "private reports"),
+    ("/assets/app-a1b2c3.js", "const SECRET = 1;"),
+    ("/no/such/route", "spa shell"),
+    ("/%2561dmin", "spa shell"),
+]
+SITE_BODIES = {body for _, body in PUBLIC_RESPONSES}
 
 
-def test_access_api_configures_and_disables_policy(make_app, database, tmp_path):
+def test_private_site_gates_every_url(make_app, database, tmp_path):
+    """The invariant the whole design exists to guarantee: when a site is
+    private, no URL returns its bytes, whatever the resolver would have done."""
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    client = TestClient(make_app())
+    client.put("/sites/private-site/access", headers=_auth(token))
+
+    for url, _ in PUBLIC_RESPONSES:
+        response = client.get(url, headers=SITE_HOST)
+        assert response.status_code == 401, url
+        for body in SITE_BODIES:
+            assert body not in response.text, f"{url} leaked {body!r}"
+
+
+@pytest.mark.parametrize(("url", "body"), PUBLIC_RESPONSES)
+def test_public_site_serves_every_url(make_app, database, tmp_path, url, body):
+    """The counterpart to the privacy invariant: pinning what each URL serves
+    while public proves the private case changes visibility and nothing else."""
     token = _session_token(database)
     _create_site(database, tmp_path, token)
     client = TestClient(make_app())
 
-    disabled = client.get("/sites/private-site/access", headers=_auth(token))
-    enabled = client.put(
-        "/sites/private-site/access",
-        headers=_auth(token),
-        json={"patterns": ["/admin/**", "/reports/*"]},
-    )
+    response = client.get(url, headers=SITE_HOST)
+
+    assert response.status_code == 200, url
+    assert response.text == body, url
+
+
+def test_access_api_reports_and_toggles_visibility(make_app, database, tmp_path):
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    client = TestClient(make_app())
+
+    public = client.get("/sites/private-site/access", headers=_auth(token))
+    private = client.put("/sites/private-site/access", headers=_auth(token))
+    still_private = client.get("/sites/private-site/access", headers=_auth(token))
     deleted = client.delete("/sites/private-site/access", headers=_auth(token))
 
-    assert disabled.json() == {"enabled": False, "patterns": []}
-    assert enabled.json() == {
-        "enabled": True,
-        "patterns": ["/admin/**", "/reports/*"],
-    }
+    assert public.json() == {"private": False}
+    assert private.json() == {"private": True}
+    assert still_private.json() == {"private": True}
     assert deleted.status_code == 204
+
+
+def test_making_a_site_private_is_idempotent(make_app, database, tmp_path):
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    app = make_app()
+
+    first = app.state.access.set_policy("private-site", 1)
+    again = app.state.access.set_policy("private-site", 1)
+
+    assert (first.id, first.generation) == (again.id, again.generation)
+
+
+def test_site_listing_reports_visibility(make_app, database, tmp_path):
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    client = TestClient(make_app())
+
+    public = client.get("/sites", headers=_auth(token))
+    client.put("/sites/private-site/access", headers=_auth(token))
+    private = client.get("/sites", headers=_auth(token))
+
+    assert public.json()[0]["private"] is False
+    assert private.json()[0]["private"] is True
 
 
 def test_deploy_token_cannot_manage_access(make_app, database, tmp_path):
@@ -145,9 +175,7 @@ def test_deploy_token_cannot_manage_access(make_app, database, tmp_path):
     client = TestClient(make_app())
 
     response = client.put(
-        "/sites/private-site/access",
-        headers=_auth(deploy_token),
-        json={"patterns": ["/"]},
+        "/sites/private-site/access", headers=_auth(deploy_token)
     )
 
     assert response.status_code == 403
@@ -156,19 +184,16 @@ def test_deploy_token_cannot_manage_access(make_app, database, tmp_path):
         "/deploy",
         headers={
             **_auth(deploy_token),
-            "x-subdomain": "private-site",
-            "x-buzz-access-patterns": '["/"]',
+            "x-buzz-site": "private-site",
+            "x-buzz-access": "private",
         },
         files={"file": ("site.zip", b"not-read", "application/zip")},
     )
     assert deploy_response.status_code == 403
-    assert (
-        deploy_response.json()["detail"]
-        == "Deployment tokens cannot manage access"
-    )
+    assert deploy_response.json()["detail"] == "Deployment tokens cannot manage access"
 
 
-def test_first_deployment_can_enable_access_atomically(make_app, database):
+def test_first_deployment_can_go_private_atomically(make_app, database):
     token = _session_token(database)
     client = TestClient(make_app())
 
@@ -176,16 +201,38 @@ def test_first_deployment_can_enable_access_atomically(make_app, database):
         "/deploy",
         headers={
             **_auth(token),
-            "x-subdomain": "private-site",
-            "x-buzz-access-patterns": '["/"]',
+            "x-buzz-site": "private-site",
+            "x-buzz-access": "private",
         },
         files={"file": ("site.zip", _site_archive(), "application/zip")},
     )
 
     assert deployed.status_code == 200
-    response = client.get("/", headers={"host": "private-site.localhost:8080"})
+    response = client.get("/", headers=SITE_HOST)
     assert response.status_code == 401
     assert "private from first publish" not in response.text
+
+
+def test_redeploy_reports_that_a_site_is_still_private(make_app, database):
+    """The deploy response must report the site's visibility, not echo the flag:
+    a redeploy without --private is still a redeploy of a private site."""
+    token = _session_token(database)
+    client = TestClient(make_app())
+    headers = {**_auth(token), "x-buzz-site": "private-site"}
+
+    first = client.post(
+        "/deploy",
+        headers={**headers, "x-buzz-access": "private"},
+        files={"file": ("site.zip", _site_archive(), "application/zip")},
+    )
+    redeployed = client.post(
+        "/deploy",
+        headers=headers,
+        files={"file": ("site.zip", _site_archive(), "application/zip")},
+    )
+
+    assert first.json()["private"] is True
+    assert redeployed.json()["private"] is True
 
 
 def test_publication_guard_closes_the_file_publish_window(
@@ -217,7 +264,7 @@ def test_publication_guard_closes_the_file_publish_window(
                     io.BytesIO(_site_archive()),
                     owner_id,
                     lambda publish_conn: AccessService.set_policy_on_connection(
-                        publish_conn, "private-site", owner_id, ("/",)
+                        publish_conn, "private-site", owner_id
                     ),
                 )
         except Exception as error:  # noqa: BLE001 - propagate worker failures to pytest
@@ -227,9 +274,7 @@ def test_publication_guard_closes_the_file_publish_window(
     worker.start()
     assert published.wait(timeout=5)
     try:
-        response = TestClient(make_app()).get(
-            "/", headers={"host": "private-site.localhost:8080"}
-        )
+        response = TestClient(make_app()).get("/", headers=SITE_HOST)
         assert response.status_code == 401
         assert "private from first publish" not in response.text
     finally:
@@ -243,7 +288,7 @@ def test_access_grant_respects_current_operator_allowlist(make_app, database, tm
     token = _session_token(database)
     _create_site(database, tmp_path, token)
     allowed_app = make_app(allowed_github_users=frozenset({"owner"}))
-    allowed_app.state.access.set_policy("private-site", 1, ["/"])
+    allowed_app.state.access.set_policy("private-site", 1)
     session_id = hashlib.sha256(token.encode()).hexdigest()
     code = allowed_app.state.access.authorize_owner(
         "private-site", "private-site.localhost", "/", 1, session_id
@@ -256,32 +301,22 @@ def test_access_grant_respects_current_operator_allowlist(make_app, database, tm
     with TestClient(denied_app) as client:
         response = client.get(
             "/",
-            headers={
-                "host": "private-site.localhost:8080",
-                "cookie": f"__Host-buzz_access={grant.token}",
-            },
+            headers={**SITE_HOST, "cookie": f"__Host-buzz_access={grant.token}"},
         )
 
     assert response.status_code == 401
 
 
-def test_protected_paths_require_owner_handoff(make_app, database, tmp_path):
+def test_private_site_requires_owner_handoff(make_app, database, tmp_path):
     token = _session_token(database)
     _create_site(database, tmp_path, token)
     client = TestClient(make_app())
-    client.put(
-        "/sites/private-site/access",
-        headers=_auth(token),
-        json={"patterns": ["/admin/**"]},
-    )
+    client.put("/sites/private-site/access", headers=_auth(token))
 
-    public = client.get("/", headers={"host": "private-site.localhost:8080"})
-    gated = client.get("/admin", headers={"host": "private-site.localhost:8080"})
-
-    assert public.status_code == 200
-    assert public.text == "public home"
+    gated = client.get("/admin", headers=SITE_HOST)
     assert gated.status_code == 401
-    assert "Access control" in gated.text
+    assert "Private site" in gated.text
+    assert "private-site.localhost" in gated.text
     assert gated.headers["cache-control"] == "private, no-store"
     assert gated.headers["x-robots-tag"] == "noindex, nofollow"
 
@@ -295,7 +330,7 @@ def test_protected_paths_require_owner_handoff(make_app, database, tmp_path):
         },
     )
     assert authorize.status_code == 200
-    assert "Open private-site.localhost?" in authorize.text
+    assert "Opening private-site.localhost" in authorize.text
 
     handoff = client.post(
         "/access/authorize",
@@ -312,10 +347,7 @@ def test_protected_paths_require_owner_handoff(make_app, database, tmp_path):
 
     callback = client.post(
         "/.well-known/buzz-access/callback",
-        headers={
-            "host": "private-site.localhost:8080",
-            "origin": "http://private-site.localhost:8080",
-        },
+        headers={**SITE_HOST, "origin": "http://private-site.localhost:8080"},
         data={"code": code.group(1)},
         follow_redirects=False,
     )
@@ -329,10 +361,7 @@ def test_protected_paths_require_owner_handoff(make_app, database, tmp_path):
 
     allowed = client.get(
         "/admin",
-        headers={
-            "host": "private-site.localhost:8080",
-            "cookie": f"__Host-buzz_access={access_cookie}",
-        },
+        headers={**SITE_HOST, "cookie": f"__Host-buzz_access={access_cookie}"},
     )
     assert allowed.status_code == 200
     assert allowed.text == "private admin"
@@ -345,52 +374,35 @@ def test_protected_paths_require_owner_handoff(make_app, database, tmp_path):
         )
     expired = client.get(
         "/admin",
-        headers={
-            "host": "private-site.localhost:8080",
-            "cookie": f"__Host-buzz_access={access_cookie}",
-        },
+        headers={**SITE_HOST, "cookie": f"__Host-buzz_access={access_cookie}"},
     )
     assert expired.status_code == 401
 
 
-def test_encoded_path_cannot_bypass_access(make_app, database, tmp_path):
+def test_going_public_then_private_invalidates_an_existing_grant(
+    make_app, database, tmp_path
+):
     token = _session_token(database)
     _create_site(database, tmp_path, token)
     app = make_app()
-    app.state.access.set_policy("private-site", 1, ["/admin/**"])
-    client = TestClient(app)
-
-    response = client.get(
-        "/%2561dmin",
-        headers={"host": "private-site.localhost:8080"},
-    )
-
-    assert response.status_code != 200
-    assert response.text != "private admin"
-
-
-def test_policy_update_invalidates_existing_grant(make_app, database, tmp_path):
-    token = _session_token(database)
-    _create_site(database, tmp_path, token)
-    app = make_app()
-    policy = app.state.access.set_policy("private-site", 1, ["/admin/**"])
+    app.state.access.set_policy("private-site", 1)
     session_id = hashlib.sha256(token.encode()).hexdigest()
     code = app.state.access.authorize_owner(
-        "private-site", "private-site.localhost", "/admin", 1, session_id
+        "private-site", "private-site.localhost", "/", 1, session_id
     )
     grant = app.state.access.exchange_code(
         code, "private-site", "private-site.localhost"
     )
 
     assert app.state.access.check_request(
-        "private-site", "private-site.localhost", "/admin", grant.token
+        "private-site", "private-site.localhost", grant.token
     ).authorized
 
-    updated = app.state.access.set_policy("private-site", 1, ["/admin/**"])
+    app.state.access.delete_policy("private-site", 1)
+    app.state.access.set_policy("private-site", 1)
 
-    assert updated.generation == policy.generation + 1
     assert not app.state.access.check_request(
-        "private-site", "private-site.localhost", "/admin", grant.token
+        "private-site", "private-site.localhost", grant.token
     ).authorized
 
 
@@ -400,10 +412,10 @@ def test_dev_mode_exercises_access_handoff_without_github_login(
     token = _session_token(database)
     _create_site(database, tmp_path, token)
     app = make_app(dev_mode=True)
-    app.state.access.set_policy("private-site", 1, ["/"])
+    app.state.access.set_policy("private-site", 1)
     client = TestClient(app)
 
-    gated = client.get("/admin", headers={"host": "private-site.localhost:8080"})
+    gated = client.get("/admin", headers=SITE_HOST)
     assert gated.status_code == 401
 
     authorize = client.get(
@@ -432,10 +444,7 @@ def test_dev_mode_exercises_access_handoff_without_github_login(
 
     callback = client.post(
         "/.well-known/buzz-access/callback",
-        headers={
-            "host": "private-site.localhost:8080",
-            "origin": "http://localhost:8080",
-        },
+        headers={**SITE_HOST, "origin": "http://localhost:8080"},
         data={"code": code.group(1)},
         follow_redirects=False,
     )
@@ -444,10 +453,7 @@ def test_dev_mode_exercises_access_handoff_without_github_login(
 
     response = client.get(
         "/admin",
-        headers={
-            "host": "private-site.localhost:8080",
-            "cookie": f"buzz_access={access_cookie}",
-        },
+        headers={**SITE_HOST, "cookie": f"buzz_access={access_cookie}"},
     )
 
     assert response.status_code == 200
@@ -459,7 +465,7 @@ def test_access_code_is_single_use(make_app, database, tmp_path):
     token = _session_token(database)
     _create_site(database, tmp_path, token)
     app = make_app()
-    app.state.access.set_policy("private-site", 1, ["/"])
+    app.state.access.set_policy("private-site", 1)
     session_id = hashlib.sha256(token.encode()).hexdigest()
     code = app.state.access.authorize_owner(
         "private-site", "private-site.localhost", "/", 1, session_id
@@ -472,3 +478,26 @@ def test_access_code_is_single_use(make_app, database, tmp_path):
     assert first.return_path == "/"
     with pytest.raises(InvalidAccessCode):
         app.state.access.exchange_code(code, "private-site", "private-site.localhost")
+
+
+def test_denied_visitor_is_given_a_way_out(make_app, database, tmp_path):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    stranger_token = _session_token(database, github_id=2, login="stranger")
+    app = make_app()
+    app.state.access.set_policy("private-site", 1)
+    client = TestClient(app)
+
+    response = client.get(
+        "/access/authorize",
+        headers={"host": "localhost:8080", **_auth(stranger_token)},
+        params={
+            "site": "private-site",
+            "host": "private-site.localhost",
+            "path": "/",
+        },
+    )
+
+    assert response.status_code == 403
+    assert "private-site.localhost" in response.text
+    assert "Sign in as someone else" in response.text

@@ -3,13 +3,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
+from ..templating import templates
 from ..auth_service import Identity
 from ..dependencies import get_device_authorization, get_identity, require_user
 from ..device_authorization import DeviceAuthorizationService
 
-templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 router = APIRouter(include_in_schema=False)
 

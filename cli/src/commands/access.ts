@@ -12,23 +12,18 @@ import {
 import { confirm } from "../prompts.js";
 
 interface AccessState {
-  enabled: boolean;
-  patterns: string[];
+  private: boolean;
 }
 
 interface SiteOption {
   site?: string;
 }
 
-interface EnableOptions extends SiteOption {
-  include: string[];
-}
-
-interface DisableOptions extends SiteOption {
+interface PublicOptions extends SiteOption {
   yes?: boolean;
 }
 
-interface DisableDependencies {
+interface PublicDependencies {
   confirm: (message: string) => Promise<boolean>;
 }
 
@@ -43,12 +38,7 @@ const accessErrors: ApiErrors = {
 };
 
 function isAccessState(value: unknown): value is AccessState {
-  return (
-    isRecord(value) &&
-    typeof value.enabled === "boolean" &&
-    Array.isArray(value.patterns) &&
-    value.patterns.every((pattern) => typeof pattern === "string")
-  );
+  return isRecord(value) && typeof value.private === "boolean";
 }
 
 function accessPath(site: string): string {
@@ -70,54 +60,23 @@ function resolveSite(site?: string): string {
   return cname;
 }
 
-async function getAccess(site: string, cliOptions: CliOptions): Promise<AccessState> {
-  return requestJson(
-    accessPath(site),
-    { guard: isAccessState, invalid: "Server returned an invalid site-access response" },
-    {},
-    {
-      cliOptions,
-      errors: {
-        ...accessErrors,
-        notFound: `Site '${site}' not found`,
-        fallback: "Could not get site access",
-      },
-    }
-  );
-}
-
 function printAccess(site: string, state: AccessState): void {
-  if (!state.enabled) {
-    console.log(`${site}: public`);
-  } else if (state.patterns.includes("/")) {
-    console.log(`${site}: private`);
-  } else {
-    console.log(`${site}: private paths`);
-    for (const pattern of state.patterns) console.log(`  ${pattern}`);
-  }
+  console.log(`${site}: ${state.private ? "private" : "public"}`);
 }
 
-export async function enableAccess(
-  options: EnableOptions,
-  cliOptions: CliOptions = {}
+async function reportVisibility(
+  site: string,
+  cliOptions: CliOptions,
+  init: RequestInit,
+  fallback: string
 ): Promise<void> {
-  const site = resolveSite(options.site);
-  const patterns = options.include.length ? options.include : ["/"];
   const state = await requestJson(
     accessPath(site),
     { guard: isAccessState, invalid: "Server returned an invalid site-access response" },
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patterns }),
-    },
+    init,
     {
       cliOptions,
-      errors: {
-        ...accessErrors,
-        notFound: `Site '${site}' not found`,
-        fallback: "Could not enable site access",
-      },
+      errors: { ...accessErrors, notFound: `Site '${site}' not found`, fallback },
     }
   );
   printAccess(site, state);
@@ -128,19 +87,29 @@ export async function accessStatus(
   cliOptions: CliOptions = {}
 ): Promise<void> {
   const site = resolveSite(options.site);
-  printAccess(site, await getAccess(site, cliOptions));
+  await reportVisibility(site, cliOptions, {}, "Could not get site access");
 }
 
-export async function disableAccess(
-  options: DisableOptions,
-  cliOptions: CliOptions = {},
-  dependencies: DisableDependencies = { confirm }
+export async function makePrivate(
+  options: SiteOption,
+  cliOptions: CliOptions = {}
 ): Promise<void> {
   const site = resolveSite(options.site);
-  if (
-    !options.yes &&
-    !(await dependencies.confirm(`Make '${site}' public?`))
-  ) {
+  await reportVisibility(
+    site,
+    cliOptions,
+    { method: "PUT" },
+    "Could not make the site private"
+  );
+}
+
+export async function makePublic(
+  options: PublicOptions,
+  cliOptions: CliOptions = {},
+  dependencies: PublicDependencies = { confirm }
+): Promise<void> {
+  const site = resolveSite(options.site);
+  if (!options.yes && !(await dependencies.confirm(`Make '${site}' public?`))) {
     console.log("Aborted.");
     return;
   }
@@ -149,33 +118,35 @@ export async function disableAccess(
     errors: {
       ...accessErrors,
       notFound: `Site '${site}' not found`,
-      fallback: "Could not disable site access",
+      fallback: "Could not make the site public",
     },
   });
-  console.log(`${site}: public`);
+  printAccess(site, { private: false });
 }
 
-function collect(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
+const SITE_OPTION = "Site name (defaults to the current CNAME)";
 
 export function registerAccessCommand(program: Command): void {
-  const access = program.command("access").description("Manage site access");
+  const access = program
+    .command("access")
+    .description("Show or change who can view a site");
+  // Status is a default subcommand rather than an action on `access` itself:
+  // an option declared on the parent shadows the same option on every
+  // subcommand, so `access public --site x` would lose its site.
   access
-    .command("enable")
-    .description("Make a site or matching paths private")
-    .option("--site <site>", "Site name (defaults to the current CNAME)")
-    .option("--include <pattern>", "Path pattern to protect (repeatable)", collect, [])
-    .action((options: EnableOptions) => enableAccess(options, program.opts()));
-  access
-    .command("status")
-    .description("Show access settings")
-    .option("--site <site>", "Site name (defaults to the current CNAME)")
+    .command("status", { isDefault: true })
+    .description("Show who can view this site (default)")
+    .option("--site <site>", SITE_OPTION)
     .action((options: SiteOption) => accessStatus(options, program.opts()));
   access
-    .command("disable")
-    .description("Make a site public")
-    .option("--site <site>", "Site name (defaults to the current CNAME)")
+    .command("private")
+    .description("Let only the site owner view this site")
+    .option("--site <site>", SITE_OPTION)
+    .action((options: SiteOption) => makePrivate(options, program.opts()));
+  access
+    .command("public")
+    .description("Let anyone view this site")
+    .option("--site <site>", SITE_OPTION)
     .option("-y, --yes", "Skip confirmation prompt")
-    .action((options: DisableOptions) => disableAccess(options, program.opts()));
+    .action((options: PublicOptions) => makePublic(options, program.opts()));
 }

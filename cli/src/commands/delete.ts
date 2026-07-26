@@ -29,7 +29,7 @@ export async function deleteSite(
 
 export function registerDeleteCommand(program: Command) {
   program
-    .command("delete <subdomain>")
+    .command("delete <site>")
     .description("Delete a deployed site")
     .option("-y, --yes", "Skip confirmation prompt")
     .action((subdomain: string, options: { yes?: boolean }) =>

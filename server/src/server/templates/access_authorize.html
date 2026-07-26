@@ -1,17 +1,29 @@
-{% extends "base.html" %}
-
-{% block title %}Access - {{ hostname }}{% endblock %}
-
-{% block content %}
-<div class="mx-auto w-full max-w-2xl border-4 border-ink p-6 sm:p-8">
-    <p class="font-bold uppercase tracking-wide">Access control</p>
-    <h1 class="heading-l mt-3">Open {{ hostname }}?</h1>
-    <p class="mt-4 text-rule">Signed in as {{ user.github_login }}</p>
-    <form method="post" action="/access/authorize" class="mt-6">
-        <input type="hidden" name="site" value="{{ site }}">
-        <input type="hidden" name="host" value="{{ hostname }}">
-        <input type="hidden" name="path" value="{{ return_path }}">
-        <button class="btn" type="submit">Open site</button>
-    </form>
-</div>
-{% endblock %}
+{# Deliberately not extending base.html. This page exists for a few hundred
+   milliseconds while the form self-submits, so it renders one line rather than
+   painting the whole dashboard chrome only to tear it down. Minting the code is
+   a state change and has to happen on POST; the owner has no decision to make,
+   so the button is only the no-JavaScript path. #}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Opening {{ hostname }}</title>
+    <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+</head>
+<body>
+    <main class="grid min-h-screen place-items-center px-5">
+        <div class="text-center">
+            <p class="text-rule">Opening <span class="font-bold">{{ hostname }}</span></p>
+            <form method="post" action="/access/authorize" class="mt-4" id="authorize">
+                <input type="hidden" name="site" value="{{ site }}">
+                <input type="hidden" name="host" value="{{ hostname }}">
+                <input type="hidden" name="path" value="{{ return_path }}">
+                <noscript><button class="btn" type="submit">Continue</button></noscript>
+            </form>
+        </div>
+    </main>
+    <script>document.getElementById('authorize').submit();</script>
+</body>
+</html>
