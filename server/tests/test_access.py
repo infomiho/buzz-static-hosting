@@ -548,7 +548,6 @@ def test_failed_private_deploy_leaves_the_site_public(make_app, database, tmp_pa
     )
     assert response.status_code == 400
     assert client.get("/", headers=SITE_HOST).status_code == 200
-    assert client.get("/", headers=SITE_HOST).status_code == 200
 
 
 def test_deleted_site_stops_being_treated_as_private(make_app, database, tmp_path):
@@ -568,15 +567,10 @@ def test_deleted_site_stops_being_treated_as_private(make_app, database, tmp_pat
     assert client.get("/", headers=SITE_HOST).status_code == 200
 
 
-def test_visibility_discard_is_fenced_against_concurrent_writes(
-    make_app, database, tmp_path
-):
+def test_visibility_discard_is_fenced_against_concurrent_writes(make_app):
     """The interleaving delete_policy guards against, replayed
     deterministically: a stale discard must lose to a newer add."""
-    token = _session_token(database)
-    _create_site(database, tmp_path, token)
-    app = make_app()
-    access = app.state.access
+    access = make_app().state.access
     access.load_visibility()
 
     cache = access._visibility
