@@ -1,0 +1,15 @@
+{# Stroke weight matches Achroma's 2px borders so icons sit with the type. #}
+
+{% macro globe(size=18, classes="") -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 18 18" fill="none" aria-hidden="true" class="{{ classes }}">
+    <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="2"/>
+    <path d="M9 2c-2.2 2-2.2 12 0 14M9 2c2.2 2 2.2 12 0 14M2 9h14" stroke="currentColor" stroke-width="2"/>
+</svg>
+{%- endmacro %}
+
+{% macro lock(size=18, classes="") -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 18 18" fill="none" aria-hidden="true" class="{{ classes }}">
+    <rect x="3" y="8" width="12" height="8" stroke="currentColor" stroke-width="2"/>
+    <path d="M5.75 8V5.5a3.25 3.25 0 0 1 6.5 0V8" stroke="currentColor" stroke-width="2"/>
+</svg>
+{%- endmacro %}

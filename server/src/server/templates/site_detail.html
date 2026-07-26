@@ -7,6 +7,7 @@
 {% endblock %}
 
 {% block content %}
+{% import "_icons.html" as icons %}
 {% set file_count = files | selectattr('is_dir', 'false') | list | length %}
 <div class="flex flex-col gap-8">
     <!-- Back link -->
@@ -25,6 +26,38 @@
             </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
+            <div>
+                <button class="btn-sm-outline" id="visibility-trigger" popovertarget="visibility-popover"
+                        aria-label="Site visibility: {{ 'private' if access_policy else 'public' }}. Change it.">
+                    {% if access_policy %}{{ icons.lock() }}{% else %}{{ icons.globe() }}{% endif %}
+                    <span>{{ 'Private' if access_policy else 'Public' }}</span>
+                    <svg width="12" height="8" viewBox="0 0 12 8" aria-hidden="true" fill="none">
+                        <path d="M1 1.5 6 6.5 11 1.5" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </button>
+                <div popover id="visibility-popover" class="visibility-popover">
+                    <p class="border-b-2 border-ink px-5 py-3 font-bold">Who can view this site</p>
+                    <button type="button" class="menu-item visibility-option" data-private="false"
+                            {% if not access_policy %}aria-current="true"{% endif %}>
+                        <span class="flex items-center gap-3">
+                            {{ icons.globe(classes="shrink-0") }}
+                            Public
+                            <span class="visibility-check ml-auto" aria-hidden="true">&check;</span>
+                        </span>
+                        <span class="mt-1 block pl-[1.875rem] text-base font-normal text-rule">Anyone can view this site.</span>
+                    </button>
+                    <button type="button" class="menu-item visibility-option border-t-2 border-ink" data-private="true"
+                            {% if access_policy %}aria-current="true"{% endif %}>
+                        <span class="flex items-center gap-3">
+                            {{ icons.lock(classes="shrink-0") }}
+                            Private
+                            <span class="visibility-check ml-auto" aria-hidden="true">&check;</span>
+                        </span>
+                        <span class="mt-1 block pl-[1.875rem] text-base font-normal text-rule">Only you can view this site.</span>
+                    </button>
+                    <p class="hidden border-t-2 border-danger px-5 py-3 text-base text-danger-dark" id="visibility-error" role="alert"></p>
+                </div>
+            </div>
             <button class="btn-sm-outline" onclick="openDeployDialog('{{ site.name }}')">Redeploy</button>
         </div>
     </div>
@@ -437,6 +470,49 @@ function showClaimError(button, message) {
     error.classList.remove('hidden');
 }
 
+function initBuzzAccess() {
+    const trigger = document.getElementById('visibility-trigger');
+    const popover = document.getElementById('visibility-popover');
+    const error = document.getElementById('visibility-error');
+
+    // The popover lives in the top layer, so it cannot be positioned by an
+    // ancestor. Anchor it to the trigger in viewport coordinates. Pin the right
+    // edge rather than deriving a left offset: the popover has no width yet
+    // while beforetoggle runs.
+    popover.addEventListener('beforetoggle', (event) => {
+        if (event.newState !== 'open') return;
+        error.classList.add('hidden');
+        const box = trigger.getBoundingClientRect();
+        popover.style.top = (box.bottom + 8) + 'px';
+        popover.style.right = Math.max(8, document.documentElement.clientWidth - box.right) + 'px';
+    });
+
+    popover.querySelectorAll('.visibility-option').forEach(option => {
+        option.addEventListener('click', async () => {
+            const wantsPrivate = option.dataset.private === 'true';
+            if (option.getAttribute('aria-current') === 'true') {
+                popover.hidePopover();
+                return;
+            }
+            popover.querySelectorAll('.visibility-option').forEach(o => o.disabled = true);
+            try {
+                const response = await fetch('/sites/' + encodeURIComponent(SITE_NAME) + '/access', {
+                    method: wantsPrivate ? 'PUT' : 'DELETE',
+                });
+                if (!response.ok) {
+                    const body = await response.json().catch(() => ({}));
+                    throw new Error(body.detail || 'Buzz could not change who can view this site.');
+                }
+                location.reload();
+            } catch (failure) {
+                error.textContent = failure.message;
+                error.classList.remove('hidden');
+                popover.querySelectorAll('.visibility-option').forEach(o => o.disabled = false);
+            }
+        });
+    });
+}
+
 function initCustomDomains() {
     document.querySelectorAll('.copy-domain-value').forEach(button => {
         button.addEventListener('click', () => copyDomainValue(button));
@@ -754,6 +830,7 @@ document.getElementById('confirm-delete-site').addEventListener('click', async f
 document.addEventListener('DOMContentLoaded', () => {
     initDeployedAt();
     initRelativeTimes();
+    initBuzzAccess();
     initCustomDomains();
     loadAnalytics();
     initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown', loadSearchTerms);

@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .auth_service import AccessDenied, AuthService, Identity, User
-from .cookies import COOKIE_NAME
+from .auth_service import DEV_SESSION_ID, AccessDenied, AuthService, Identity, User
+from .cookies import session_cookie_name
 from .db import Database
 from .device_authorization import DeviceAuthorizationService
 from .github_login import GitHubDeviceFlow
@@ -63,12 +63,16 @@ def get_identity(
     authorization: str | None = Header(default=None, include_in_schema=False),
 ) -> Identity | None:
     if settings.dev_mode:
-        return Identity(user=User(id=1, github_login="dev", github_name="Dev User"), token_type="session")
+        return Identity(
+            user=User(id=1, github_login="dev", github_name="Dev User"),
+            token_type="session",
+            session_id=DEV_SESSION_ID,
+        )
 
     if authorization:
         return auth.authenticate(authorization)
 
-    cookie_token = request.cookies.get(COOKIE_NAME)
+    cookie_token = request.cookies.get(session_cookie_name(not settings.dev_mode))
     if cookie_token:
         try:
             return auth.authenticate(f"Bearer {cookie_token}")

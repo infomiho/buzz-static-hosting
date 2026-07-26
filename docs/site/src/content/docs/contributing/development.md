@@ -53,7 +53,7 @@ Create a small site outside the CLI build directory:
 ```bash
 mkdir -p /tmp/buzz-site
 printf '<h1>Buzz development site</h1>\n' > /tmp/buzz-site/index.html
-buzz --server http://localhost:8080 --token dev deploy /tmp/buzz-site --subdomain my-site
+buzz --server http://localhost:8080 --token dev deploy /tmp/buzz-site --site my-site
 ```
 
 The explicit server and token options avoid saved CLI configuration. Development mode bypasses server authentication, but the CLI still requires a non-empty token before deployment.

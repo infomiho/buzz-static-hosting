@@ -12,16 +12,12 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 
 - [`buzz deploy`](#buzz-deploy): Deploy a directory to the server
 - [`buzz list`](#buzz-list): List sites owned by the signed-in user
-- [`buzz delete`](#buzz-delete): Delete a deployed site
-- [`buzz config`](#buzz-config): View or set configuration (server)
 - [`buzz url`](#buzz-url): Show the URL for the current directory
-- [`buzz login`](#buzz-login): Sign in via your browser
-- [`buzz logout`](#buzz-logout): Sign out and clear the stored session
-- [`buzz whoami`](#buzz-whoami): Show the current signed-in user
-- [`buzz tokens`](#buzz-tokens): Manage deployment tokens
-- [`buzz tokens list`](#buzz-tokens-list): List your deployment tokens
-- [`buzz tokens create`](#buzz-tokens-create): Create a deployment token for a site
-- [`buzz tokens delete`](#buzz-tokens-delete): Delete a deployment token
+- [`buzz delete`](#buzz-delete): Delete a deployed site
+- [`buzz access`](#buzz-access): Show or change who can view a site
+- [`buzz access status`](#buzz-access-status): Show who can view this site (default)
+- [`buzz access private`](#buzz-access-private): Let only the site owner view this site
+- [`buzz access public`](#buzz-access-public): Let anyone view this site
 - [`buzz domains`](#buzz-domains): Manage custom domains
 - [`buzz domains list`](#buzz-domains-list): List custom domains and lifecycle status
 - [`buzz domains add`](#buzz-domains-add): Attach a custom domain to a site
@@ -29,6 +25,14 @@ Use this reference to check command syntax and options. Start with [Deploy Your 
 - [`buzz domains retry`](#buzz-domains-retry): Retry a failed connection transition
 - [`buzz domains cancel-transition`](#buzz-domains-cancel-transition): Cancel an active connection transition
 - [`buzz domains remove`](#buzz-domains-remove): Remove a custom domain without changing DNS records
+- [`buzz tokens`](#buzz-tokens): Manage deployment tokens
+- [`buzz tokens list`](#buzz-tokens-list): List your deployment tokens
+- [`buzz tokens create`](#buzz-tokens-create): Create a deployment token for a site
+- [`buzz tokens delete`](#buzz-tokens-delete): Delete a deployment token
+- [`buzz login`](#buzz-login): Sign in via your browser
+- [`buzz logout`](#buzz-logout): Sign out and clear the stored session
+- [`buzz whoami`](#buzz-whoami): Show the current signed-in user
+- [`buzz config`](#buzz-config): View or set configuration (server)
 
 ## buzz
 
@@ -43,17 +47,26 @@ Options:
   -t, --token <token>           Session or deployment token (overrides config)
   -h, --help                    display help for command
 
-Commands:
+Sites:
   deploy [options] <directory>  Deploy a directory to the server
   list                          List sites owned by the signed-in user
-  delete [options] <subdomain>  Delete a deployed site
-  config [key] [value]          View or set configuration (server)
   url                           Show the URL for the current directory
+  delete [options] <site>       Delete a deployed site
+
+Site settings:
+  access                        Show or change who can view a site
+  domains                       Manage custom domains
+
+Automation:
+  tokens                        Manage deployment tokens
+
+Account:
   login                         Sign in via your browser
   logout                        Sign out and clear the stored session
   whoami                        Show the current signed-in user
-  tokens                        Manage deployment tokens
-  domains                       Manage custom domains
+  config [key] [value]          View or set configuration (server)
+
+Commands:
   help [command]                display help for command
 ```
 
@@ -65,8 +78,9 @@ Usage: buzz deploy [options] <directory>
 Deploy a directory to the server
 
 Options:
-  --subdomain <name>  Site name to use as the subdomain
-  -h, --help          display help for command
+  --site <name>  Site name to create or replace
+  --private      Publish the site so only you can view it
+  -h, --help     display help for command
 ```
 
 ## buzz list
@@ -75,29 +89,6 @@ Options:
 Usage: buzz list [options]
 
 List sites owned by the signed-in user
-
-Options:
-  -h, --help  display help for command
-```
-
-## buzz delete
-
-```text
-Usage: buzz delete [options] <subdomain>
-
-Delete a deployed site
-
-Options:
-  -y, --yes   Skip confirmation prompt
-  -h, --help  display help for command
-```
-
-## buzz config
-
-```text
-Usage: buzz config [options] [key] [value]
-
-View or set configuration (server)
 
 Options:
   -h, --help  display help for command
@@ -114,88 +105,70 @@ Options:
   -h, --help  display help for command
 ```
 
-## buzz login
+## buzz delete
 
 ```text
-Usage: buzz login [options]
+Usage: buzz delete [options] <site>
 
-Sign in via your browser
+Delete a deployed site
 
 Options:
+  -y, --yes   Skip confirmation prompt
   -h, --help  display help for command
 ```
 
-## buzz logout
+## buzz access
 
 ```text
-Usage: buzz logout [options]
+Usage: buzz access [options] [command]
 
-Sign out and clear the stored session
-
-Options:
-  -h, --help  display help for command
-```
-
-## buzz whoami
-
-```text
-Usage: buzz whoami [options]
-
-Show the current signed-in user
+Show or change who can view a site
 
 Options:
-  -h, --help  display help for command
-```
-
-## buzz tokens
-
-```text
-Usage: buzz tokens [options] [command]
-
-Manage deployment tokens
-
-Options:
-  -h, --help               display help for command
+  -h, --help         display help for command
 
 Commands:
-  list                     List your deployment tokens
-  create [options] <site>  Create a deployment token for a site
-  delete <token-id>        Delete a deployment token
-  help [command]           display help for command
+  status [options]   Show who can view this site (default)
+  private [options]  Let only the site owner view this site
+  public [options]   Let anyone view this site
+  help [command]     display help for command
 ```
 
-## buzz tokens list
+## buzz access status
 
 ```text
-Usage: buzz tokens list [options]
+Usage: buzz access status [options]
 
-List your deployment tokens
+Show who can view this site (default)
 
 Options:
-  -h, --help  display help for command
+  --site <site>  Site name (defaults to the current CNAME)
+  -h, --help     display help for command
 ```
 
-## buzz tokens create
+## buzz access private
 
 ```text
-Usage: buzz tokens create [options] <site>
+Usage: buzz access private [options]
 
-Create a deployment token for a site
+Let only the site owner view this site
 
 Options:
-  -n, --name <name>  Token name (for identification)
-  -h, --help         display help for command
+  --site <site>  Site name (defaults to the current CNAME)
+  -h, --help     display help for command
 ```
 
-## buzz tokens delete
+## buzz access public
 
 ```text
-Usage: buzz tokens delete [options] <token-id>
+Usage: buzz access public [options]
 
-Delete a deployment token
+Let anyone view this site
 
 Options:
-  -h, --help  display help for command
+  --site <site>  Site name (defaults to the current CNAME)
+  -y, --yes      Skip confirmation prompt
+  -h, --help     display help for command
 ```
 
 ## buzz domains
@@ -284,5 +257,100 @@ Remove a custom domain without changing DNS records
 
 Options:
   -y, --yes   Skip confirmation prompt
+  -h, --help  display help for command
+```
+
+## buzz tokens
+
+```text
+Usage: buzz tokens [options] [command]
+
+Manage deployment tokens
+
+Options:
+  -h, --help               display help for command
+
+Commands:
+  list                     List your deployment tokens
+  create [options] <site>  Create a deployment token for a site
+  delete <token-id>        Delete a deployment token
+  help [command]           display help for command
+```
+
+## buzz tokens list
+
+```text
+Usage: buzz tokens list [options]
+
+List your deployment tokens
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz tokens create
+
+```text
+Usage: buzz tokens create [options] <site>
+
+Create a deployment token for a site
+
+Options:
+  -n, --name <name>  Token name (for identification)
+  -h, --help         display help for command
+```
+
+## buzz tokens delete
+
+```text
+Usage: buzz tokens delete [options] <token-id>
+
+Delete a deployment token
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz login
+
+```text
+Usage: buzz login [options]
+
+Sign in via your browser
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz logout
+
+```text
+Usage: buzz logout [options]
+
+Sign out and clear the stored session
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz whoami
+
+```text
+Usage: buzz whoami [options]
+
+Show the current signed-in user
+
+Options:
+  -h, --help  display help for command
+```
+
+## buzz config
+
+```text
+Usage: buzz config [options] [key] [value]
+
+View or set configuration (server)
+
+Options:
   -h, --help  display help for command
 ```

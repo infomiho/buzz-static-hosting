@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Continuing...</title></head>
+<body>
+    <form id="handoff" method="post" action="{{ callback }}">
+        <input type="hidden" name="code" value="{{ code }}">
+        <noscript><button type="submit">Continue</button></noscript>
+    </form>
+    <script>document.getElementById('handoff').submit();</script>
+</body>
+</html>

@@ -11,6 +11,7 @@ def test_openapi_contains_only_public_api_paths():
         "/deploy",
         "/sites",
         "/sites/{name}",
+        "/sites/{site_name}/access",
         "/capabilities/custom-domains",
         "/sites/{site_name}/domains",
         "/sites/{site_name}/domains/{claim_id}/check",
@@ -38,6 +39,9 @@ def test_openapi_uses_stable_unique_operation_ids():
         "deploySite",
         "listSites",
         "deleteSite",
+        "getSiteAccess",
+        "makeSitePrivate",
+        "makeSitePublic",
         "getCustomDomainCapability",
         "listDomainClaims",
         "createDomainClaim",
@@ -74,10 +78,11 @@ def test_openapi_documents_deployment_upload():
     assert file_schema["type"] == "string"
     assert file_schema["format"] == "binary"
     headers = {parameter["name"] for parameter in operation["parameters"]}
-    assert headers == {"x-subdomain"}
+    assert headers == {"x-buzz-site", "x-buzz-access"}
     assert set(schema["components"]["schemas"]["DeploymentResponse"]["required"]) == {
         "name",
         "url",
+        "private",
     }
 
 

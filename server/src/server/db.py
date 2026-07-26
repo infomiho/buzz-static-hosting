@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Generator
 
+from .access.schema import _buzz_access, _buzz_access_site_level
 from .analytics import init_analytics_schema
 from .custom_domains.schema import (
+    _automatic_domain_transitions,
+    _automatic_transition_retarget,
+    _cloudflare_activation,
+    _cloudflare_diagnostics,
+    _custom_domain_activation,
     _custom_domain_claims,
     _custom_domain_routing,
-    _custom_domain_activation,
-    _multiple_custom_domains,
-    _cloudflare_diagnostics,
-    _cloudflare_activation,
-    _automatic_domain_transitions,
-    _transition_target_ttl,
     _domain_path_evidence,
-    _automatic_transition_retarget,
+    _multiple_custom_domains,
+    _transition_target_ttl,
 )
 
 Migration = Callable[[sqlite3.Connection], None]
@@ -96,12 +98,47 @@ MIGRATIONS: tuple[Migration, ...] = (
     _domain_path_evidence,
     _automatic_transition_retarget,
     _webauthn_credentials,
+    _buzz_access,
+    _buzz_access_site_level,
 )
+
+
+class ReadConnection:
+    """A long-lived connection for hot-path reads, shared across threads.
+
+    Opened on first borrow and reused for the process lifetime, so callers
+    skip the per-connect schema parse that dominates a fresh connection.
+    borrow() serializes access; hold it only for the duration of the queries.
+    """
+
+    def __init__(self, path: Path):
+        self._path = path
+        self._lock = threading.Lock()
+        self._conn: sqlite3.Connection | None = None
+
+    @contextmanager
+    def borrow(self) -> Generator[sqlite3.Connection, None, None]:
+        with self._lock:
+            if self._conn is None:
+                conn = sqlite3.connect(self._path, check_same_thread=False)
+                _configure_connection(conn)
+                conn.row_factory = sqlite3.Row
+                self._conn = conn
+            yield self._conn
+
+    def close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
 
 class Database:
     def __init__(self, path: Path):
         self._path = path
+
+    def reader(self) -> ReadConnection:
+        return ReadConnection(self._path)
 
     def init(self) -> None:
         conn = sqlite3.connect(self._path)

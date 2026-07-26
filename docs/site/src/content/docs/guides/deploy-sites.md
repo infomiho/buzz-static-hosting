@@ -27,7 +27,7 @@ Keep `index.html` at the root of `./dist` when it should serve at the root site 
 Deploy the new build with the same site name:
 
 ```bash
-buzz deploy ./dist --subdomain my-site
+buzz deploy ./dist --site my-site
 ```
 
 A successful redeployment replaces the complete previous file set. Files omitted from the new build are removed from the hosted site. If validation or publishing fails, Buzz leaves the previous deployment in place.

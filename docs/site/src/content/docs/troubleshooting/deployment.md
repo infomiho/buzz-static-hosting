@@ -26,7 +26,7 @@ Buzz deploys a directory, not your source project. Run the project build, then v
 ```bash
 npm run build
 test -f ./dist/index.html
-buzz deploy ./dist --subdomain my-site
+buzz deploy ./dist --site my-site
 ```
 
 If the build writes elsewhere, pass that directory instead of `./dist`.
@@ -83,7 +83,7 @@ If the old site is unavailable or the server reports an internal error, stop ret
 
 1. Check the site URL printed by `buzz deploy` and confirm it names the intended site.
 2. Inspect `CNAME` in the current working directory and in the deployment directory. The current working directory takes precedence.
-3. Pass `--subdomain my-site` when you need to override either file.
+3. Pass `--site my-site` when you need to override either file.
 4. Confirm the deployed directory contains `index.html` at its root.
 5. Check that the CLI uploaded the build output, such as `./dist`, rather than the source directory.
 6. Remove stale local build output, rebuild, and redeploy.

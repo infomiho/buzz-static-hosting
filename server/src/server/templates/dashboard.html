@@ -3,6 +3,9 @@
 {% block title %}Buzz - Dashboard{% endblock %}
 
 {% block content %}
+{% if not has_sites %}
+{% include "_first_run.html" %}
+{% else %}
 <div class="flex flex-col gap-10">
     <div>
         <h1 class="heading-xl">Welcome back, {{ user.github_name or user.github_login }}</h1>
@@ -50,6 +53,7 @@
         </section>
     </div>
 </div>
+{% endif %}
 
 {% include "_deploy_modal.html" %}
 
@@ -113,14 +117,14 @@ async function loadSites() {
         document.getElementById('stat-size').textContent = formatSize(totalBytes);
 
         if (sites.length === 0) {
-            const cta = '<button type="button" class="btn mt-3" data-deploy-new>Deploy your first site</button>';
-            container.innerHTML = emptyState('No sites yet', 'Deploy a folder, an HTML file, or a ZIP from the browser. The CLI works too.', cta);
-            container.querySelectorAll('[data-deploy-new]').forEach(b => b.addEventListener('click', () => openDeployDialog()));
+            // Deleting the last site leaves this card rendered; a reload lands
+            // on the first-run screen, which owns the empty-account experience.
+            container.innerHTML = emptyState('No sites yet', 'Reload to see how to deploy one.');
             return;
         }
 
         let html = '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-        html += '<th>Name</th><th>Last deployed</th><th>Total Views</th><th class="text-right">Actions</th>';
+        html += '<th>Name</th><th>Visibility</th><th>Last deployed</th><th>Total Views</th><th class="text-right">Actions</th>';
         html += '</tr></thead><tbody>';
 
         for (const site of sites) {
@@ -128,6 +132,7 @@ async function loadSites() {
             const name = esc(site.name);
             html += '<tr>';
             html += '<td><a href="/dashboard/sites/' + encodeURIComponent(site.name) + '" class="link">' + name + '</a></td>';
+            html += '<td>' + visibilityBadge(Boolean(site.private)) + '</td>';
             html += '<td class="text-rule">' + timeAgo(site.created) + '</td>';
             html += '<td class="tabular-nums text-rule">' + (site.total_views || 0).toLocaleString() + '</td>';
             html += '<td class="text-right"><a href="' + esc(url) + '" target="_blank" class="btn-sm-outline">View live</a></td>';
@@ -198,7 +203,28 @@ async function loadTokens() {
 
 window.onDeploySuccess = function() { loadSites(); };
 
-loadSites();
-loadTokens();
+/* -- First run -- */
+
+
+function initFirstRun() {
+    const deployButton = document.getElementById('first-run-deploy');
+    if (!deployButton) return;
+
+    deployButton.addEventListener('click', () => openDeployDialog());
+
+    // Reload on close rather than on success: the dialog shows the new site's
+    // URL in its success state, and reloading would destroy it unread.
+    let deployed = false;
+    window.onDeploySuccess = function() { deployed = true; };
+    document.getElementById('deploy-dialog').addEventListener('close', () => {
+        if (deployed) location.reload();
+    });
+}
+
+if (document.getElementById('sites-container')) {
+    loadSites();
+    loadTokens();
+}
+initFirstRun();
 </script>
 {% endblock %}

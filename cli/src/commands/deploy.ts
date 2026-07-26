@@ -8,7 +8,8 @@ import { resolveSubdomain, packSite, uploadSite } from "../deploy.js";
 export async function deploy(
   directory: string,
   subdomain: string | undefined,
-  cliOptions: CliOptions = {}
+  cliOptions: CliOptions = {},
+  makePrivate = false
 ) {
   const options = getOptions(cliOptions);
 
@@ -44,9 +45,18 @@ export async function deploy(
   uploadSpinner.start();
 
   try {
-    const result = await uploadSite(options.server, options.token, zipBuffer, subdomain);
+    const result = await uploadSite(
+      options.server,
+      options.token,
+      zipBuffer,
+      subdomain,
+      globalThis.fetch,
+      makePrivate
+    );
     uploadSpinner.stop("✓ Uploaded");
-    console.log(`Deployed to ${result.url}`);
+    console.log(
+      `Deployed to ${result.url} (${result.private ? "private" : "public"})`
+    );
     writeFileSync(join(process.cwd(), "CNAME"), result.subdomain + "\n");
   } catch (error) {
     uploadSpinner.stop("✗ Upload failed");
@@ -58,8 +68,10 @@ export function registerDeployCommand(program: Command) {
   program
     .command("deploy <directory>")
     .description("Deploy a directory to the server")
-    .option("--subdomain <name>", "Site name to use as the subdomain")
-    .action((directory: string, cmdOptions: { subdomain?: string }) =>
-      deploy(directory, cmdOptions.subdomain, program.opts())
+    .option("--site <name>", "Site name to create or replace")
+    .option("--private", "Publish the site so only you can view it")
+    .action(
+      (directory: string, cmdOptions: { site?: string; private?: boolean }) =>
+        deploy(directory, cmdOptions.site, program.opts(), cmdOptions.private)
     );
 }

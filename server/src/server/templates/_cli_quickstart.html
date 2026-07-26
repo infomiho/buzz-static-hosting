@@ -1,0 +1,14 @@
+{# The four commands that take someone from nothing to a live site. Shared by
+   the sign-in page and the first-run dashboard so the two cannot drift. Both
+   need `server_url` in context. #}
+<div class="flex flex-col gap-3">
+<pre class="overflow-x-auto border-2 border-ink bg-mist px-3 py-2 font-mono text-base"><code>npm i -g @infomiho/buzz-cli
+buzz config server {{ server_url }}
+buzz login
+buzz deploy ./dist</code></pre>
+    <p class="text-rule">
+        Needs Node.js 22 or later.
+        <a class="link" href="https://buzzstatic.dev/reference/cli/#buzz-deploy"
+           target="_blank" rel="noopener">CLI options (opens in new tab)</a>
+    </p>
+</div>

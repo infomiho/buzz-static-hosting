@@ -1,13 +1,21 @@
+from collections.abc import Callable
 from typing import Annotated, BinaryIO
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
+from ..access import AccessService
 from ..analytics import AnalyticsStore
 from ..api_models import DeploymentResponse, ErrorResponse, SiteResponse
 from ..db import Database
-from ..dependencies import Identity, get_database, get_settings, require_user, require_identity
+from ..dependencies import (
+    Identity,
+    get_database,
+    get_settings,
+    require_identity,
+    require_user,
+)
 from ..exceptions import BadRequest, Forbidden, PayloadTooLarge
 from ..settings import Settings
 from ..site_path import InvalidSubdomain, validated_subdomain
@@ -21,7 +29,7 @@ def validate_subdomain(subdomain: str) -> str:
     try:
         return validated_subdomain(subdomain)
     except InvalidSubdomain:
-        raise BadRequest("Invalid subdomain")
+        raise BadRequest("Invalid site name")
 
 
 def build_site_url(subdomain: str, domain: str | None, fallback_port: int) -> str:
@@ -40,11 +48,16 @@ def _deployment_limits(settings: Settings) -> DeploymentLimits:
 
 
 def _deploy_site(
-    database: Database, settings: Settings, subdomain: str, archive: BinaryIO, owner_id: int
+    database: Database,
+    settings: Settings,
+    subdomain: str,
+    archive: BinaryIO,
+    owner_id: int,
+    configure: Callable | None,
 ) -> SiteRecord:
     with database.connect() as conn:
         store = SiteStore(conn, settings.sites_dir, _deployment_limits(settings))
-        return store.deploy(subdomain, archive, owner_id)
+        return store.deploy(subdomain, archive, owner_id, configure)
 
 
 def _delete_site(database: Database, settings: Settings, name: str, owner_id: int) -> None:
@@ -59,7 +72,7 @@ def _delete_site(database: Database, settings: Settings, name: str, owner_id: in
     summary="Deploy a site",
     description=(
         "Upload a ZIP archive to create or replace a site. A deployment token may "
-        "deploy only to its assigned site and must send that name in X-Subdomain."
+        "deploy only to its assigned site and must send that name in X-Buzz-Site."
     ),
     responses={
         400: {
@@ -102,16 +115,36 @@ async def deploy(
     database: Annotated[Database, Depends(get_database)],
     settings: Annotated[Settings, Depends(get_settings)],
     identity: Identity = Depends(require_identity),
-    x_subdomain: str | None = Header(
+    x_buzz_site: str | None = Header(
         default=None,
         description="Site name to create or replace. Buzz generates a name when omitted.",
     ),
+    x_subdomain: str | None = Header(default=None, include_in_schema=False),
+    x_buzz_access: str | None = Header(
+        default=None,
+        description="Set to 'private' to publish the site and protect it atomically.",
+    ),
 ):
-    subdomain = validate_subdomain(x_subdomain) if x_subdomain else generate_subdomain()
+    # Rejected rather than ignored: an unrecognised name header would otherwise
+    # fall through to generate_subdomain() and silently publish to a new random
+    # site, reporting success while the intended site went untouched.
+    if x_subdomain is not None:
+        raise BadRequest(
+            "X-Subdomain was replaced by X-Buzz-Site. Upgrade the Buzz CLI "
+            "(npm i -g @infomiho/buzz-cli) or send X-Buzz-Site instead."
+        )
+    subdomain = validate_subdomain(x_buzz_site) if x_buzz_site else generate_subdomain()
     if not identity.can_deploy_to(subdomain):
         raise Forbidden(
             f"Deploy token is scoped to site '{identity.site_name}', cannot deploy to '{subdomain}'"
         )
+    make_private = False
+    if x_buzz_access is not None:
+        if identity.token_type != "session":
+            raise Forbidden("Deployment tokens cannot manage access")
+        if x_buzz_access != "private":
+            raise BadRequest("X-Buzz-Access must be 'private'")
+        make_private = True
 
     async with request.form(max_files=1, max_fields=1) as form:
         file = form.get("file")
@@ -123,13 +156,32 @@ async def deploy(
             )
 
         await file.seek(0)
-        record = await run_in_threadpool(
-            _deploy_site, database, settings, subdomain, file.file, identity.user.id
+        configure = (
+            request.app.state.access.begin_private_publication(
+                subdomain, identity.user.id
+            )
+            if make_private
+            else None
         )
+        record = await run_in_threadpool(
+            _deploy_site,
+            database,
+            settings,
+            subdomain,
+            file.file,
+            identity.user.id,
+            configure,
+        )
+
+    # Report the site's actual visibility, not the flag that was passed: a
+    # redeploy of an already-private site must still say so.
+    with database.connect() as conn:
+        private = bool(AccessService.private_site_names_on_connection(conn, [record.name]))
 
     return {
         "name": record.name,
         "url": build_site_url(record.name, settings.domain, request.url.port or 8080),
+        "private": private,
     }
 
 
@@ -151,13 +203,16 @@ async def list_sites(
     with database.connect() as conn:
         store = SiteStore(conn, settings.sites_dir)
         sites = store.list_for_owner(identity.user.id)
-        views_by_site = AnalyticsStore(conn).total_views_by_site([site.name for site in sites])
+        names = [site.name for site in sites]
+        views_by_site = AnalyticsStore(conn).total_views_by_site(names)
+        private_names = AccessService.private_site_names_on_connection(conn, names)
     return [
         {
             "name": site.name,
             "created": site.created_at,
             "size_bytes": site.size_bytes,
             "total_views": views_by_site[site.name],
+            "private": site.name in private_names,
         }
         for site in sites
     ]

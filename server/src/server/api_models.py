@@ -46,6 +46,7 @@ class LogoutResponse(BaseModel):
 class DeploymentResponse(BaseModel):
     name: str
     url: str
+    private: bool
 
 
 class SiteResponse(BaseModel):
@@ -53,6 +54,11 @@ class SiteResponse(BaseModel):
     created: str
     size_bytes: int | None
     total_views: int
+    private: bool
+
+
+class SiteAccessResponse(BaseModel):
+    private: bool
 
 
 class CreateDomainClaimRequest(BaseModel):

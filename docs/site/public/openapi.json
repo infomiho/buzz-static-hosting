@@ -431,6 +431,10 @@
             "title": "Name",
             "type": "string"
           },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -438,7 +442,8 @@
         },
         "required": [
           "name",
-          "url"
+          "url",
+          "private"
         ],
         "title": "DeploymentResponse",
         "type": "object"
@@ -993,6 +998,19 @@
         "title": "LogoutResponse",
         "type": "object"
       },
+      "SiteAccessResponse": {
+        "properties": {
+          "private": {
+            "title": "Private",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "private"
+        ],
+        "title": "SiteAccessResponse",
+        "type": "object"
+      },
       "SiteResponse": {
         "properties": {
           "created": {
@@ -1002,6 +1020,10 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
           },
           "size_bytes": {
             "anyOf": [
@@ -1023,7 +1045,8 @@
           "name",
           "created",
           "size_bytes",
-          "total_views"
+          "total_views",
+          "private"
         ],
         "title": "SiteResponse",
         "type": "object"
@@ -1327,13 +1350,13 @@
     },
     "/deploy": {
       "post": {
-        "description": "Upload a ZIP archive to create or replace a site. A deployment token may deploy only to its assigned site and must send that name in X-Subdomain.",
+        "description": "Upload a ZIP archive to create or replace a site. A deployment token may deploy only to its assigned site and must send that name in X-Buzz-Site.",
         "operationId": "deploySite",
         "parameters": [
           {
             "description": "Site name to create or replace. Buzz generates a name when omitted.",
             "in": "header",
-            "name": "x-subdomain",
+            "name": "x-buzz-site",
             "required": false,
             "schema": {
               "anyOf": [
@@ -1345,7 +1368,25 @@
                 }
               ],
               "description": "Site name to create or replace. Buzz generates a name when omitted.",
-              "title": "X-Subdomain"
+              "title": "X-Buzz-Site"
+            }
+          },
+          {
+            "description": "Set to 'private' to publish the site and protect it atomically.",
+            "in": "header",
+            "name": "x-buzz-access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Set to 'private' to publish the site and protect it atomically.",
+              "title": "X-Buzz-Access"
             }
           }
         ],
@@ -1600,6 +1641,136 @@
         "summary": "Delete a site",
         "tags": [
           "Sites"
+        ]
+      }
+    },
+    "/sites/{site_name}/access": {
+      "delete": {
+        "operationId": "makeSitePublic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Make a site public",
+        "tags": [
+          "Access"
+        ]
+      },
+      "get": {
+        "operationId": "getSiteAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get site visibility",
+        "tags": [
+          "Access"
+        ]
+      },
+      "put": {
+        "operationId": "makeSitePrivate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Make a site private",
+        "tags": [
+          "Access"
         ]
       }
     },
@@ -2368,6 +2539,10 @@
     {
       "description": "Site-scoped credentials for automated deployment.",
       "name": "Deployment Tokens"
+    },
+    {
+      "description": "Owner-only protection for hosted sites.",
+      "name": "Access"
     },
     {
       "description": "Server health.",

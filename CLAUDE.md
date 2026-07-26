@@ -5,9 +5,11 @@ Self-hosted static site hosting with CLI deployment.
 ## Project Structure
 
 - `server/` - Python 3.12+ FastAPI server, dependencies managed with uv. Jinja2 templates (`src/server/templates/`) use the Achroma visual system; `src/server/static/` holds built CSS/JS assets (Tailwind, built via the server's `package.json`). Custom-domain logic lives in the `src/server/custom_domains/` internal package: `CustomDomainsRuntime` owns wiring, the reconcile loop, startup guards, and capabilities; `ClaimView` is the single claim read interface; the package ships its own schema (`schema.py`) and errors. The host imports only names re-exported from the package root; the claim state machine and other collaborators are internal.
-- `cli/` - TypeScript CLI (Commander.js + Archiver), published to npm as `buzz-cli`.
-- `docs/site/` - Starlight docs site. `reference/configuration.md`, `server/.env.example`, and `public/openapi.json` are generated from `server/src/server/environment.py` via `npm run generate:server` in `docs/site`; the Docs CI job fails if they are stale.
+- `cli/` - TypeScript CLI (Commander.js + Archiver), published to npm as `@infomiho/buzz-cli`.
+- `docs/site/` - Starlight docs site. `reference/configuration.md`, `server/.env.example`, and `public/openapi.json` are generated from `server/src/server/environment.py`, the single source of truth for environment variables, via `npm run generate:server` in `docs/site`. `reference/cli/index.md` is generated from the Commander definitions via `npm run generate:cli`. The Docs CI job fails if either is stale.
 - `docs/agents/` - instructions for agent skills.
+
+Access is the owner-only protection layer for hosted sites. A site is either public or private; a private site is readable only by its owner, across every path and asset. Policies persist independently of deployments. `AccessService.check_request` takes no request path by design: the static resolver serves one file under several URLs (`<path>.html`, `<path>/index.html`, the `200.html` catch-all), so any path-derived decision can disagree with the file served. The control-host Buzz session authorizes a short-lived, single-use handoff to a separate host-only Access grant; dashboard cookies are never shared with hosted sites. `buzz access` reports and changes visibility; `buzz deploy --private` publishes and protects atomically. Deployment tokens cannot change Access. Serving consults an in-process visibility cache so public sites skip the database entirely; sites that may be protected get the full check on a long-lived reader connection off the event loop. The cache assumes a single process with every visibility write funnelled through the one `AccessService` instance.
 
 ## Server
 
@@ -27,8 +29,6 @@ cd server
 uv run pytest tests/ -v
 ```
 
-Environment variables are defined in `server/src/server/environment.py`. It is the single source of truth; the config reference, `.env.example`, and OpenAPI schema are generated from it.
-
 ## CLI
 
 Build and test:
@@ -41,7 +41,7 @@ npm test
 
 `npm link` installs it globally for development.
 
-Commands: `deploy`, `list`, `delete`, `url`, `config`, `login`, `logout`, `whoami`, `tokens`, `domains`. Config lives at `~/.buzz.config.json`; the per-project subdomain in a `CNAME` file. Custom domains do not change the canonical deployment identity or local `CNAME`.
+Commands: `deploy`, `list`, `delete`, `url`, `config`, `login`, `logout`, `whoami`, `tokens`, `domains`, `access`. Config lives at `~/.buzz.config.json`; the per-project site name in a `CNAME` file. Custom domains do not change the canonical deployment identity or local `CNAME`.
 
 ## Deployment
 
@@ -63,7 +63,7 @@ Staging and production custom-domain ACME resolvers need separate storage files.
 
 ## Releasing
 
-Release Please versions only the CLI (`buzz-cli` npm package); server changes ship via the Coolify auto-deploy and produce no release PR. Use conventional commits on `main`: `fix:` patch, `feat:` minor, `feat!:` major. Merging the bot's release PR publishes to npm via OIDC trusted publishing.
+Release Please versions only the CLI (`@infomiho/buzz-cli` npm package); server changes ship via the Coolify auto-deploy and produce no release PR. Use conventional commits on `main`: `fix:` patch, `feat:` minor, `feat!:` minor while the CLI is pre-1.0. `bump-minor-pre-major` keeps breaking changes off 1.0.0; without it Release Please promotes the first `feat!:` straight to 1.0.0. Merging the bot's release PR publishes to npm via OIDC trusted publishing.
 
 ## Agent skills
 

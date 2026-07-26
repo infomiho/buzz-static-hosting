@@ -49,37 +49,7 @@
     <!-- CLI instructions -->
     <div>
         <h2 class="heading-m">Or use the CLI</h2>
-        <ol class="mt-5 divide-y-2 divide-ink border-y-2 border-ink">
-            <li class="flex gap-4 py-5">
-                <span class="text-xl font-bold">1.</span>
-                <div class="min-w-0 flex-1">
-                    <h3 class="font-bold">Install the CLI</h3>
-                    <pre class="mt-2 overflow-x-auto border-2 border-ink bg-mist px-3 py-2 font-mono"><code>npm i -g @infomiho/buzz-cli</code></pre>
-                </div>
-            </li>
-            <li class="flex gap-4 py-5">
-                <span class="text-xl font-bold">2.</span>
-                <div class="min-w-0 flex-1">
-                    <h3 class="font-bold">Connect to this server</h3>
-                    <pre class="mt-2 overflow-x-auto border-2 border-ink bg-mist px-3 py-2 font-mono"><code>buzz config server https://{{ domain }}</code></pre>
-                </div>
-            </li>
-            <li class="flex gap-4 py-5">
-                <span class="text-xl font-bold">3.</span>
-                <div class="min-w-0 flex-1">
-                    <h3 class="font-bold">Login with GitHub</h3>
-                    <pre class="mt-2 overflow-x-auto border-2 border-ink bg-mist px-3 py-2 font-mono"><code>buzz login</code></pre>
-                </div>
-            </li>
-            <li class="flex gap-4 py-5">
-                <span class="text-xl font-bold">4.</span>
-                <div class="min-w-0 flex-1">
-                    <h3 class="font-bold">Deploy your site</h3>
-                    <pre class="mt-2 overflow-x-auto border-2 border-ink bg-mist px-3 py-2 font-mono"><code>buzz deploy ./dist</code></pre>
-                    <p class="mt-2 text-rule">Live at <code>my-site.{{ domain }}</code></p>
-                </div>
-            </li>
-        </ol>
+        <div class="mt-5">{% include "_cli_quickstart.html" %}</div>
     </div>
 </div>
 {% endblock %}

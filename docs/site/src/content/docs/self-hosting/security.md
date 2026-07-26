@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-Review Buzz's current controls and unsupported protections before making a server public. Buzz is a small self-hosted service, not a security boundary for mutually untrusted tenants.
+Buzz is a small self-hosted service, not a security boundary for mutually untrusted tenants. Assess it against your own threat model before hosting sensitive or untrusted workloads.
 
 ## Control Who Can Use The Server
 
@@ -32,11 +32,11 @@ Buzz stores hashes of session and deployment tokens in SQLite, not their raw val
 
 ## Treat Deployed Files As Untrusted Content
 
-Buzz validates ZIP paths, rejects symbolic links and encrypted entries, and extracts deployments into staging directories. These checks reduce archive extraction risks but don't determine whether uploaded files are safe.
+Buzz validates ZIP paths, rejects symbolic links and encrypted entries, and extracts deployments into staging directories. These checks address archive extraction, not the contents of the files.
 
 Buzz doesn't scan deployments for malware, phishing content, secrets, or harmful JavaScript. A deployed site can execute active content in its visitors' browsers. Review who can deploy, monitor hosted content, and use external scanning or policy controls when required.
 
-Sites use separate subdomains, while the dashboard session cookie is host-only, `HttpOnly`, `Secure` outside development mode, and `SameSite=Lax`. These controls don't provide a general guarantee that arbitrary hosted content is harmless.
+Sites use separate subdomains, and the dashboard session cookie is host-only, `HttpOnly`, `Secure` outside development mode, and `SameSite=Lax`.
 
 ## Limit Exposure And Resource Use
 
@@ -62,5 +62,3 @@ Buzz records aggregate site analytics in `/data/data.db`. It can derive a daily 
 Set a stable, random `BUZZ_ANALYTICS_SECRET`. Otherwise Buzz falls back to `GITHUB_CLIENT_SECRET`, then a process-local random value. The bundled Compose files pass this variable to the server when it is defined in the deployment environment.
 
 Determine your own disclosure, consent, retention, and access obligations for the jurisdictions where you operate.
-
-These controls describe current implementation behavior, not a security certification or guarantee. Assess the deployment against your own threat model before hosting sensitive or untrusted workloads.

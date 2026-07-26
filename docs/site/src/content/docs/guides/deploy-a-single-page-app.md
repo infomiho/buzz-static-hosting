@@ -5,8 +5,6 @@ sidebar:
   order: 4
 ---
 
-Deploy a single-page application (SPA) so direct requests to client-side routes load the application shell.
-
 ## Prerequisites
 
 Build the application into `./dist`. Configure the application to use URL paths and asset URLs that work from the site root.
@@ -24,7 +22,7 @@ Build the application into `./dist`. Configure the application to use URL paths 
 3. Deploy the build:
 
    ```bash
-   buzz deploy ./dist --subdomain my-site
+   buzz deploy ./dist --site my-site
    ```
 
 4. Open a client-side route directly, such as `https://my-site.buzz.example.com/account`.

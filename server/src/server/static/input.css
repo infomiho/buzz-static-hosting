@@ -168,6 +168,19 @@
     @apply min-h-11 w-full border-2 border-ink bg-paper px-3 py-2 text-lg;
   }
 
+  .choice-list {
+    @apply grid gap-3 text-xl;
+  }
+
+  .choice-list label {
+    @apply flex items-start gap-3;
+  }
+
+  .choice-list input {
+    @apply size-[1lh] shrink-0;
+    accent-color: var(--color-ink);
+  }
+
   .table {
     @apply w-full border-collapse text-left;
   }
@@ -262,6 +275,36 @@
 
   .dialog > div > footer {
     @apply flex flex-wrap justify-end gap-3 px-5 pb-5 pt-2;
+  }
+
+  .visibility-popover {
+    @apply w-[min(22rem,calc(100vw-1rem))] border-4 border-ink bg-paper p-0 text-ink;
+    position: fixed;
+    margin: 0;
+    inset: auto;
+  }
+
+  .visibility-option {
+    @apply cursor-pointer;
+  }
+
+  .visibility-check {
+    @apply invisible shrink-0;
+  }
+
+  .visibility-option[aria-current="true"] .visibility-check {
+    @apply visible;
+  }
+
+  .visibility-option:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  /* Visibility is a mode, not a health status, so it stays off the
+     success/attention/danger axis entirely. The lock or globe carries the
+     meaning; the badge inherits whatever colour its surface uses. */
+  .visibility-badge {
+    @apply inline-flex items-center gap-1.5 font-bold;
   }
 
   .alert-destructive {

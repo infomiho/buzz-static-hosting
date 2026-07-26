@@ -44,7 +44,7 @@
   "dependencies": {
     "archiver": "^7.0.0",
     "cli-progress": "^3.12.0",
-    "commander": "^13.0.0"
+    "commander": "^14.0.3"
   },
   "exports": {
     ".": "./dist/cli.mjs",

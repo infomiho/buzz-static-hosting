@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Access denied{% endblock %}
+
+{% block content %}
+{% import "_icons.html" as icons %}
+<div class="mx-auto w-full max-w-2xl border-4 border-ink p-6 sm:p-8">
+    <p class="flex items-center gap-2 font-bold uppercase tracking-wide">{{ icons.lock(size=16) }}Access control</p>
+    <h1 class="heading-l mt-3">Access denied</h1>
+    <p class="mt-4 text-rule">You do not own {{ hostname }}.</p>
+    <form method="post" action="/dashboard/logout" class="mt-6">
+        <button class="btn-outline" type="submit">Sign in as someone else</button>
+    </form>
+</div>
+{% endblock %}

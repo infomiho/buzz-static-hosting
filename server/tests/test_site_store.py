@@ -29,6 +29,10 @@ def make_db() -> sqlite3.Connection:
         status TEXT,
         expires_at TEXT
     )""")
+    conn.execute("""CREATE TABLE site_access_publication_guards (
+        site_name TEXT PRIMARY KEY,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""")
     return conn
 
 

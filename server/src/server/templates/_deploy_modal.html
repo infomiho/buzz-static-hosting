@@ -32,9 +32,21 @@
             </div>
 
             <div>
-                <label for="subdomain-input" class="font-bold">Subdomain</label>
+                <label for="subdomain-input" class="font-bold">Site name</label>
                 <input id="subdomain-input" class="input mt-1" placeholder="auto-generated if blank" autocomplete="off" spellcheck="false" />
-                <p id="subdomain-hint" class="mt-1 hidden text-rule">Replacing the existing site at this subdomain.</p>
+                <p id="subdomain-hint" class="mt-1 hidden text-rule">Replacing the existing site with this name.</p>
+            </div>
+
+            <!-- New deploys only. Deploying can make a site private but never
+                 public, so an unchecked box on a redeploy would be a lie. -->
+            <div id="deploy-visibility" class="choice-list border-2 border-ink px-4 py-3 text-lg">
+                <label>
+                    <input type="checkbox" id="deploy-private">
+                    <span>
+                        <span class="font-bold">Make private</span>
+                        <span class="block text-rule">Only you will be able to view it.</span>
+                    </span>
+                </label>
             </div>
 
             <div id="upload-status" class="hidden"></div>
@@ -182,11 +194,12 @@
         }));
     }
 
-    function uploadBlob(blob, subdomain) {
+    function uploadBlob(blob, subdomain, makePrivate) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/deploy');
-            if (subdomain) xhr.setRequestHeader('x-subdomain', subdomain);
+            if (subdomain) xhr.setRequestHeader('x-buzz-site', subdomain);
+            if (makePrivate) xhr.setRequestHeader('x-buzz-access', 'private');
             xhr.upload.addEventListener('progress', (ev) => {
                 if (!ev.lengthComputable) return;
                 const percent = (ev.loaded / ev.total) * 100;
@@ -210,7 +223,7 @@
         if (!err || err.status === 0) return 'Could not reach the server. Check your connection and try again.';
         if (err.status === 401) return 'Session expired. Please refresh and sign in again.';
         if (err.detail) return err.detail;
-        if (err.status === 403) return 'Not allowed to deploy to that subdomain.';
+        if (err.status === 403) return 'Not allowed to deploy to that site.';
         if (err.status === 400) return 'Invalid upload.';
         if (err.status === 413) return 'Upload is too large.';
         return 'Deploy failed (HTTP ' + err.status + ').';
@@ -222,7 +235,7 @@
         return total;
     }
 
-    async function runDeploy(makeBlob, subdomain) {
+    async function runDeploy(makeBlob, subdomain, makePrivate) {
         try {
             const blob = await makeBlob();
             if (!blob || (blob.size !== undefined && blob.size === 0)) {
@@ -230,12 +243,13 @@
                 return;
             }
             setUploadStatus('progress', progressMarkup('Uploading…', 0));
-            const data = await uploadBlob(blob, subdomain);
+            const data = await uploadBlob(blob, subdomain, makePrivate);
             const url = (data && data.url) || '';
             const safeUrl = esc(url);
             setUploadStatus('success',
                 '<p class="text-xl font-bold">Deploy complete</p>' +
-                '<a href="' + safeUrl + '" target="_blank" rel="noopener" class="mt-2 inline-block font-bold text-paper underline decoration-2 underline-offset-4">' + safeUrl + ' (opens in new tab)</a>'
+                '<a href="' + safeUrl + '" target="_blank" rel="noopener" class="mt-2 inline-block font-bold text-paper underline decoration-2 underline-offset-4">' + safeUrl + ' (opens in new tab)</a>' +
+                '<p class="mt-2">' + visibilityBadge(Boolean(data && data.private)) + '</p>'
             );
             document.getElementById('file-input').value = '';
             document.getElementById('folder-input').value = '';
@@ -336,23 +350,24 @@
         const submitBtn = document.getElementById('deploy-dialog-submit');
         submitBtn.disabled = true;
         const subdomain = document.getElementById('subdomain-input').value.trim();
+        const makePrivate = !isRedeployMode && document.getElementById('deploy-private').checked;
         let ok = false;
         try {
             if (staged.kind === 'zip') {
-                ok = await runDeploy(async () => staged.payload, subdomain);
+                ok = await runDeploy(async () => staged.payload, subdomain, makePrivate);
             } else if (staged.kind === 'files') {
                 const files = staged.payload;
                 const hasRelPaths = files.some(f => f.webkitRelativePath && f.webkitRelativePath.includes('/'));
                 ok = await runDeploy(async () => {
                     const zip = hasRelPaths ? zipFromRelativeFiles(files) : zipFromLooseFiles(files);
                     return generateZipBlob(zip, 'Zipping');
-                }, subdomain);
+                }, subdomain, makePrivate);
             } else if (staged.kind === 'entries') {
                 ok = await runDeploy(async () => {
                     setUploadStatus('progress', progressMarkup('Reading folder…', 0));
                     const zip = await zipFromEntries(staged.payload);
                     return generateZipBlob(zip, 'Zipping');
-                }, subdomain);
+                }, subdomain, makePrivate);
             }
         } finally {
             // Re-enable on failure so the user can retry; leave disabled on success
@@ -367,6 +382,7 @@
         const subtitle = document.getElementById('deploy-dialog-subtitle');
         const subdomainInput = document.getElementById('subdomain-input');
         const subdomainHint = document.getElementById('subdomain-hint');
+        const visibility = document.getElementById('deploy-visibility');
 
         clearStaged();
         clearUploadStatus();
@@ -379,6 +395,7 @@
             subdomainInput.readOnly = true;
             subdomainInput.classList.add('opacity-60', 'cursor-not-allowed');
             subdomainHint.classList.remove('hidden');
+            visibility.classList.add('hidden');
         } else {
             title.textContent = 'Deploy a site';
             subtitle.textContent = 'Drop a folder, an HTML file, or a ZIP to deploy.';
@@ -386,6 +403,8 @@
             subdomainInput.readOnly = false;
             subdomainInput.classList.remove('opacity-60', 'cursor-not-allowed');
             subdomainHint.classList.add('hidden');
+            document.getElementById('deploy-private').checked = false;
+            visibility.classList.remove('hidden');
         }
         dialog.showModal();
     }

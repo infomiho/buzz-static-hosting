@@ -41,7 +41,7 @@ class TestBuildSiteUrl:
 def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
     monkeypatch.setattr(
         "server.routes.sites._deploy_site",
-        lambda database, settings, subdomain, archive, owner_id: SiteRecord(
+        lambda database, settings, subdomain, archive, owner_id, configure: SiteRecord(
             name=subdomain,
             owner_id=owner_id,
             size_bytes=0,
@@ -52,7 +52,7 @@ def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
 
     response = client.post(
         "/deploy",
-        headers={"x-subdomain": "my-site"},
+        headers={"x-buzz-site": "my-site"},
         files={"file": ("site.zip", b"zip", "application/zip")},
     )
 
@@ -60,7 +60,45 @@ def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
     assert response.json() == {
         "name": "my-site",
         "url": "http://my-site.localhost:8080",
+        "private": False,
     }
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [({"x-buzz-access": "private"}, True), ({}, False)],
+)
+def test_deploy_passes_requested_visibility(make_app, monkeypatch, header, expected):
+    captured = {}
+
+    def deploy_stub(database, settings, subdomain, archive, owner_id, configure):
+        captured["configure"] = configure
+        return SiteRecord(subdomain, owner_id, 0, "2026-07-16T00:00:00Z")
+
+    monkeypatch.setattr("server.routes.sites._deploy_site", deploy_stub)
+    client = TestClient(make_app(dev_mode=True))
+
+    response = client.post(
+        "/deploy",
+        headers={"x-buzz-site": "private-site", **header},
+        files={"file": ("site.zip", b"zip", "application/zip")},
+    )
+
+    assert response.status_code == 200
+    assert (captured["configure"] is not None) is expected
+
+
+def test_deploy_rejects_an_unknown_access_header(make_app):
+    client = TestClient(make_app(dev_mode=True))
+
+    response = client.post(
+        "/deploy",
+        headers={"x-buzz-site": "private-site", "x-buzz-access": "public"},
+        files={"file": ("site.zip", b"zip", "application/zip")},
+    )
+
+    assert response.status_code == 400
+    assert "X-Buzz-Access must be 'private'" in response.json()["detail"]
 
 
 def test_deploy_rejects_compressed_upload_over_limit(make_app):
@@ -125,3 +163,18 @@ def test_deploy_authenticates_before_parsing_multipart():
     )
 
     assert response.status_code == 401
+
+
+def test_deploy_rejects_the_retired_subdomain_header(make_app):
+    """Ignoring it would fall through to a generated name, silently publishing
+    to a new random site while the intended one went untouched."""
+    client = TestClient(make_app(dev_mode=True))
+
+    response = client.post(
+        "/deploy",
+        headers={"x-subdomain": "my-site"},
+        files={"file": ("site.zip", b"zip", "application/zip")},
+    )
+
+    assert response.status_code == 400
+    assert "X-Buzz-Site" in response.json()["detail"]

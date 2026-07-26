@@ -47,12 +47,18 @@ export interface Site {
   name: string;
   created: string;
   size_bytes: number;
+  private: boolean;
 }
 
 export function isSiteArray(value: unknown): value is Site[] {
   return (
     Array.isArray(value) &&
-    value.every((site) => isRecord(site) && typeof site.name === "string")
+    value.every(
+      (site) =>
+        isRecord(site) &&
+        typeof site.name === "string" &&
+        typeof site.private === "boolean"
+    )
   );
 }
 

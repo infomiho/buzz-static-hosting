@@ -77,7 +77,7 @@ jobs:
         run: test -f ./dist/index.html
       - run: npm install --global @infomiho/buzz-cli@0.7.0
       - name: Deploy site
-        run: buzz deploy ./dist --subdomain my-site
+        run: buzz deploy ./dist --site my-site
         env:
           BUZZ_SERVER: ${{ vars.BUZZ_SERVER }}
           BUZZ_TOKEN: ${{ secrets.BUZZ_TOKEN }}
@@ -109,7 +109,7 @@ Revocation blocks future deployments with that token but does not change the hos
 
 ## Deploy Through The HTTP API
 
-Use the HTTP API directly when your automation cannot install Node.js or the Buzz CLI. The automation must create a ZIP archive whose root contains the site's files. The deployment token requires an `X-Subdomain` header matching its assigned site.
+Use the HTTP API directly when your automation cannot install Node.js or the Buzz CLI. The automation must create a ZIP archive whose root contains the site's files. The deployment token requires an `X-Buzz-Site` header matching its assigned site.
 
 Set clear environment values, create the archive from the contents of `./dist`, and upload it:
 
@@ -124,7 +124,7 @@ test -f ./dist/index.html
 curl --fail-with-body --show-error \
   --request POST \
   --header "Authorization: Bearer $BUZZ_TOKEN" \
-  --header "X-Subdomain: $BUZZ_SITE" \
+  --header "X-Buzz-Site: $BUZZ_SITE" \
   --form "file=@$SITE_ARCHIVE;type=application/zip" \
   "$BUZZ_SERVER/deploy"
 ```

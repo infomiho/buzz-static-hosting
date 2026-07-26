@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable
 
 from .exceptions import Forbidden
 from .github_login import GitHubUser
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 SESSION_TOKEN_PREFIX = "buzz_sess_"
 DEPLOY_TOKEN_PREFIX = "buzz_deploy_"
+DEV_SESSION_ID = hashlib.sha256(b"buzz_dev_session").hexdigest()
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class Identity:
     user: User
     token_type: str
     site_name: str | None = None
+    session_id: str | None = None
 
     def can_deploy_to(self, subdomain: str) -> bool:
         if self.site_name is None:
@@ -144,6 +146,21 @@ class AuthService:
 
         return None
 
+    def user_is_allowed(self, user_id: int) -> bool:
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT github_id, github_login FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+        if not row:
+            return False
+        try:
+            self._ensure_allowed(
+                row["github_login"], is_new_user=False, github_id=row["github_id"]
+            )
+        except AccessDenied:
+            return False
+        return True
+
     def login_with_github(self, github_user: GitHubUser) -> LoginResult:
         """Resolve a GitHub identity to a Buzz user and mint a session."""
         user = self._upsert_user(github_user)
@@ -212,6 +229,7 @@ class AuthService:
         return Identity(
             user=User(id=row["user_id"], github_login=row["github_login"], github_name=row["github_name"]),
             token_type="session",
+            session_id=token_hash,
         )
 
     def logout(self, raw_token: str) -> None:

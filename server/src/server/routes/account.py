@@ -4,9 +4,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from ..templating import templates
 from ..auth_service import Identity
 from ..dependencies import get_passkey_service, require_user
 from ..passkeys import (
@@ -27,7 +27,6 @@ def _humandate(value: str | None, fallback: str = "") -> str:
     return f"{parsed:%b} {parsed.day}, {parsed.year}"
 
 
-templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 templates.env.filters["humandate"] = _humandate
 
 router = APIRouter(prefix="/account", include_in_schema=False)
