@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import io
 import re
@@ -9,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.access import AccessService, InvalidAccessCode
+from server.db import Database
 from server.site_store import SiteStore
 
 SITE_HOST = {"host": "private-site.localhost:8080"}
@@ -256,6 +258,9 @@ def test_publication_guard_closes_the_file_publish_window(
 
     monkeypatch.setattr(SiteStore, "_sync_directory", staticmethod(pausing_sync))
 
+    app = make_app()
+    configure = app.state.access.begin_private_publication("private-site", owner_id)
+
     def deploy():
         try:
             with database.connect() as conn:
@@ -263,9 +268,7 @@ def test_publication_guard_closes_the_file_publish_window(
                     "private-site",
                     io.BytesIO(_site_archive()),
                     owner_id,
-                    lambda publish_conn: AccessService.set_policy_on_connection(
-                        publish_conn, "private-site", owner_id
-                    ),
+                    configure,
                 )
         except Exception as error:  # noqa: BLE001 - propagate worker failures to pytest
             errors.append(error)
@@ -274,7 +277,7 @@ def test_publication_guard_closes_the_file_publish_window(
     worker.start()
     assert published.wait(timeout=5)
     try:
-        response = TestClient(make_app()).get("/", headers=SITE_HOST)
+        response = TestClient(app).get("/", headers=SITE_HOST)
         assert response.status_code == 401
         assert "private from first publish" not in response.text
     finally:
@@ -394,15 +397,19 @@ def test_going_public_then_private_invalidates_an_existing_grant(
         code, "private-site", "private-site.localhost"
     )
 
-    assert app.state.access.check_request(
-        "private-site", "private-site.localhost", grant.token
+    assert asyncio.run(
+        app.state.access.check_request(
+            "private-site", "private-site.localhost", grant.token
+        )
     ).authorized
 
     app.state.access.delete_policy("private-site", 1)
     app.state.access.set_policy("private-site", 1)
 
-    assert not app.state.access.check_request(
-        "private-site", "private-site.localhost", grant.token
+    assert not asyncio.run(
+        app.state.access.check_request(
+            "private-site", "private-site.localhost", grant.token
+        )
     ).authorized
 
 
@@ -501,3 +508,86 @@ def test_denied_visitor_is_given_a_way_out(make_app, database, tmp_path):
     assert response.status_code == 403
     assert "private-site.localhost" in response.text
     assert "Sign in as someone else" in response.text
+
+
+def test_visibility_flips_apply_immediately_with_a_loaded_cache(
+    make_app, database, tmp_path
+):
+    """With the cache loaded, public sites skip the database entirely; a flip
+    must still take effect on the very next request in both directions."""
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    app = make_app()
+    app.state.access.load_visibility()
+    client = TestClient(app)
+
+    assert client.get("/", headers=SITE_HOST).status_code == 200
+    client.put("/sites/private-site/access", headers=_auth(token))
+    assert client.get("/", headers=SITE_HOST).status_code == 401
+    client.delete("/sites/private-site/access", headers=_auth(token))
+    assert client.get("/", headers=SITE_HOST).status_code == 200
+
+
+def test_failed_private_deploy_leaves_the_site_public(make_app, database, tmp_path):
+    """A private deploy that fails before publishing announced its name to the
+    cache; the entry is fail-safe and the next check discards it."""
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    app = make_app()
+    app.state.access.load_visibility()
+    client = TestClient(app)
+
+    response = client.post(
+        "/deploy",
+        headers={
+            "x-buzz-site": "private-site",
+            "x-buzz-access": "private",
+            **_auth(token),
+        },
+        files={"file": ("site.zip", b"not a zip", "application/zip")},
+    )
+    assert response.status_code == 400
+    assert client.get("/", headers=SITE_HOST).status_code == 200
+    assert client.get("/", headers=SITE_HOST).status_code == 200
+
+
+def test_deleted_site_stops_being_treated_as_private(make_app, database, tmp_path):
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    app = make_app()
+    app.state.access.load_visibility()
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(token))
+    assert client.get("/", headers=SITE_HOST).status_code == 401
+
+    client.delete("/sites/private-site", headers=_auth(token))
+    assert client.get("/", headers=SITE_HOST).status_code == 404
+
+    other_token = _session_token(database, github_id=2, login="other")
+    _create_site(database, tmp_path, other_token, name="private-site")
+    assert client.get("/", headers=SITE_HOST).status_code == 200
+
+
+def test_visibility_discard_is_fenced_against_concurrent_writes(
+    make_app, database, tmp_path
+):
+    """The interleaving delete_policy guards against, replayed
+    deterministically: a stale discard must lose to a newer add."""
+    token = _session_token(database)
+    _create_site(database, tmp_path, token)
+    app = make_app()
+    access = app.state.access
+    access.load_visibility()
+
+    cache = access._visibility
+    seen = cache.version()
+    cache.add("private-site")
+    cache.discard("private-site", seen)
+    assert cache.may_be_protected("private-site")
+
+
+def test_failed_visibility_load_degrades_to_full_checks(tmp_path):
+    bare = Database(tmp_path / "bare.db")
+    service = AccessService(bare.connect, reader=bare.reader())
+    service.load_visibility()
+    assert service._visibility.may_be_protected("anything")

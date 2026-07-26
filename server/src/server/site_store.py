@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from sqlite3 import Connection, OperationalError, Row
 from typing import BinaryIO
 
+from .access import hold_publication_guard, release_publication_guard
 from .custom_domains import ClaimConflict, DomainClaimStore
 from .environment import environment_value
 from .exceptions import BadRequest, Forbidden, NotFound, PayloadTooLarge
@@ -191,10 +192,7 @@ class SiteStore:
                         raise ValueError("unknown operation type")
                 if reconciled:
                     self._clear_operation(name)
-                    self._conn.execute(
-                        "DELETE FROM site_access_publication_guards WHERE site_name = ?",
-                        (name,),
-                    )
+                    release_publication_guard(self._conn, name)
                     self._conn.commit()
                 else:
                     unresolved_operations.append(journal_path)
@@ -216,10 +214,7 @@ class SiteStore:
         ).fetchall()
         for row in guarded_sites:
             if not self._operation_path(row["site_name"]).exists():
-                self._conn.execute(
-                    "DELETE FROM site_access_publication_guards WHERE site_name = ?",
-                    (row["site_name"],),
-                )
+                release_publication_guard(self._conn, row["site_name"])
         self._conn.commit()
 
     def _site_row(self, name: str) -> Row | None:
@@ -450,11 +445,7 @@ class SiteStore:
         publication_guarded = configure is not None
 
         if publication_guarded:
-            self._conn.execute(
-                "INSERT INTO site_access_publication_guards (site_name) VALUES (?) "
-                "ON CONFLICT(site_name) DO UPDATE SET created_at = CURRENT_TIMESTAMP",
-                (subdomain,),
-            )
+            hold_publication_guard(self._conn, subdomain)
             self._conn.commit()
 
         try:
@@ -481,10 +472,7 @@ class SiteStore:
 
             if configure:
                 configure(self._conn)
-                self._conn.execute(
-                    "DELETE FROM site_access_publication_guards WHERE site_name = ?",
-                    (subdomain,),
-                )
+                release_publication_guard(self._conn, subdomain)
 
             if site_dir.exists() or site_dir.is_symlink():
                 backup_dir = self._backup_path(subdomain)
@@ -520,10 +508,7 @@ class SiteStore:
             if operation_written:
                 self._clear_operation(subdomain)
             if publication_guarded:
-                self._conn.execute(
-                    "DELETE FROM site_access_publication_guards WHERE site_name = ?",
-                    (subdomain,),
-                )
+                release_publication_guard(self._conn, subdomain)
                 self._conn.commit()
             raise
         else:

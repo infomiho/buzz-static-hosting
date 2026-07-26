@@ -8,6 +8,8 @@ from .service import (
     AccessService,
     AccessSiteNotFound,
     InvalidAccessCode,
+    hold_publication_guard,
+    release_publication_guard,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "AccessService",
     "AccessSiteNotFound",
     "InvalidAccessCode",
+    "hold_publication_guard",
+    "release_publication_guard",
 ]

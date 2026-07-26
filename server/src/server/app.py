@@ -148,6 +148,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.access.load_visibility()
         await custom_domains.start()
         analytics_started = False
         try:
@@ -161,6 +162,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 except Exception:
                     logger.exception("Analytics shutdown failed")
             await custom_domains.stop()
+            app.state.access.close()
 
     app = FastAPI(
         title="Buzz",
@@ -212,7 +214,9 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 (DEV_SESSION_ID, "9999-12-31T23:59:59"),
             )
     app.state.access = AccessService(
-        database.connect, user_allowed=app.state.auth_service.user_is_allowed
+        database.connect,
+        reader=database.reader(),
+        user_allowed=app.state.auth_service.user_is_allowed,
     )
     app.state.github_device_flow = GitHubDeviceFlow(github_client, settings.github_client_id)
     control_origin = settings.control_origin
@@ -468,7 +472,7 @@ def requested_site_path(request: Request) -> str | None:
 async def serve_site(request: Request, site_name: str, settings: Settings) -> Response:
     hostname = request.url.hostname or ""
     try:
-        decision = request.app.state.access.check_request(
+        decision = await request.app.state.access.check_request(
             site_name,
             hostname,
             request.cookies.get(access_cookie_name(not settings.dev_mode)),

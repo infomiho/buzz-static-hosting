@@ -41,7 +41,7 @@ class TestBuildSiteUrl:
 def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
     monkeypatch.setattr(
         "server.routes.sites._deploy_site",
-        lambda database, settings, subdomain, archive, owner_id, make_private: SiteRecord(
+        lambda database, settings, subdomain, archive, owner_id, configure: SiteRecord(
             name=subdomain,
             owner_id=owner_id,
             size_bytes=0,
@@ -71,8 +71,8 @@ def test_deploy_returns_explicit_site_name(make_app, monkeypatch):
 def test_deploy_passes_requested_visibility(make_app, monkeypatch, header, expected):
     captured = {}
 
-    def deploy_stub(database, settings, subdomain, archive, owner_id, make_private):
-        captured["private"] = make_private
+    def deploy_stub(database, settings, subdomain, archive, owner_id, configure):
+        captured["configure"] = configure
         return SiteRecord(subdomain, owner_id, 0, "2026-07-16T00:00:00Z")
 
     monkeypatch.setattr("server.routes.sites._deploy_site", deploy_stub)
@@ -85,7 +85,7 @@ def test_deploy_passes_requested_visibility(make_app, monkeypatch, header, expec
     )
 
     assert response.status_code == 200
-    assert captured["private"] is expected
+    assert (captured["configure"] is not None) is expected
 
 
 def test_deploy_rejects_an_unknown_access_header(make_app):

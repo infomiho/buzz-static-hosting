@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Annotated, BinaryIO
 
 from fastapi import APIRouter, Depends, Header, Request, Response
@@ -52,19 +53,11 @@ def _deploy_site(
     subdomain: str,
     archive: BinaryIO,
     owner_id: int,
-    make_private: bool,
+    configure: Callable | None,
 ) -> SiteRecord:
-    def make_site_private(publish_conn) -> None:
-        AccessService.set_policy_on_connection(publish_conn, subdomain, owner_id)
-
     with database.connect() as conn:
         store = SiteStore(conn, settings.sites_dir, _deployment_limits(settings))
-        return store.deploy(
-            subdomain,
-            archive,
-            owner_id,
-            make_site_private if make_private else None,
-        )
+        return store.deploy(subdomain, archive, owner_id, configure)
 
 
 def _delete_site(database: Database, settings: Settings, name: str, owner_id: int) -> None:
@@ -163,6 +156,13 @@ async def deploy(
             )
 
         await file.seek(0)
+        configure = (
+            request.app.state.access.begin_private_publication(
+                subdomain, identity.user.id
+            )
+            if make_private
+            else None
+        )
         record = await run_in_threadpool(
             _deploy_site,
             database,
@@ -170,7 +170,7 @@ async def deploy(
             subdomain,
             file.file,
             identity.user.id,
-            make_private,
+            configure,
         )
 
     # Report the site's actual visibility, not the flag that was passed: a

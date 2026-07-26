@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -102,9 +103,42 @@ MIGRATIONS: tuple[Migration, ...] = (
 )
 
 
+class ReadConnection:
+    """A long-lived connection for hot-path reads, shared across threads.
+
+    Opened on first borrow and reused for the process lifetime, so callers
+    skip the per-connect schema parse that dominates a fresh connection.
+    borrow() serializes access; hold it only for the duration of the queries.
+    """
+
+    def __init__(self, path: Path):
+        self._path = path
+        self._lock = threading.Lock()
+        self._conn: sqlite3.Connection | None = None
+
+    @contextmanager
+    def borrow(self) -> Generator[sqlite3.Connection, None, None]:
+        with self._lock:
+            if self._conn is None:
+                conn = sqlite3.connect(self._path, check_same_thread=False)
+                _configure_connection(conn)
+                conn.row_factory = sqlite3.Row
+                self._conn = conn
+            yield self._conn
+
+    def close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+
+
 class Database:
     def __init__(self, path: Path):
         self._path = path
+
+    def reader(self) -> ReadConnection:
+        return ReadConnection(self._path)
 
     def init(self) -> None:
         conn = sqlite3.connect(self._path)
