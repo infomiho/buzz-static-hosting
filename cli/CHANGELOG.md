@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.12.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.11.0...buzz-cli-v0.12.0) (2026-07-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace path-pattern access with a per-site public/private switch and rename --subdomain to --site
+
+### Features
+
+* add Buzz Access owner protection ([04c37ac](https://github.com/infomiho/buzz-static-hosting/commit/04c37acf831518f1a615957115a2450394f30e21))
+* replace path-pattern access with a per-site public/private switch and rename --subdomain to --site ([100ccfe](https://github.com/infomiho/buzz-static-hosting/commit/100ccfe1b373571b6437fe6fb6758ed3fefbd43c))
+
+
+### Bug Fixes
+
+* align Buzz Access UI with Achroma ([8f74d06](https://github.com/infomiho/buzz-static-hosting/commit/8f74d06cc4856473375eb1fdf350029ed4a62ded))
+
 ## [0.11.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.10.0...buzz-cli-v0.11.0) (2026-07-22)
 
 
