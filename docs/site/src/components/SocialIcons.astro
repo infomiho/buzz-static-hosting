@@ -1,0 +1,57 @@
+---
+/*
+ * Header GitHub link with a "Star us on GitHub" label instead of the
+ * bare icon. The label hides on narrow screens, leaving the icon.
+ */
+import { Icon } from '@astrojs/starlight/components';
+---
+
+<a class="star-link" aria-label="Star us on GitHub" href="https://github.com/infomiho/buzz-static-hosting">
+  <Icon name="github" size="1.1em" />
+  <span class="star-label">Star us on GitHub</span>
+</a>
+
+<style>
+  .star-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.7rem;
+    border: 2px solid #ffffff;
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+
+  :global(header.header) .star-link:focus-visible {
+    outline: 4px solid #ffdd00;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  /* outranks achroma's header.header :is(a) color: #fff rule */
+  :global(header.header) .star-link:hover {
+    background: #ffffff;
+    color: #0b0c0c;
+  }
+
+  /* Starlight draws a divider after the social icons; nothing follows it here */
+  :global(.social-icons::after) {
+    display: none;
+    border: 0;
+  }
+
+  @media (max-width: 50rem) {
+    .star-link {
+      padding: 0.35rem 0.5rem;
+    }
+
+    .star-label {
+      display: none;
+    }
+  }
+</style>

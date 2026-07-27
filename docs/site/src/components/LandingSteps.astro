@@ -1,0 +1,169 @@
+---
+/*
+ * "Throwaway deploys that can grow up": the three-beat story as a
+ * copy-only ordered list on a mist band. The hero SHOWS the story;
+ * this section TELLS it, with commands and guide links.
+ */
+---
+
+    <section class="pt-band not-content">
+      <h2 class="pt-heading">Throwaway deploys that can grow up</h2>
+      <ol class="pt-steps">
+        <li class="pt-step">
+          <div class="pt-step-head">
+            <span class="pt-num" aria-hidden="true">
+              1
+            </span>
+            <h3 class="pt-title">Publish</h3>
+          </div>
+          <p class="pt-copy">
+            Redeploy the same site name to replace its files without changing
+            the URL.
+          </p>
+          <p class="pt-cmds">
+            <code>buzz deploy ./dist --site my-site</code>
+          </p>
+          <a class="pt-link" href="./guides/choose-a-site-name/">
+            Choose a site name
+          </a>
+        </li>
+        <li class="pt-step">
+          <div class="pt-step-head">
+            <span class="pt-num" aria-hidden="true">
+              2
+            </span>
+            <h3 class="pt-title">Protect</h3>
+          </div>
+          <p class="pt-copy">
+            Make a site readable only by you, across every path and asset.
+          </p>
+          <p class="pt-cmds">
+            <code>buzz access private</code>
+            <code>buzz deploy ./dist --private</code>
+          </p>
+          <a class="pt-link" href="./guides/make-a-site-private/">
+            Make a site private
+          </a>
+        </li>
+        <li class="pt-step">
+          <div class="pt-step-head">
+            <span class="pt-num" aria-hidden="true">
+              3
+            </span>
+            <h3 class="pt-title">Make it yours</h3>
+          </div>
+          <p class="pt-copy">
+            Point your own hostname at a site.
+          </p>
+          <p class="pt-cmds">
+            <code>buzz domains add my-site www.hive.example</code>
+          </p>
+          <a class="pt-link" href="./guides/connect-a-custom-domain/">
+            Connect a custom domain
+          </a>
+        </li>
+      </ol>
+    </section>
+
+<style>
+  .pt-band {
+    --proto-ink: #0b0c0c;
+    --proto-paper: #ffffff;
+    --proto-mist: #f3f2f1;
+    --proto-hairline: #b1b4b6;
+    --proto-link: #1d70b8;
+    margin-block-start: 4rem;
+    margin-inline: calc(-1 * var(--sl-content-pad-x, 1.5rem));
+    padding-inline: var(--sl-content-pad-x, 1.5rem);
+    padding-block: 2.5rem 3rem;
+    background: var(--proto-mist);
+  }
+
+  .pt-band :where(h2, h3, p, ol) {
+    margin: 0;
+  }
+
+  .pt-heading {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+  }
+
+  .pt-steps {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 2.5rem;
+    margin-block-start: 2.25rem;
+  }
+
+  @media (min-width: 56rem) {
+    .pt-steps {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 3rem;
+    }
+  }
+
+  .pt-step-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .pt-num {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 1.6rem;
+    block-size: 1.6rem;
+    background: var(--proto-ink);
+    color: var(--proto-paper);
+    font: 700 0.9rem var(--sl-font-mono);
+  }
+
+  .pt-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  /* each step is a column; the command block absorbs the height
+     difference so commands and links bottom-align across the row */
+  .pt-step {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pt-copy {
+    margin-block: 0.85rem 1rem;
+    font-size: 0.92rem;
+    max-width: 42ch;
+  }
+
+  .pt-cmds {
+    margin-block-start: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    border: 1px solid var(--proto-hairline);
+    background: var(--proto-paper);
+    padding: 0.55rem 0.7rem;
+  }
+
+  .pt-step .pt-cmds code {
+    border: 0;
+    background: none;
+    padding: 0;
+    font: 0.72rem var(--sl-font-mono);
+  }
+
+  .pt-link {
+    display: inline-block;
+    align-self: flex-start;
+    margin-block-start: 1rem;
+    font-weight: 700;
+    color: var(--proto-link);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.18em;
+  }
+</style>

@@ -1,0 +1,159 @@
+---
+/*
+ * The page's closing section: the split get-started CTA and the
+ * open source footer line.
+ */
+---
+
+    <>
+      <section class="po-cta not-content">
+        <h2 class="po-heading">Get started</h2>
+        <div class="po-branches">
+          <div class="po-branch">
+            <h3 class="po-branch-title">I have a Buzz server</h3>
+            <p class="po-branch-copy">
+              You need the Buzz CLI, a GitHub account, and a static site with <code>index.html</code>.
+            </p>
+            <a class="po-primary" href="./getting-started/deploy-your-first-site/">
+              Deploy your first site →
+            </a>
+          </div>
+          <div class="po-branch">
+            <h3 class="po-branch-title">I need to set one up</h3>
+            <p class="po-branch-copy">
+              You need a Linux server you control, with Docker Compose or
+              Coolify.
+            </p>
+            <a class="po-outline" href="./self-hosting/overview/">
+              Self-host Buzz
+            </a>
+          </div>
+        </div>
+        <p class="po-tertiary">
+          <a href="./reference/cli/">Browse the CLI reference</a>
+        </p>
+      </section>
+      <p class="po-footer not-content">
+        Buzz is <a href="https://github.com/infomiho/buzz-static-hosting">open source</a>.
+      </p>
+    </>
+
+<style>
+  .po-cta,
+  .po-footer {
+    --proto-ink: #0b0c0c;
+    --proto-paper: #ffffff;
+    --proto-muted: #505a5f;
+    --proto-link: #1d70b8;
+  }
+
+  .po-cta :where(h2, h3, p) {
+    margin: 0;
+  }
+
+  .po-heading {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+  }
+
+  .po-tertiary a {
+    font-weight: 700;
+    color: var(--proto-link);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.18em;
+  }
+
+  .po-cta {
+    margin-block: 4rem 3rem;
+    padding-block: 2.5rem 3rem;
+    border-block: 4px solid var(--proto-ink);
+  }
+
+  .po-branches {
+    display: grid;
+    gap: 2.5rem;
+    margin-block-start: 2rem;
+  }
+
+  @media (min-width: 56rem) {
+    .po-branches {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 3rem;
+    }
+  }
+
+  .po-branch-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .po-branch {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .po-branch-copy {
+    margin-block: 0.6rem 1.25rem;
+    font-size: 0.92rem;
+    max-width: 44ch;
+  }
+
+  .po-branch-copy code {
+    font: 0.85em var(--sl-font-mono);
+    border: 1px solid currentColor;
+    padding: 0.05em 0.25em;
+  }
+
+  .po-primary,
+  .po-outline {
+    display: inline-block;
+    margin-block-start: auto;
+    padding: 0.7rem 1.2rem;
+    border: 2px solid var(--proto-ink);
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .po-primary {
+    background: var(--proto-ink);
+    color: var(--proto-paper);
+  }
+
+  .po-primary:hover {
+    background: var(--proto-paper);
+    color: var(--proto-ink);
+  }
+
+  .po-outline {
+    background: var(--proto-paper);
+    color: var(--proto-ink);
+  }
+
+  .po-outline:hover {
+    background: var(--proto-ink);
+    color: var(--proto-paper);
+  }
+
+  .po-tertiary {
+    margin-block-start: 2rem;
+  }
+
+  .po-footer {
+    margin-block: 2rem 0;
+    font-size: 0.85rem;
+    color: var(--proto-muted);
+    text-align: center;
+  }
+
+  .po-footer a {
+    font-weight: 700;
+    color: var(--proto-link);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.18em;
+  }
+</style>

@@ -1,0 +1,745 @@
+---
+/*
+ * Landing page hero: three mini-UI cards (deploy terminal, visibility
+ * popover, DNS records) in an overlapping cascade above centered copy.
+ * On load the cards enter one after another, each autoplays its story
+ * once, and everything settles in the final state. The frontmatter
+ * title still sets <title>; Starlight's rendered h1 panel is hidden.
+ */
+---
+
+    <section class="ph-hero not-content">
+      <div class="ph-cards" aria-hidden="true">
+        <div class="ph-card ph-card-1">
+          <div class="ph-visual ph-terminal">
+            <div class="ph-chrome">
+              <i />
+              <i />
+              <i />
+            </div>
+            <div class="ph-term-body">
+              <p class="ph-cmd">$ buzz deploy ./dist --site my-site</p>
+              <p class="ph-out ph-out-1">
+                <span class="ph-term-ok">✓</span> Uploaded
+              </p>
+              <p class="ph-out ph-out-2">Deployed to my-site.buzz.example.com (public)</p>
+            </div>
+            <div class="ph-site-pop">
+              <p class="ph-site-url">my-site.buzz.example.com</p>
+              <div class="ph-site-skel">
+                <i />
+                <i />
+                <i />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ph-card ph-card-2">
+          <div class="ph-visual ph-popover">
+            <p class="ph-box-head">Who can view this site</p>
+            <div class="ph-rows">
+              <div class="ph-row ph-row-public">
+                <p class="ph-row-top">
+                  <svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75">
+                    <circle cx="8" cy="8" r="6.2" />
+                    <ellipse cx="8" cy="8" rx="2.8" ry="6.2" />
+                    <path d="M2 8h12" />
+                  </svg>
+                  Public
+                  <svg class="ph-tick ph-tick-public" viewBox="0 0 12 12">
+                    <path d="M2 6.5 4.8 9.2 10 3.5" />
+                  </svg>
+                </p>
+                <p class="ph-row-desc">Anyone can view this site.</p>
+              </div>
+              <div class="ph-row ph-row-private">
+                <p class="ph-row-top">
+                  <svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75">
+                    <rect x="3" y="7" width="10" height="6.5" />
+                    <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+                  </svg>
+                  Private
+                  <svg class="ph-tick ph-tick-private" viewBox="0 0 12 12">
+                    <path d="M2 6.5 4.8 9.2 10 3.5" />
+                  </svg>
+                </p>
+                <p class="ph-row-desc">Only you can view this site.</p>
+              </div>
+              <svg class="ph-cursor" viewBox="0 0 20 20">
+                <path d="M3.5 2.5 L3.5 17 L8 12.9 L10.7 18 L13.4 16.7 L10.9 11.7 L16.8 11.3 Z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="ph-card ph-card-3">
+          <div class="ph-visual ph-domain">
+            <p class="ph-box-head ph-domain-head">
+              <i class="ph-dot" />
+              www.hive.example
+            </p>
+            <div class="ph-rec">
+              <span class="ph-rec-type">A</span>
+              <span class="ph-rec-val">www → 203.0.113.10</span>
+              <svg class="ph-tick ph-rec-check-1" viewBox="0 0 12 12">
+                <path d="M2 6.5 4.8 9.2 10 3.5" />
+              </svg>
+            </div>
+            <div class="ph-rec">
+              <span class="ph-rec-type">TXT</span>
+              <span class="ph-rec-val">_buzz.www → buzz-domain-verification=8f3c1a</span>
+              <svg class="ph-tick ph-rec-check-2" viewBox="0 0 12 12">
+                <path d="M2 6.5 4.8 9.2 10 3.5" />
+              </svg>
+            </div>
+            <div class="ph-domain-foot">
+              <p class="ph-chip">
+                <span class="ph-chip-a">Connecting</span>
+                <span class="ph-chip-b">Connected</span>
+              </p>
+              <p class="ph-note">my-site.buzz.example.com still works</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ph-copy">
+        <h1 class="ph-title">Publish static sites on your server</h1>
+        <p class="ph-tagline">
+          A self-hosted alternative to Surge.sh. Deploy a directory from the
+          CLI to its own subdomain.
+        </p>
+        <p class="ph-actions">
+          <a class="ph-primary" href="./getting-started/deploy-your-first-site/">
+            Deploy your first site →
+          </a>
+          <a class="ph-minimal" href="./self-hosting/overview/">
+            Self-host Buzz
+          </a>
+        </p>
+      </div>
+    </section>
+
+<style>
+  /* the frontmatter title still sets <title>; hide Starlight's rendered h1 panel */
+  :global(.content-panel:has(h1#_top)) {
+    display: none;
+  }
+
+  .ph-hero {
+    --proto-ink: #0b0c0c;
+    --proto-paper: #ffffff;
+    --proto-mist: #f3f2f1;
+    --proto-hairline: #b1b4b6;
+    --proto-muted: #505a5f;
+    --proto-success: #0f7a52;
+    --proto-term-bg: #23262f;
+    --proto-term-fg: #d6deeb;
+    --proto-term-ok: #6fd39b;
+    --proto-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --proto-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --proto-ease-swap: cubic-bezier(0.2, 0, 0, 1);
+    display: flex;
+    flex-direction: column;
+    padding-block: 2.5rem 3.5rem;
+    border-block-end: 4px solid var(--proto-ink);
+  }
+
+  .ph-hero :where(h1, p) {
+    margin: 0;
+  }
+
+  .ph-copy {
+    margin-block-start: 3rem;
+    text-align: center;
+  }
+
+  /* on small screens the copy leads and the cards follow */
+  @media (max-width: 55.99rem) {
+    .ph-copy {
+      order: -1;
+      margin-block-start: 0;
+    }
+
+    .ph-cards {
+      margin-block-start: 2.5rem;
+    }
+  }
+
+  .ph-hero .ph-title {
+    font-size: clamp(1.6rem, 3vw, 2.1rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+  }
+
+  .ph-hero .ph-tagline {
+    margin-block-start: 0.75rem;
+    font-size: 1rem;
+    color: var(--proto-muted);
+    max-width: 46ch;
+    margin-inline: auto;
+  }
+
+  .ph-hero .ph-actions {
+    margin-block-start: 1.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .ph-primary {
+    display: inline-block;
+    padding: 0.7rem 1.2rem;
+    border: 2px solid var(--proto-ink);
+    background: var(--proto-ink);
+    color: var(--proto-paper);
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .ph-primary:hover {
+    background: var(--proto-paper);
+    color: var(--proto-ink);
+  }
+
+  .ph-minimal {
+    font-weight: 700;
+    color: var(--proto-ink);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.18em;
+  }
+
+  /*
+   * Autoplay timeline (ms from load):
+   *    0 card 1 enters,  600/780 output prints, 1100 site window slides up
+   * 1500 card 2 enters, 1900 cursor acts, ~2470 the check moves to Private
+   * 3000 card 3 enters, 3450/3630 records verify, 3800 badge connects
+   * Base styles are the FINAL state; keyframes replay the before -> after
+   * with backwards fill, so everything settles and stays.
+   */
+  .ph-cards {
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .ph-card {
+    position: relative;
+    flex: 1 1 0;
+    min-inline-size: 0;
+    transition: transform 200ms var(--proto-ease-out);
+    animation: ph-enter 480ms var(--proto-ease-out) backwards;
+  }
+
+  .ph-card-1 {
+    z-index: 1;
+  }
+
+  .ph-card-2 {
+    margin-inline-start: -2.25rem;
+    margin-block-start: 1.1rem;
+    z-index: 2;
+    animation-delay: 1500ms;
+  }
+
+  .ph-card-3 {
+    margin-inline-start: -2.25rem;
+    margin-block-start: 2.2rem;
+    z-index: 3;
+    animation-delay: 3000ms;
+  }
+
+  @keyframes ph-enter {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .ph-card:hover {
+      transform: translateY(-4px);
+    }
+  }
+
+  @media (max-width: 55.99rem) {
+    .ph-cards {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+    }
+
+    .ph-card-2,
+    .ph-card-3 {
+      margin-inline-start: 0;
+      margin-block-start: 0;
+    }
+  }
+
+  /* keep the popover's checks clear of card 3's overlap */
+  @media (min-width: 56rem) {
+    .ph-card-2 .ph-row {
+      padding-inline-end: 3.25rem;
+    }
+  }
+
+  /* ---- mini-UI cards ---- */
+  .ph-visual {
+    block-size: 12.25rem;
+    border: 2px solid var(--proto-ink);
+    background: var(--proto-paper);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ph-box-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: none;
+    block-size: 2.2rem;
+    padding-inline: 0.75rem;
+    background: var(--proto-mist);
+    border-block-end: 2px solid var(--proto-ink);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .ph-icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: none;
+  }
+
+  .ph-tick {
+    inline-size: 0.8rem;
+    block-size: 0.8rem;
+    flex: none;
+    fill: none;
+    stroke: var(--proto-success);
+    stroke-width: 2.2;
+  }
+
+  /* card 1: terminal */
+  .ph-chrome {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: none;
+    block-size: 2.2rem;
+    padding-inline: 0.75rem;
+    background: #16181d;
+  }
+
+  .ph-chrome i {
+    inline-size: 9px;
+    block-size: 9px;
+    background: #5a6172;
+  }
+
+  .ph-terminal {
+    position: relative;
+    background: var(--proto-term-bg);
+  }
+
+  .ph-term-body {
+    padding: 0.75rem;
+    font: 0.72rem / 1.8 var(--sl-font-mono);
+    color: var(--proto-term-fg);
+  }
+
+  .ph-term-ok {
+    color: var(--proto-term-ok);
+  }
+
+  .ph-cmd::after {
+    content: '';
+    display: inline-block;
+    inline-size: 0.5em;
+    block-size: 1em;
+    vertical-align: text-bottom;
+    margin-inline-start: 0.15em;
+    background: var(--proto-term-fg);
+    opacity: 0;
+    animation: ph-blink 1.1s step-end infinite;
+  }
+
+  .ph-out-1 {
+    animation: ph-rise 240ms var(--proto-ease-out) 600ms backwards;
+  }
+
+  .ph-out-2 {
+    animation: ph-rise 240ms var(--proto-ease-out) 780ms backwards;
+  }
+
+  .ph-site-pop {
+    position: absolute;
+    right: 0.9rem;
+    bottom: 0.6rem;
+    inline-size: 58%;
+    border: 2px solid var(--proto-ink);
+    background: var(--proto-paper);
+    transform: translateY(0) rotate(-2deg);
+    animation: ph-pop 340ms var(--proto-ease-out) 1100ms backwards;
+  }
+
+  .ph-site-url {
+    padding: 0.35rem 0.6rem;
+    background: var(--proto-mist);
+    border-block-end: 1px solid var(--proto-hairline);
+    font: 700 0.64rem var(--sl-font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ph-site-skel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.6rem;
+  }
+
+  .ph-site-skel i {
+    block-size: 5px;
+    background: var(--proto-hairline);
+  }
+
+  .ph-site-skel i:nth-child(1) {
+    inline-size: 45%;
+    background: var(--proto-ink);
+  }
+
+  .ph-site-skel i:nth-child(2) {
+    inline-size: 88%;
+  }
+
+  .ph-site-skel i:nth-child(3) {
+    inline-size: 64%;
+  }
+
+  @keyframes ph-blink {
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes ph-rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes ph-pop {
+    from {
+      transform: translateY(140%);
+    }
+    to {
+      transform: translateY(0) rotate(-2deg);
+    }
+  }
+
+  /* card 2: visibility popover */
+  .ph-rows {
+    position: relative;
+    flex: 1;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .ph-row {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-inline: 0.75rem;
+  }
+
+  .ph-row + .ph-row {
+    border-block-start: 2px solid var(--proto-ink);
+  }
+
+  .ph-row-top {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .ph-row-top .ph-tick {
+    margin-inline-start: auto;
+    stroke: var(--proto-ink);
+  }
+
+  .ph-tick-public {
+    opacity: 0;
+    animation: ph-fade-away 200ms var(--proto-ease-swap) 2450ms backwards;
+  }
+
+  .ph-tick-private {
+    animation: ph-check-in 320ms var(--proto-ease-out) 2470ms backwards;
+  }
+
+  .ph-row-desc {
+    margin: 0.2rem 0 0 1.55rem;
+    font-size: 0.72rem;
+    color: var(--proto-muted);
+  }
+
+  .ph-row-private {
+    animation: ph-row-hover 950ms var(--proto-ease-swap) 1900ms both;
+  }
+
+  .ph-cursor {
+    position: absolute;
+    top: 1.6rem;
+    left: 64%;
+    inline-size: 1.1rem;
+    block-size: 1.1rem;
+    fill: var(--proto-ink);
+    stroke: var(--proto-paper);
+    stroke-width: 1.5;
+    opacity: 0;
+    z-index: 1;
+    animation: ph-cursor-act 950ms var(--proto-ease-in-out) 1900ms both;
+  }
+
+  @keyframes ph-cursor-act {
+    0% {
+      opacity: 0;
+      transform: translate(16px, 0);
+    }
+    18% {
+      opacity: 1;
+      transform: translate(0, 0);
+    }
+    45%,
+    52% {
+      opacity: 1;
+      transform: translate(0, 4.8rem);
+    }
+    58% {
+      transform: translate(0, 4.8rem) scale(0.8);
+    }
+    66% {
+      transform: translate(0, 4.8rem) scale(1);
+    }
+    86% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(0, 4.8rem);
+    }
+  }
+
+  @keyframes ph-row-hover {
+    0%,
+    38% {
+      background: transparent;
+    }
+    48%,
+    78% {
+      background: var(--proto-mist);
+    }
+    100% {
+      background: transparent;
+    }
+  }
+
+  @keyframes ph-fade-away {
+    from {
+      opacity: 1;
+      filter: blur(0);
+    }
+    to {
+      opacity: 0;
+      filter: blur(2px);
+    }
+  }
+
+  @keyframes ph-check-in {
+    from {
+      opacity: 0;
+      transform: scale(0.25);
+      filter: blur(4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+      filter: blur(0);
+    }
+  }
+
+  /* card 3: DNS records */
+  .ph-domain-head {
+    font-family: var(--sl-font-mono);
+    font-size: 0.7rem;
+  }
+
+  .ph-dot {
+    inline-size: 8px;
+    block-size: 8px;
+    flex: none;
+    background: var(--proto-success);
+    animation: ph-dot-pulse 420ms var(--proto-ease-in-out) 3400ms both;
+  }
+
+  .ph-rec {
+    display: grid;
+    grid-template-columns: 3.2rem 1fr auto;
+    column-gap: 0.6rem;
+    align-items: center;
+    padding: 0.55rem 0.75rem;
+    font: 0.7rem var(--sl-font-mono);
+  }
+
+  .ph-rec + .ph-rec {
+    border-block-start: 1px solid var(--proto-hairline);
+  }
+
+  .ph-rec-type {
+    font-weight: 700;
+  }
+
+  .ph-rec-val {
+    color: var(--proto-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ph-rec-check-1 {
+    animation: ph-check-in 300ms var(--proto-ease-out) 3450ms backwards;
+  }
+
+  .ph-rec-check-2 {
+    animation: ph-check-in 300ms var(--proto-ease-out) 3630ms backwards;
+  }
+
+  .ph-domain-foot {
+    margin-block-start: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .ph-chip {
+    display: inline-grid;
+    border: 2px solid var(--proto-success);
+    color: var(--proto-success);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    animation: ph-chip 900ms var(--proto-ease-swap) 3800ms backwards;
+  }
+
+  .ph-chip span {
+    grid-area: 1 / 1;
+    padding: 0.2rem 0.55rem;
+  }
+
+  .ph-chip-a {
+    opacity: 0;
+    animation: ph-chip-a 900ms var(--proto-ease-swap) 3800ms backwards;
+  }
+
+  .ph-chip-b {
+    animation: ph-chip-b 900ms var(--proto-ease-swap) 3800ms backwards;
+  }
+
+  .ph-note {
+    font-size: 0.68rem;
+    color: var(--proto-muted);
+    text-align: end;
+  }
+
+  @keyframes ph-dot-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.6);
+    }
+  }
+
+  @keyframes ph-chip {
+    0% {
+      opacity: 0;
+      border-color: var(--proto-ink);
+      color: var(--proto-ink);
+    }
+    22%,
+    55% {
+      opacity: 1;
+      border-color: var(--proto-ink);
+      color: var(--proto-ink);
+    }
+    100% {
+      opacity: 1;
+      border-color: var(--proto-success);
+      color: var(--proto-success);
+    }
+  }
+
+  @keyframes ph-chip-a {
+    0%,
+    55% {
+      opacity: 1;
+      filter: blur(0);
+    }
+    100% {
+      opacity: 0;
+      filter: blur(2px);
+    }
+  }
+
+  @keyframes ph-chip-b {
+    0%,
+    55% {
+      opacity: 0;
+      filter: blur(2px);
+    }
+    100% {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+
+  /* base styles are the final state, so with animations off everything
+     rests settled; delays would otherwise hide backwards-filled elements */
+  @media (prefers-reduced-motion: reduce) {
+    .ph-card,
+    .ph-cmd::after,
+    .ph-out-1,
+    .ph-out-2,
+    .ph-site-pop,
+    .ph-tick-public,
+    .ph-tick-private,
+    .ph-row-private,
+    .ph-cursor,
+    .ph-dot,
+    .ph-rec-check-1,
+    .ph-rec-check-2,
+    .ph-chip,
+    .ph-chip-a,
+    .ph-chip-b {
+      animation: none;
+    }
+  }
+</style>
