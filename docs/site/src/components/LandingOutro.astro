@@ -1,37 +1,122 @@
 ---
-/*
- * The page's closing section: the split get-started CTA and the
- * open source footer line.
- */
+/* Product previews mirror the real sign-in, dashboard, and site-detail UI. */
 ---
 
     <>
       <section class="po-cta not-content">
         <h2 class="po-heading">Get started</h2>
-        <div class="po-branches">
-          <div class="po-branch">
-            <h3 class="po-branch-title">I have a Buzz server</h3>
-            <p class="po-branch-copy">
-              You need the Buzz CLI, a GitHub account, and a static site with <code>index.html</code>.
-            </p>
-            <a class="po-primary" href="./getting-started/deploy-your-first-site/">
-              Deploy your first site →
-            </a>
+
+        <div class="po-previews" aria-hidden="true">
+          <div class="po-preview po-preview-login">
+            <div class="po-screen po-login-screen">
+              <p class="po-screen-title">Sign in</p>
+              <p class="po-screen-copy">Manage your sites from your server.</p>
+              <div class="po-login-panel">
+                <span class="po-mini-button po-mini-button-dark">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 1.5a10.5 10.5 0 0 0-3.32 20.46c.53.1.72-.23.72-.51v-2.03c-2.94.64-3.56-1.25-3.56-1.25-.48-1.22-1.17-1.55-1.17-1.55-.96-.66.07-.64.07-.64 1.06.07 1.62 1.09 1.62 1.09.94 1.62 2.47 1.15 3.08.88.09-.68.37-1.15.67-1.41-2.35-.27-4.82-1.18-4.82-5.23 0-1.16.41-2.1 1.09-2.84-.11-.27-.47-1.34.1-2.8 0 0 .89-.28 2.91 1.09A10.1 10.1 0 0 1 12 6.4c.9 0 1.8.12 2.65.36 2.02-1.37 2.91-1.09 2.91-1.09.57 1.46.21 2.53.1 2.8.68.74 1.09 1.68 1.09 2.84 0 4.06-2.48 4.95-4.83 5.22.38.33.72.97.72 1.96v2.9c0 .28.17.61.72.5A10.5 10.5 0 0 0 12 1.5Z" />
+                  </svg>
+                  Login with GitHub
+                </span>
+                <span class="po-mini-button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 10a2 2 0 0 0-2 2c0 1-.1 2.5-.3 4M14 13c0 2.4 0 6.4-1 9M2 12a10 10 0 0 1 18-6M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 12 0v2" />
+                  </svg>
+                  Login with passkey
+                </span>
+                <svg class="po-preview-cursor" viewBox="0 0 20 20">
+                  <path d="M3.5 2.5 L3.5 17 L8 12.9 L10.7 18 L13.4 16.7 L10.9 11.7 L16.8 11.3 Z" />
+                </svg>
+              </div>
+            </div>
           </div>
-          <div class="po-branch">
-            <h3 class="po-branch-title">I need to set one up</h3>
-            <p class="po-branch-copy">
-              You need a Linux server you control, with Docker Compose or
-              Coolify.
-            </p>
-            <a class="po-outline" href="./self-hosting/overview/">
-              Self-host Buzz
-            </a>
+
+          <div class="po-preview po-preview-sites">
+            <div class="po-screen">
+              <div class="po-screen-heading">
+                <div>
+                  <p class="po-screen-title">Your sites</p>
+                  <p class="po-screen-copy">Everything you have published.</p>
+                </div>
+                <span class="po-mini-button po-mini-button-dark">Deploy</span>
+              </div>
+              <div class="po-stats">
+                <span><strong>3</strong> Sites</span>
+                <span><strong>12.4 MB</strong> Total size</span>
+              </div>
+              <div class="po-site-list">
+                <div class="po-site-row po-site-row-head">
+                  <span>Name</span><span>Visibility</span><span>Views</span>
+                </div>
+                <div class="po-site-row po-site-row-1">
+                  <strong>rocket</strong>
+                  <span class="po-visibility">
+                    <svg viewBox="0 0 18 18" fill="none">
+                      <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="2" />
+                      <path d="M9 2c-2.2 2-2.2 12 0 14M9 2c2.2 2 2.2 12 0 14M2 9h14" stroke="currentColor" stroke-width="2" />
+                    </svg>
+                    Public
+                  </span>
+                  <span>1,284</span>
+                </div>
+                <div class="po-site-row po-site-row-2">
+                  <strong>docs</strong>
+                  <span class="po-visibility">
+                    <svg viewBox="0 0 18 18" fill="none">
+                      <rect x="3" y="8" width="12" height="8" stroke="currentColor" stroke-width="2" />
+                      <path d="M5.75 8V5.5a3.25 3.25 0 0 1 6.5 0V8" stroke="currentColor" stroke-width="2" />
+                    </svg>
+                    Private
+                  </span>
+                  <span>438</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="po-preview po-preview-manage">
+            <div class="po-screen">
+              <span class="po-back">← Dashboard</span>
+              <div class="po-screen-heading po-manage-heading">
+                <div>
+                  <p class="po-screen-title">rocket</p>
+                  <p class="po-screen-copy">Deployed 5h ago · 18 files</p>
+                </div>
+                <span class="po-mini-button po-visibility">
+                  <svg viewBox="0 0 18 18" fill="none">
+                    <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="2" />
+                    <path d="M9 2c-2.2 2-2.2 12 0 14M9 2c2.2 2 2.2 12 0 14M2 9h14" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                  Public
+                </span>
+              </div>
+              <div class="po-analytics">
+                <p>All time</p>
+                <div class="po-analytics-stats">
+                  <span><strong>1,284</strong> Views</span>
+                  <span><strong>892</strong> Visitors</span>
+                  <span><strong>24 MB</strong> Bandwidth</span>
+                </div>
+                <svg class="po-chart" viewBox="0 0 240 54" preserveAspectRatio="none">
+                  <path class="po-chart-grid" d="M0 13.5H240M0 27H240M0 40.5H240" />
+                  <path class="po-chart-line po-chart-views" pathLength="1" d="M0 44 22 39 45 41 68 28 91 32 114 18 137 24 160 13 183 20 206 8 240 11" />
+                  <path class="po-chart-line po-chart-visitors" pathLength="1" d="M0 48 22 46 45 43 68 37 91 39 114 31 137 34 160 27 183 29 206 21 240 24" />
+                </svg>
+              </div>
+            </div>
           </div>
         </div>
-        <p class="po-tertiary">
-          <a href="./reference/cli/">Browse the CLI reference</a>
-        </p>
+
+        <div class="po-flow">
+          <h3 class="po-flow-title">Your server, ready for your team</h3>
+          <p class="po-flow-copy">
+            Run Buzz for yourself or your team. Sign in, deploy from the CLI,
+            and manage your sites from one dashboard.
+          </p>
+          <a class="po-primary" href="./self-hosting/overview/">
+            Self-host Buzz →
+          </a>
+        </div>
       </section>
       <p class="po-footer not-content">
         Buzz is <a href="https://github.com/infomiho/buzz-static-hosting">open source</a>.
@@ -43,6 +128,8 @@
   .po-footer {
     --proto-ink: #0b0c0c;
     --proto-paper: #ffffff;
+    --proto-mist: #f3f2f1;
+    --proto-hairline: #b1b4b6;
     --proto-muted: #505a5f;
     --proto-link: #1d70b8;
   }
@@ -51,76 +138,260 @@
     margin: 0;
   }
 
-  .po-heading {
-    font-size: 1.75rem;
-    font-weight: 700;
-    letter-spacing: -0.035em;
-  }
-
-  .po-tertiary a {
-    font-weight: 700;
-    color: var(--proto-link);
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-    text-underline-offset: 0.18em;
-  }
-
   .po-cta {
     margin-block: 4rem 3rem;
     padding-block: 2.5rem 3rem;
     border-block: 4px solid var(--proto-ink);
   }
 
-  .po-branches {
-    display: grid;
-    gap: 2.5rem;
-    margin-block-start: 2rem;
-  }
-
-  @media (min-width: 56rem) {
-    .po-branches {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 3rem;
-    }
-  }
-
-  .po-branch-title {
-    font-size: 1.05rem;
+  .po-heading {
+    font-size: 1.75rem;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.035em;
   }
 
-  .po-branch {
+  .po-previews {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(15.5rem, 84%);
+    gap: 1rem;
+    margin-block-start: 2rem;
+    padding-block-end: 0.75rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: inline mandatory;
+    scrollbar-width: thin;
+  }
+
+  .po-preview {
+    min-width: 0;
+    border: 2px solid var(--proto-ink);
+    background: var(--proto-paper);
+    scroll-snap-align: start;
+  }
+
+  .po-screen {
+    min-block-size: 15rem;
+    padding: 1rem;
+    overflow: hidden;
+  }
+
+  .po-screen-title {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  .po-screen-copy {
+    margin-block-start: 0.15rem !important;
+    color: var(--proto-muted);
+    font-size: 0.64rem;
+  }
+
+  .po-screen-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .po-login-screen {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    justify-content: center;
   }
 
-  .po-branch-copy {
-    margin-block: 0.6rem 1.25rem;
-    font-size: 0.92rem;
-    max-width: 44ch;
-  }
-
-  .po-branch-copy code {
-    font: 0.85em var(--sl-font-mono);
-    border: 1px solid currentColor;
-    padding: 0.05em 0.25em;
-  }
-
-  .po-primary,
-  .po-outline {
-    display: inline-block;
-    margin-block-start: auto;
-    padding: 0.7rem 1.2rem;
+  .po-login-panel {
+    position: relative;
+    display: grid;
+    gap: 0.5rem;
+    margin-block-start: 1.25rem;
+    padding: 0.85rem;
     border: 2px solid var(--proto-ink);
+  }
+
+  .po-mini-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-block-size: 1.85rem;
+    padding-inline: 0.55rem;
+    border: 1px solid var(--proto-ink);
+    background: var(--proto-paper);
+    color: var(--proto-ink);
+    font-size: 0.62rem;
     font-weight: 700;
-    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .po-mini-button-dark {
+    background: var(--proto-ink);
+    color: var(--proto-paper);
+  }
+
+  .po-mini-button svg {
+    inline-size: 0.8rem;
+    block-size: 0.8rem;
+  }
+
+  .po-preview-cursor {
+    position: absolute;
+    top: 1.2rem;
+    left: 58%;
+    inline-size: 1rem;
+    block-size: 1rem;
+    fill: var(--proto-ink);
+    stroke: var(--proto-paper);
+    stroke-width: 1.5;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .po-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-block-start: 1rem;
+  }
+
+  .po-stats span,
+  .po-analytics-stats span {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    border-block-start: 2px solid var(--proto-ink);
+    padding-block-start: 0.4rem;
+    font-size: 0.58rem;
+    font-weight: 700;
+  }
+
+  .po-stats strong,
+  .po-analytics-stats strong {
+    font-size: 0.9rem;
+  }
+
+  .po-site-list {
+    margin-block-start: 0.9rem;
+    border: 1px solid var(--proto-ink);
+  }
+
+  .po-site-row {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 0.55fr;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    font-size: 0.56rem;
+  }
+
+  .po-site-row + .po-site-row {
+    border-block-start: 1px solid var(--proto-ink);
+  }
+
+  .po-site-row-head {
+    background: var(--proto-mist);
+    font-weight: 700;
+  }
+
+  .po-site-row strong {
+    color: var(--proto-link);
+    text-decoration: underline;
+  }
+
+  .po-visibility {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+  }
+
+  .po-visibility svg {
+    inline-size: 0.65rem;
+    block-size: 0.65rem;
+    flex: none;
+  }
+
+  .po-back {
+    display: block;
+    margin-block-end: 0.8rem;
+    color: var(--proto-link);
+    font-size: 0.58rem;
+    font-weight: 700;
+  }
+
+  .po-manage-heading {
+    align-items: center;
+  }
+
+  .po-analytics {
+    margin-block-start: 1rem;
+    padding: 0.75rem;
+    border: 1px solid var(--proto-ink);
+  }
+
+  .po-analytics > p {
+    font-size: 0.66rem;
+    font-weight: 700;
+  }
+
+  .po-analytics-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-block-start: 0.6rem;
+  }
+
+  .po-chart {
+    display: block;
+    inline-size: 100%;
+    block-size: 3.25rem;
+    margin-block-start: 0.8rem;
+  }
+
+  .po-chart-grid {
+    fill: none;
+    stroke: var(--proto-hairline);
+    stroke-width: 0.75;
+  }
+
+  .po-chart-line {
+    fill: none;
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .po-chart-views {
+    stroke: var(--proto-link);
+  }
+
+  .po-chart-visitors {
+    stroke: var(--proto-muted);
+  }
+
+  .po-flow {
+    margin-block-start: 2.25rem;
+    max-width: 44rem;
+  }
+
+  .po-flow-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  .po-flow-copy {
+    margin-block: 0.6rem 1.25rem !important;
+    max-width: 60ch;
+    font-size: 0.92rem;
   }
 
   .po-primary {
+    display: inline-block;
+    padding: 0.7rem 1.2rem;
+    border: 2px solid var(--proto-ink);
     background: var(--proto-ink);
     color: var(--proto-paper);
+    font-weight: 700;
+    text-decoration: none;
   }
 
   .po-primary:hover {
@@ -128,30 +399,78 @@
     color: var(--proto-ink);
   }
 
-  .po-outline {
-    background: var(--proto-paper);
-    color: var(--proto-ink);
+  @media (min-width: 56rem) {
+    .po-previews {
+      grid-auto-flow: initial;
+      grid-auto-columns: initial;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      overflow: visible;
+      padding-block-end: 0;
+    }
   }
 
-  .po-outline:hover {
-    background: var(--proto-ink);
-    color: var(--proto-paper);
+  @media (prefers-reduced-motion: no-preference) {
+    .po-preview-cursor {
+      animation: po-cursor-hover 7s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+    }
+
+    .po-preview-login .po-mini-button-dark {
+      animation: po-login-hover 7s step-end infinite;
+    }
   }
 
-  .po-tertiary {
-    margin-block-start: 2rem;
+  @keyframes po-cursor-hover {
+    0%,
+    12% {
+      opacity: 0;
+      transform: translate(2.5rem, 2.75rem);
+    }
+    18% {
+      opacity: 1;
+    }
+    28%,
+    58% {
+      opacity: 1;
+      transform: translate(0, 0);
+    }
+    72% {
+      opacity: 0;
+      transform: translate(2.5rem, 2.75rem);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(2.5rem, 2.75rem);
+    }
+  }
+
+  @keyframes po-login-hover {
+    0%,
+    27% {
+      background: var(--proto-ink);
+      color: var(--proto-paper);
+    }
+    28%,
+    58% {
+      background: var(--proto-paper);
+      color: var(--proto-ink);
+    }
+    59%,
+    100% {
+      background: var(--proto-ink);
+      color: var(--proto-paper);
+    }
   }
 
   .po-footer {
     margin-block: 2rem 0;
-    font-size: 0.85rem;
     color: var(--proto-muted);
+    font-size: 0.85rem;
     text-align: center;
   }
 
   .po-footer a {
-    font-weight: 700;
     color: var(--proto-link);
+    font-weight: 700;
     text-decoration: underline;
     text-decoration-thickness: 2px;
     text-underline-offset: 0.18em;

@@ -234,18 +234,18 @@
    * Autoplay timeline (ms from load). Each card plays its story front and
    * center, then recedes up into the deck (smaller, slightly faded) as the
    * next card lands on top:
-   * A card's story completes, holds 220ms, then it recedes; the next
+   * A card's story completes, briefly holds, then it recedes; the next
    * card rises into the slot midway through the recede. The sequence
    * ends with the deck spreading into all three cards, which stay.
-   *    0 card 1 enters front, 275-1430 the command types itself,
-   *      1760/1925 output prints after a beat, 2090-2662 the site window
+   *    0 card 1 enters front, 330-1716 the command types itself,
+   *      2112/2310 output prints after a beat, 2508-3194 the site window
    *      rises out past the terminal's bottom edge
-   * 2882 card 1 recedes; 3102 card 2 rises into the slot,
-   *      3487 the cursor flies in, ~4213 it clicks, 4257/4279 the check
+   * 3458 card 1 recedes; 3722 card 2 rises into the slot,
+   *      4184 the cursor flies in, ~5056 it clicks, 5108/5135 the check
    *      moves to Private
-   * 4851 card 2 recedes; 5071 card 3 rises into the slot,
-   *      5654/5852 records verify, 6039 the badge connects (done 7029)
-   * 7359-7799 the finale: the deck spreads and stays: terminal front
+   * 5821 card 2 recedes; 6085 card 3 rises into the slot,
+   *      6785/7022 records verify, 7247 the badge connects (done 8435)
+   * 8831-9359 the finale: the deck spreads and stays: terminal front
    *      and center, privacy left behind, domain right behind
    *      (on small screens only the terminal remains, full width)
    * Base styles are the FINAL state; keyframes replay the before -> after
@@ -333,7 +333,7 @@
     cursor: pointer;
     opacity: 0;
     visibility: hidden;
-    animation: ph-appear 300ms var(--proto-ease-out) 8000ms forwards;
+    animation: ph-appear 360ms var(--proto-ease-out) 9600ms forwards;
   }
 
   @keyframes ph-appear {
@@ -398,29 +398,29 @@
   .ph-card-1 {
     z-index: 3;
     transform: var(--pose-spread-1);
-    animation: ph-deck-1 7810ms var(--proto-ease-in-out) both;
+    animation: ph-deck-1 9372ms var(--proto-ease-in-out) both;
   }
 
   .ph-card-1::after {
     opacity: 0;
-    animation: ph-dim-1 7810ms var(--proto-ease-in-out) both;
+    animation: ph-dim-1 9372ms var(--proto-ease-in-out) both;
   }
 
   .ph-card-2 {
     z-index: 2;
     transform: var(--pose-spread-2);
-    animation: ph-deck-2 4697ms var(--proto-ease-in-out) 3102ms both;
+    animation: ph-deck-2 5636ms var(--proto-ease-in-out) 3722ms both;
   }
 
   .ph-card-2::after {
     opacity: 0;
-    animation: ph-dim-2 4697ms var(--proto-ease-in-out) 3102ms both;
+    animation: ph-dim-2 5636ms var(--proto-ease-in-out) 3722ms both;
   }
 
   .ph-card-3 {
     z-index: 2;
     transform: var(--pose-spread-3);
-    animation: ph-deck-3 2728ms var(--proto-ease-in-out) 5071ms both;
+    animation: ph-deck-3 3274ms var(--proto-ease-in-out) 6085ms both;
   }
 
   @keyframes ph-deck-1 {
@@ -615,7 +615,7 @@
     white-space: nowrap;
     vertical-align: bottom;
     inline-size: 32ch;
-    animation: ph-type 1155ms steps(32) 275ms both;
+    animation: ph-type 1386ms steps(32) 330ms both;
   }
 
   @keyframes ph-type {
@@ -640,11 +640,11 @@
   }
 
   .ph-out-1 {
-    animation: ph-rise 264ms var(--proto-ease-out) 1760ms both;
+    animation: ph-rise 317ms var(--proto-ease-out) 2112ms both;
   }
 
   .ph-out-2 {
-    animation: ph-rise 264ms var(--proto-ease-out) 1925ms both;
+    animation: ph-rise 317ms var(--proto-ease-out) 2310ms both;
   }
 
   /* the deployed site hangs past the terminal's bottom edge; it sits outside
@@ -656,7 +656,7 @@
     bottom: -0.7rem;
     inline-size: 58%;
     transform: rotate(-2.5deg);
-    animation: ph-pop 572ms var(--proto-ease-out) 2090ms both;
+    animation: ph-pop 686ms var(--proto-ease-out) 2508ms both;
   }
 
   .ph-site-win {
@@ -760,11 +760,11 @@
 
   .ph-tick-public {
     opacity: 0;
-    animation: ph-fade-away 220ms var(--proto-ease-swap) 4257ms both;
+    animation: ph-fade-away 264ms var(--proto-ease-swap) 5108ms both;
   }
 
   .ph-tick-private {
-    animation: ph-check-in 352ms var(--proto-ease-out) 4279ms both;
+    animation: ph-check-in 422ms var(--proto-ease-out) 5135ms both;
   }
 
   .ph-row-desc {
@@ -774,7 +774,7 @@
   }
 
   .ph-row-private {
-    animation: ph-row-hover 1265ms var(--proto-ease-swap) 3487ms both;
+    animation: ph-row-hover 1518ms var(--proto-ease-swap) 4184ms both;
   }
 
   /* a sibling of the clipped .ph-visual so it can fly in from off the card;
@@ -790,7 +790,7 @@
     stroke-width: 1.5;
     opacity: 0;
     z-index: 2;
-    animation: ph-cursor-act 1265ms var(--proto-ease-in-out) 3487ms both;
+    animation: ph-cursor-act 1518ms var(--proto-ease-in-out) 4184ms both;
   }
 
   @keyframes ph-cursor-act {
@@ -873,7 +873,7 @@
     block-size: 8px;
     flex: none;
     background: var(--proto-success);
-    animation: ph-dot-pulse 462ms var(--proto-ease-in-out) 5599ms both;
+    animation: ph-dot-pulse 554ms var(--proto-ease-in-out) 6719ms both;
   }
 
   .ph-rec {
@@ -901,11 +901,11 @@
   }
 
   .ph-rec-check-1 {
-    animation: ph-check-in 330ms var(--proto-ease-out) 5654ms both;
+    animation: ph-check-in 396ms var(--proto-ease-out) 6785ms both;
   }
 
   .ph-rec-check-2 {
-    animation: ph-check-in 330ms var(--proto-ease-out) 5852ms both;
+    animation: ph-check-in 396ms var(--proto-ease-out) 7022ms both;
   }
 
   .ph-domain-foot {
@@ -926,7 +926,7 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    animation: ph-chip 990ms var(--proto-ease-swap) 6039ms both;
+    animation: ph-chip 1188ms var(--proto-ease-swap) 7247ms both;
   }
 
   .ph-chip span {
@@ -936,11 +936,11 @@
 
   .ph-chip-a {
     opacity: 0;
-    animation: ph-chip-a 990ms var(--proto-ease-swap) 6039ms both;
+    animation: ph-chip-a 1188ms var(--proto-ease-swap) 7247ms both;
   }
 
   .ph-chip-b {
-    animation: ph-chip-b 990ms var(--proto-ease-swap) 6039ms both;
+    animation: ph-chip-b 1188ms var(--proto-ease-swap) 7247ms both;
   }
 
   .ph-note {
