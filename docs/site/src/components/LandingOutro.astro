@@ -3,8 +3,8 @@
 ---
 
     <>
-      <section class="po-cta not-content">
-        <h2 class="po-heading">Get started</h2>
+      <section class="po-uses not-content">
+        <h2 class="po-heading">Use CLI or Dashboard</h2>
 
         <div class="po-previews" aria-hidden="true">
           <div class="po-preview po-preview-login">
@@ -107,6 +107,11 @@
           </div>
         </div>
 
+      </section>
+
+      <section class="po-cta not-content">
+        <h2 class="po-heading">Get started</h2>
+
         <div class="po-flow">
           <h3 class="po-flow-title">Your server, ready for your team</h3>
           <p class="po-flow-copy">
@@ -124,6 +129,7 @@
     </>
 
 <style>
+  .po-uses,
   .po-cta,
   .po-footer {
     --proto-ink: #0b0c0c;
@@ -134,14 +140,24 @@
     --proto-link: #1d70b8;
   }
 
-  .po-cta :where(h2, h3, p) {
+  :is(.po-uses, .po-cta) :where(h2, h3, p) {
     margin: 0;
   }
 
+  .po-uses,
   .po-cta {
-    margin-block: 4rem 3rem;
+    margin-block-start: 4rem;
     padding-block: 2.5rem 3rem;
-    border-block: 4px solid var(--proto-ink);
+  }
+
+  .po-uses {
+    padding-block-end: 3.6rem;
+  }
+
+  .po-cta {
+    margin-block-start: 0;
+    margin-block-end: 3rem;
+    padding-block-start: 3rem;
   }
 
   .po-heading {
