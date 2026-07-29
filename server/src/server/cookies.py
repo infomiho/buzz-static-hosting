@@ -4,6 +4,8 @@ COOKIE_NAME = "__Host-buzz_session"
 DEV_COOKIE_NAME = "buzz_session"
 ACCESS_COOKIE_NAME = "__Host-buzz_access"
 DEV_ACCESS_COOKIE_NAME = "buzz_access"
+OAUTH_BROWSER_COOKIE_NAME = "__Host-buzz_oauth_browser"
+DEV_OAUTH_BROWSER_COOKIE_NAME = "buzz_oauth_browser"
 
 
 def session_cookie_name(secure: bool) -> str:
@@ -29,6 +31,22 @@ def clear_session_cookie(response: Response, secure: bool) -> None:
         secure=secure,
         samesite="lax",
         path="/",
+    )
+
+
+def oauth_browser_cookie_name(secure: bool) -> str:
+    return OAUTH_BROWSER_COOKIE_NAME if secure else DEV_OAUTH_BROWSER_COOKIE_NAME
+
+
+def set_oauth_browser_cookie(response: Response, nonce: str, secure: bool) -> None:
+    response.set_cookie(
+        key=oauth_browser_cookie_name(secure),
+        value=nonce,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+        max_age=10 * 60,
     )
 
 

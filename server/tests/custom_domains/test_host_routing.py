@@ -7,13 +7,6 @@ from server.custom_domains.transitions import DomainClaimStateMachine
 
 
 class StubAuth:
-    def start_device_flow(self):
-        return {
-            "device_code": "device-code",
-            "user_code": "USER-CODE",
-            "verification_uri": "https://example.com/device",
-        }
-
     def authenticate(self, authorization):
         return None
 

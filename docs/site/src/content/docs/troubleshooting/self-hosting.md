@@ -97,13 +97,10 @@ Let's Encrypt issuance can also fail because of external availability or certifi
 
 ## GitHub Sign-In Doesn't Start Or Complete
 
-1. Confirm **Enable Device Flow** is selected in **Settings > Developer settings > OAuth Apps** for the configured app.
-2. Confirm `GITHUB_CLIENT_ID` belongs to that OAuth app.
-3. Confirm both GitHub variables are present in the running container, then restart Buzz.
-4. Confirm the server can reach `github.com` and `api.github.com` over HTTPS.
-5. Request a new code if GitHub reports that the device code expired or was denied.
-
-The client secret is required by Buzz's startup validation even though the current Device Flow requests use the client ID.
+1. Confirm the OAuth app's callback URL is `https://buzz.example.com/dashboard/login/github/callback`, replacing the hostname with your Buzz domain.
+2. Confirm `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` belong to that OAuth app and are present in the running container, then restart Buzz.
+3. Confirm the server can reach `github.com` and `api.github.com` over HTTPS.
+4. Start a new sign-in if Buzz says the request expired or was cancelled.
 
 ## Data Disappears After A Redeploy
 

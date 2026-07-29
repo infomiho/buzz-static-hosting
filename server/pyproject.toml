@@ -11,6 +11,7 @@ dependencies = [
     "dnspython>=2.8.0",
     "idna>=3.11",
     "webauthn>=3.0.0",
+    "httpx-oauth>=0.17",
 ]
 
 [project.scripts]

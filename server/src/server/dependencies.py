@@ -7,7 +7,7 @@ from .auth_service import DEV_SESSION_ID, AccessDenied, AuthService, Identity, U
 from .cookies import session_cookie_name
 from .db import Database
 from .device_authorization import DeviceAuthorizationService
-from .github_login import GitHubDeviceFlow
+from .github_login import GitHubOAuth
 from .passkeys import PasskeyService
 from .settings import Settings
 
@@ -49,8 +49,8 @@ def get_device_authorization(request: Request) -> DeviceAuthorizationService:
     return request.app.state.device_authorization
 
 
-def get_github_device_flow(request: Request) -> GitHubDeviceFlow:
-    return request.app.state.github_device_flow
+def get_github_oauth(request: Request) -> GitHubOAuth:
+    return request.app.state.github_oauth
 
 
 def get_identity(

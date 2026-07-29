@@ -2,32 +2,39 @@ import ipaddress
 import logging
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from ..templating import templates
 from ..analytics import AnalyticsStore
-from ..auth_service import AuthService, Identity, InvalidSession
-from ..cookies import clear_session_cookie, session_cookie_name, set_session_cookie
+from ..auth_service import AccessDenied, AuthService, Identity, InvalidSession
+from ..cookies import (
+    clear_session_cookie,
+    oauth_browser_cookie_name,
+    session_cookie_name,
+    set_oauth_browser_cookie,
+    set_session_cookie,
+)
 from ..custom_domains import DomainClaimLimits, DomainClaimStore, claim_views_for_site
 from ..db import Database
 from ..dependencies import (
     get_auth_service,
     get_database,
-    get_github_device_flow,
+    get_github_oauth,
     get_passkey_service,
     get_settings,
     require_user,
 )
 from ..github_login import (
-    GitHubDeviceFlow,
-    GitHubDeviceFlowDenied,
-    GitHubDeviceFlowExpired,
-    GitHubDeviceFlowFailed,
-    GitHubDeviceFlowPending,
-    GitHubDeviceFlowSlowDown,
+    GitHubOAuth,
+    GitHubOAuthDenied,
+    GitHubOAuthInvalidResponse,
+    GitHubOAuthInvalidState,
+    GitHubOAuthNotConfigured,
+    GitHubOAuthUnavailable,
 )
 from ..passkeys import AuthenticationFailed, ChallengeExpired, PasskeyService
 from ..settings import Settings
@@ -44,42 +51,68 @@ def _session_response(token: str, settings: Settings) -> JSONResponse:
     return response
 
 
-class GitHubLoginPollRequest(BaseModel):
-    device_code: str
-
-
-@router.post("/login/github/start")
+@router.get("/login/github")
 async def github_login_start(
-    github_flow: Annotated[GitHubDeviceFlow, Depends(get_github_device_flow)],
+    request: Request,
+    github_oauth: Annotated[GitHubOAuth, Depends(get_github_oauth)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    next_path: Annotated[str | None, Query(alias="next")] = None,
 ):
     try:
-        return github_flow.start()
-    except GitHubDeviceFlowFailed as e:
-        raise HTTPException(status_code=500, detail=e.detail)
+        start = await github_oauth.start(
+            next_path,
+            request.cookies.get(oauth_browser_cookie_name(not settings.dev_mode)),
+        )
+    except GitHubOAuthNotConfigured:
+        raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
+    response = RedirectResponse(url=start.authorization_url, status_code=302)
+    set_oauth_browser_cookie(response, start.browser_nonce, secure=not settings.dev_mode)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
-@router.post("/login/github/poll")
-async def github_login_poll(
-    data: GitHubLoginPollRequest,
-    github_flow: Annotated[GitHubDeviceFlow, Depends(get_github_device_flow)],
+def _oauth_error_response(message: str) -> RedirectResponse:
+    response = RedirectResponse(url="/?" + urlencode({"login_error": message}), status_code=303)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get("/login/github/callback")
+async def github_login_callback(
+    request: Request,
+    github_oauth: Annotated[GitHubOAuth, Depends(get_github_oauth)],
     auth: Annotated[AuthService, Depends(get_auth_service)],
     settings: Annotated[Settings, Depends(get_settings)],
+    state: str | None = None,
+    code: str | None = None,
+    error: str | None = None,
 ):
     try:
-        github_user = github_flow.poll(data.device_code)
-    except GitHubDeviceFlowPending:
-        return {"status": "pending"}
-    except GitHubDeviceFlowSlowDown as e:
-        return {"status": "pending", "interval": e.interval}
-    except GitHubDeviceFlowExpired:
-        raise HTTPException(status_code=400, detail="Device code expired")
-    except GitHubDeviceFlowDenied:
-        raise HTTPException(status_code=400, detail="User denied access")
-    except GitHubDeviceFlowFailed as e:
-        raise HTTPException(status_code=400, detail=e.detail)
+        completed = await github_oauth.complete(
+            state=state,
+            browser_nonce=request.cookies.get(oauth_browser_cookie_name(not settings.dev_mode)),
+            code=code,
+            error=error,
+        )
+    except GitHubOAuthInvalidState:
+        return _oauth_error_response("Your GitHub sign-in expired. Try again.")
+    except GitHubOAuthDenied:
+        return _oauth_error_response("GitHub sign-in was cancelled.")
+    except GitHubOAuthInvalidResponse:
+        return _oauth_error_response("GitHub returned an invalid sign-in response.")
+    except GitHubOAuthUnavailable:
+        return _oauth_error_response("GitHub sign-in is temporarily unavailable. Try again.")
+    except GitHubOAuthNotConfigured:
+        return _oauth_error_response("GitHub OAuth is not configured.")
 
-    result = auth.login_with_github(github_user)
-    return _session_response(result.token, settings)
+    try:
+        result = auth.login_with_github(completed.user)
+    except AccessDenied:
+        return _oauth_error_response("This GitHub account is not allowed on this server.")
+    response = RedirectResponse(url=completed.next_path, status_code=303)
+    set_session_cookie(response, result.token, secure=not settings.dev_mode)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 class PasskeyLoginRequest(BaseModel):
