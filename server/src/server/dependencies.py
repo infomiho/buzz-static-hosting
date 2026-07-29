@@ -82,7 +82,9 @@ def get_identity(
     return None
 
 
-def require_user(identity: Annotated[Identity | None, Depends(get_identity)]) -> Identity:
+def require_authenticated_user(
+    identity: Annotated[Identity | None, Depends(get_identity)],
+) -> Identity:
     if not identity:
         raise HTTPException(status_code=401, detail="Unauthorized")
     if identity.token_type == "deploy":
@@ -90,9 +92,44 @@ def require_user(identity: Annotated[Identity | None, Depends(get_identity)]) ->
     return identity
 
 
+def require_control_user(
+    identity: Annotated[Identity, Depends(require_authenticated_user)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+) -> Identity:
+    if not auth.user_is_allowed(identity.user.id):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"GitHub account '{identity.user.github_login}' cannot manage "
+                "this Buzz server"
+            ),
+        )
+    return identity
+
+
+# Existing management routes import this name. Its meaning is intentionally
+# control-plane admission; hosted Access uses require_authenticated_user.
+require_user = require_control_user
+
+
 def require_identity(identity: Annotated[Identity | None, Depends(get_identity)]) -> Identity:
     if not identity:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    return identity
+
+
+def require_deploy_identity(
+    identity: Annotated[Identity, Depends(require_identity)],
+    auth: Annotated[AuthService, Depends(get_auth_service)],
+) -> Identity:
+    if identity.token_type == "session" and not auth.user_is_allowed(identity.user.id):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"GitHub account '{identity.user.github_login}' cannot manage "
+                "this Buzz server"
+            ),
+        )
     return identity
 
 

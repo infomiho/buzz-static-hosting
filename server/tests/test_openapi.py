@@ -12,6 +12,9 @@ def test_openapi_contains_only_public_api_paths():
         "/sites",
         "/sites/{name}",
         "/sites/{site_name}/access",
+        "/sites/{site_name}/access/readers",
+        "/sites/{site_name}/access/readers/{reader_id}",
+        "/sites/{site_name}/access/github-users/{github_login}",
         "/capabilities/custom-domains",
         "/sites/{site_name}/domains",
         "/sites/{site_name}/domains/{claim_id}/check",
@@ -42,6 +45,10 @@ def test_openapi_uses_stable_unique_operation_ids():
         "getSiteAccess",
         "makeSitePrivate",
         "makeSitePublic",
+        "listSiteReaders",
+        "addSiteReader",
+        "removeSiteReader",
+        "resolveGitHubUser",
         "getCustomDomainCapability",
         "listDomainClaims",
         "createDomainClaim",
@@ -65,6 +72,19 @@ def test_openapi_documents_bearer_authentication():
     assert "security" not in schema["paths"]["/health"]["get"]
     assert schema["paths"]["/sites"]["get"]["security"] == [{"BearerAuth": []}]
     assert schema["paths"]["/deploy"]["post"]["security"] == [{"BearerAuth": []}]
+
+
+def test_openapi_documents_reader_errors():
+    schema = create_app().openapi()
+    add_responses = schema["paths"]["/sites/{site_name}/access/readers"]["post"][
+        "responses"
+    ]
+    resolve_responses = schema["paths"][
+        "/sites/{site_name}/access/github-users/{github_login}"
+    ]["get"]["responses"]
+
+    assert {"400", "401", "403", "404", "409", "502"} <= set(add_responses)
+    assert {"400", "401", "403", "404", "409", "502"} <= set(resolve_responses)
 
 
 def test_openapi_documents_deployment_upload():

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="375" height="812" viewBox="0 0 375 812"
+     font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Mobile 375x812. Existing access_gate.html structure with copy changed only. -->
+  <rect x="0" y="0" width="375" height="812" />
+
+  <!-- 1: existing centered gate card -->
+  <g transform="translate(16,200)" data-region="access-gate">
+    <rect width="343" height="320" stroke-width="3" />
+    <g transform="translate(0,0)">
+      <rect width="343" height="128" />
+      <rect x="24" y="24" width="24" height="24" />
+      <text x="64" y="44" font-size="20" font-weight="600" stroke="none" fill="#000">Private site</text>
+      <text x="24" y="88" font-size="14" stroke="none" fill="#666">annual-report.buzz.example</text>
+    </g>
+    <g transform="translate(0,128)">
+      <rect width="343" height="136" />
+      <text x="24" y="40" font-size="14" stroke="none" fill="#666">Sign in to check whether your GitHub</text>
+      <text x="24" y="64" font-size="14" stroke="none" fill="#666">account has access to this site.</text>
+      <g transform="translate(24,80)">
+        <rect width="295" height="40" fill="#000" />
+        <text x="147" y="25" font-size="14" font-weight="600" text-anchor="middle" stroke="none" fill="#fff">Sign in</text>
+      </g>
+    </g>
+    <g transform="translate(0,264)">
+      <rect width="343" height="56" fill="#e6e6e6" />
+      <text x="24" y="34" font-size="12" font-weight="600" stroke="none" fill="#666">BUZZ</text>
+    </g>
+  </g>
+
+  <!-- 2: annotation shows the only meaningful template change -->
+  <g data-region="annotations">
+    <rect x="16" y="328" width="343" height="136" fill="none" stroke="#d33" stroke-dasharray="6 3" />
+    <circle cx="360" cy="336" r="12" fill="#fff" stroke="#d33" stroke-dasharray="4 2" />
+    <text x="360" y="340" font-size="12" font-weight="700" text-anchor="middle" stroke="none" fill="#d33">1</text>
+  </g>
+</svg>

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800"
+     font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Desktop flow summary 1280x800. Every step names the existing UI it extends. -->
+  <rect x="0" y="0" width="1280" height="800" />
+  <text x="48" y="64" font-size="28" font-weight="700" stroke="none" fill="#000">Private site sharing flow</text>
+  <text x="48" y="96" font-size="14" stroke="none" fill="#666">Existing Buzz screens remain in place; highlighted actions are additions.</text>
+
+  <!-- 1: owner flow -->
+  <text x="48" y="152" font-size="20" font-weight="600" stroke="none" fill="#000">Owner</text>
+  <g transform="translate(48,184)">
+    <rect width="280" height="144" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Existing site detail</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">Open the existing visibility popover.</text>
+    <text x="24" y="96" font-size="12" stroke="none" fill="#666">Choose new “Manage access”.</text>
+  </g>
+  <g transform="translate(344,256)"><line x1="0" y1="0" x2="64" y2="0" /><polygon points="64,0 56,-6 56,6" fill="#000" stroke="none" /></g>
+  <g transform="translate(424,184)">
+    <rect width="280" height="144" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Existing dialog pattern</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">List owner and current readers.</text>
+    <text x="24" y="96" font-size="12" stroke="none" fill="#666">Choose “Add GitHub user”.</text>
+  </g>
+  <g transform="translate(720,256)"><line x1="0" y1="0" x2="64" y2="0" /><polygon points="64,0 56,-6 56,6" fill="#000" stroke="none" /></g>
+  <g transform="translate(800,184)">
+    <rect width="384" height="144" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">New username confirmation dialog</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">Resolve exact username and show GitHub profile.</text>
+    <text x="24" y="96" font-size="12" stroke="none" fill="#666">“Give access” returns to the reader list.</text>
+  </g>
+
+  <!-- 2: reader flow -->
+  <text x="48" y="400" font-size="20" font-weight="600" stroke="none" fill="#000">Reader</text>
+  <g transform="translate(48,432)">
+    <rect width="240" height="144" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Existing private gate</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">Only owner-specific copy changes.</text>
+    <text x="24" y="96" font-size="12" stroke="none" fill="#666">Sign in remains the main action.</text>
+  </g>
+  <g transform="translate(304,504)"><line x1="0" y1="0" x2="48" y2="0" /><polygon points="48,0 40,-6 40,6" fill="#000" stroke="none" /></g>
+  <g transform="translate(368,432)">
+    <rect width="280" height="144" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Existing GitHub device flow</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">Reuse code, GitHub link, and polling.</text>
+    <text x="24" y="96" font-size="12" stroke="none" fill="#666">Add the requested site as context.</text>
+  </g>
+  <g transform="translate(664,504)"><line x1="0" y1="0" x2="48" y2="0" /><polygon points="48,0 40,-6 40,6" fill="#000" stroke="none" /></g>
+  <g transform="translate(728,432)">
+    <rect width="192" height="144" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Access check</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">Owner or reader?</text>
+  </g>
+  <g transform="translate(936,472)"><line x1="0" y1="0" x2="48" y2="0" /><polygon points="48,0 40,-6 40,6" fill="#000" stroke="none" /></g>
+  <g transform="translate(1000,400)">
+    <rect width="184" height="112" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Allowed</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">Existing handoff.</text>
+  </g>
+  <g transform="translate(936,552)"><line x1="0" y1="0" x2="48" y2="0" /><polygon points="48,0 40,-6 40,6" fill="#000" stroke="none" /></g>
+  <g transform="translate(1000,528)">
+    <rect width="184" height="112" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Denied</text>
+    <text x="24" y="72" font-size="12" stroke="none" fill="#666">Existing denial card.</text>
+  </g>
+
+  <!-- 3: scope note -->
+  <g transform="translate(48,688)">
+    <rect width="1136" height="64" fill="#e6e6e6" />
+    <text x="24" y="28" font-size="14" font-weight="600" stroke="none" fill="#000">No new navigation or settings page</text>
+    <text x="24" y="52" font-size="12" stroke="none" fill="#666">Sharing stays attached to the existing Private visibility control and Access login flow.</text>
+  </g>
+</svg>

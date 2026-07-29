@@ -6,7 +6,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 
-from .access.schema import _buzz_access, _buzz_access_site_level
+from .access.schema import _buzz_access, _buzz_access_readers, _buzz_access_site_level
 from .analytics import init_analytics_schema
 from .custom_domains.schema import (
     _automatic_domain_transitions,
@@ -85,6 +85,39 @@ def _webauthn_credentials(conn: sqlite3.Connection) -> None:
     )
 
 
+def _principal_identities(conn: sqlite3.Connection) -> None:
+    """Separate authentication identity from control-plane admission.
+
+    The existing users table remains the stable Principal record so installed
+    databases keep all ownership, session, token, and Access foreign keys.
+    """
+    conn.execute(
+        "ALTER TABLE users ADD COLUMN control_admitted INTEGER NOT NULL DEFAULT 1"
+    )
+    conn.execute("""CREATE TABLE principal_identities (
+        user_id INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        login_snapshot TEXT NOT NULL,
+        name_snapshot TEXT,
+        avatar_url_snapshot TEXT,
+        last_authenticated_at DATETIME,
+        PRIMARY KEY (provider, subject),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
+    conn.execute(
+        "CREATE INDEX idx_principal_identities_user ON principal_identities(user_id)"
+    )
+    user_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if {"github_id", "github_login", "github_name"} <= user_columns:
+        conn.execute(
+            "INSERT INTO principal_identities "
+            "(user_id, provider, subject, login_snapshot, name_snapshot) "
+            "SELECT id, 'github', CAST(github_id AS TEXT), github_login, github_name FROM users"
+        )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _base_schema,
     _custom_domain_claims,
@@ -100,6 +133,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     _webauthn_credentials,
     _buzz_access,
     _buzz_access_site_level,
+    _principal_identities,
+    _buzz_access_readers,
 )
 
 

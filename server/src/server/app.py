@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import (
@@ -187,7 +187,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             },
             {
                 "name": "Access",
-                "description": "Owner-only protection for hosted sites.",
+                "description": "Private-site protection and reader access.",
             },
             {"name": "System", "description": "Server health."},
         ],
@@ -216,7 +216,6 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     app.state.access = AccessService(
         database.connect,
         reader=database.reader(),
-        user_allowed=app.state.auth_service.user_is_allowed,
     )
     app.state.github_device_flow = GitHubDeviceFlow(github_client, settings.github_client_id)
     control_origin = settings.control_origin
@@ -383,11 +382,18 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing(request: Request, identity: Identity | None = Depends(get_identity)):
+        access_host = None
+        next_path = request.query_params.get("next")
+        if next_path:
+            parsed_next = urlsplit(next_path)
+            if parsed_next.path == "/access/authorize":
+                access_host = parse_qs(parsed_next.query).get("host", [None])[0]
         page_context = {
             "domain": settings.control_host,
             "server_url": settings.control_origin,
+            "access_host": access_host,
         }
-        if identity:
+        if identity and app.state.auth_service.user_is_allowed(identity.user.id):
             # Decided server-side so the first-run screen cannot flash in after
             # the sites request resolves.
             with database.connect() as conn:

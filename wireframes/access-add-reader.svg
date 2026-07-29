@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800"
+     font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Desktop 1280x800. Add-reader step using Buzz's existing dialog anatomy. -->
+  <rect x="0" y="0" width="1280" height="800" />
+
+  <!-- 1: existing Manage access dialog underlay -->
+  <g opacity="0.45">
+    <rect x="0" y="0" width="1280" height="64" fill="#000" />
+    <text x="144" y="40" font-size="20" font-weight="600" stroke="none" fill="#fff">Buzz</text>
+    <rect x="320" y="120" width="640" height="560" />
+    <text x="344" y="168" font-size="20" font-weight="600" stroke="none" fill="#000">Manage access</text>
+  </g>
+  <rect x="0" y="0" width="1280" height="800" fill="#000" fill-opacity="0.4" stroke="none" />
+
+  <!-- 2: Add GitHub user dialog -->
+  <g transform="translate(320,144)" data-region="add-dialog">
+    <rect width="640" height="512" />
+    <text x="24" y="48" font-size="20" font-weight="600" stroke="none" fill="#000">Add GitHub user</text>
+    <text x="24" y="72" font-size="14" stroke="none" fill="#666">Give someone permission to view this private site.</text>
+    <line x1="0" y1="96" x2="640" y2="96" />
+
+    <text x="24" y="136" font-size="14" font-weight="600" stroke="none" fill="#000">GitHub username</text>
+    <g transform="translate(24,152)">
+      <rect width="448" height="40" />
+      <text x="12" y="25" font-size="14" stroke="none" fill="#000">octocat</text>
+    </g>
+    <g transform="translate(480,152)">
+      <rect width="136" height="40" />
+      <text x="68" y="25" font-size="14" font-weight="600" text-anchor="middle" stroke="none" fill="#000">Find user</text>
+    </g>
+    <text x="24" y="216" font-size="12" stroke="none" fill="#666">Enter the exact username. Buzz checks it with GitHub.</text>
+
+    <!-- 3: resolved result -->
+    <g transform="translate(24,248)" data-region="resolved-user">
+      <rect width="592" height="112" />
+      <circle cx="48" cy="56" r="24" fill="#e6e6e6" />
+      <line x1="32" y1="40" x2="64" y2="72" stroke="#666" />
+      <line x1="64" y1="40" x2="32" y2="72" stroke="#666" />
+      <text x="88" y="48" font-size="14" font-weight="600" stroke="none" fill="#000">The Octocat</text>
+      <text x="88" y="72" font-size="14" stroke="none" fill="#666">@octocat</text>
+      <text x="560" y="64" font-size="14" font-weight="600" text-anchor="end" stroke="none" fill="#000">✓ Found</text>
+    </g>
+    <text x="24" y="392" font-size="12" stroke="none" fill="#666">They can view the site, but cannot deploy or manage it.</text>
+
+    <line x1="0" y1="440" x2="640" y2="440" />
+    <g transform="translate(368,456)">
+      <rect width="120" height="40" />
+      <text x="60" y="25" font-size="14" font-weight="600" text-anchor="middle" stroke="none" fill="#000">Cancel</text>
+    </g>
+    <g transform="translate(496,456)">
+      <rect width="120" height="40" fill="#000" />
+      <text x="60" y="25" font-size="14" font-weight="600" text-anchor="middle" stroke="none" fill="#fff">Give access</text>
+    </g>
+  </g>
+
+  <!-- 4: annotation highlights the confirmation requirement -->
+  <g data-region="annotations">
+    <rect x="336" y="392" width="608" height="112" fill="none" stroke="#d33" stroke-dasharray="6 3" />
+    <circle cx="952" cy="400" r="12" fill="#fff" stroke="#d33" stroke-dasharray="4 2" />
+    <text x="952" y="404" font-size="12" font-weight="700" text-anchor="middle" stroke="none" fill="#d33">1</text>
+  </g>
+</svg>

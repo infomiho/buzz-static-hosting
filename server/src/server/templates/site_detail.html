@@ -9,7 +9,7 @@
 {% block content %}
 {% import "_icons.html" as icons %}
 {% set file_count = files | selectattr('is_dir', 'false') | list | length %}
-<div class="flex flex-col gap-8">
+<div id="site-detail-root" class="flex flex-col gap-8" data-site-name="{{ site.name }}" data-created-at="{{ site.created_at }}">
     <!-- Back link -->
     <a href="/" class="link w-fit">Back to dashboard</a>
 
@@ -53,12 +53,18 @@
                             Private
                             <span class="visibility-check ml-auto" aria-hidden="true">&check;</span>
                         </span>
-                        <span class="mt-1 block pl-[1.875rem] text-base font-normal text-rule">Only you can view this site.</span>
+                        <span class="mt-1 block pl-[1.875rem] text-base font-normal text-rule">Only you and people you share with can view this site.</span>
                     </button>
+                    {% if access_policy %}
+                    <button type="button" class="menu-item border-t-2 border-ink" id="manage-access">
+                        <span class="font-bold underline decoration-2 underline-offset-4">Manage access</span>
+                        <span class="mt-1 block text-base font-normal text-rule">{{ access_readers | length + 1 }} {{ 'person' if access_readers | length == 0 else 'people' }} can currently view.</span>
+                    </button>
+                    {% endif %}
                     <p class="hidden border-t-2 border-danger px-5 py-3 text-base text-danger-dark" id="visibility-error" role="alert"></p>
                 </div>
             </div>
-            <button class="btn-sm-outline" onclick="openDeployDialog('{{ site.name }}')">Redeploy</button>
+            <button class="btn-sm-outline" id="redeploy-site">Redeploy</button>
         </div>
     </div>
 
@@ -356,20 +362,110 @@
     <div class="danger-zone">
         <h3>Danger zone</h3>
         <p class="mt-2 text-pretty text-rule">Deleting this site removes all deployed files and cannot be undone.</p>
+        {% if domain_claims %}
+        <p class="mt-2 text-pretty text-rule" id="delete-site-prerequisite">Remove all custom domains and wait for route withdrawal before deleting this site.</p>
+        {% endif %}
         <div class="mt-5">
-            <button class="btn-sm-outline border-danger text-danger-dark" onclick="document.getElementById('delete-site-dialog').showModal()">Delete site</button>
+            <button class="btn-sm-outline border-danger text-danger-dark" id="open-delete-site"{% if domain_claims %} disabled aria-describedby="delete-site-prerequisite"{% endif %}>Delete site</button>
         </div>
     </div>
 </div>
 
 {% include "_deploy_modal.html" %}
 
-{% if custom_domain_can_add %}
-<dialog id="add-domain-dialog" class="dialog">
+{% if access_policy %}
+<dialog id="manage-access-dialog" class="dialog" aria-labelledby="manage-access-title" aria-describedby="manage-access-description">
     <div>
         <header>
-            <h2>Add custom domain</h2>
-            <p>Enter one hostname. Buzz detects direct and Cloudflare connections automatically.</p>
+            <h2 id="manage-access-title">Manage access</h2>
+            <p id="manage-access-description">{{ site.name }}.{{ domain }}</p>
+        </header>
+        <section class="p-0">
+            <div class="flex flex-col items-stretch gap-3 border-b-2 border-ink px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <h3 class="font-bold">People with access</h3>
+                <button type="button" class="btn-sm-outline w-full sm:w-auto" id="open-add-reader">Add GitHub user</button>
+            </div>
+            <div class="divide-y-2 divide-ink" id="access-reader-list">
+                <div class="flex flex-wrap items-center gap-3 px-5 py-3">
+                    <img alt="" class="size-10 border-2 border-ink" src="https://github.com/{{ user.github_login }}.png?size=80">
+                    <span class="min-w-0 flex-1">
+                        <span class="block font-bold">You</span>
+                        <span class="block truncate text-sm text-rule">@{{ user.github_login }}</span>
+                    </span>
+                    <span class="ml-auto text-rule">Owner</span>
+                </div>
+                {% for reader in access_readers %}
+                <div class="flex flex-wrap items-center gap-3 px-5 py-3">
+                    <img alt="" class="size-10 border-2 border-ink" src="{{ reader.avatar_url or ('https://github.com/' ~ reader.github_login ~ '.png?size=80') }}">
+                    <span class="min-w-0 flex-1">
+                        <span class="block truncate font-bold">{{ reader.github_name or reader.github_login }}</span>
+                        <span class="block truncate text-sm text-rule">@{{ reader.github_login }}</span>
+                    </span>
+                    <button type="button" class="btn-sm-outline w-full remove-access-reader sm:ml-auto sm:w-auto" data-reader-id="{{ reader.user_id }}" data-reader-login="{{ reader.github_login }}" aria-label="Remove @{{ reader.github_login }}'s access">Remove</button>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        <footer>
+            <button type="button" class="btn-outline" id="close-manage-access">Close</button>
+        </footer>
+    </div>
+</dialog>
+
+<dialog id="add-reader-dialog" class="dialog" aria-labelledby="add-reader-title" aria-describedby="add-reader-description">
+    <div>
+        <header>
+            <h2 id="add-reader-title">Add GitHub user</h2>
+            <p id="add-reader-description">Give someone permission to view this private site.</p>
+        </header>
+        <section>
+            <form id="add-reader-form">
+                <label for="reader-login" class="font-bold">GitHub username</label>
+                <div class="mt-1 flex flex-col gap-3 sm:flex-row">
+                    <input id="reader-login" name="github_login" class="input min-w-0 flex-1" autocomplete="off" spellcheck="false" required>
+                    <button type="submit" class="btn-sm-outline shrink-0" id="find-reader">Find user</button>
+                </div>
+                <p class="mt-2 text-sm text-rule">Enter the exact username. Buzz checks it with GitHub.</p>
+                <div class="mt-4 hidden border-2 border-ink p-4" id="resolved-reader">
+                    <div class="flex items-center gap-3">
+                        <img alt="" class="size-12 border-2 border-ink" id="resolved-reader-avatar">
+                        <span class="min-w-0">
+                            <span class="block truncate font-bold" id="resolved-reader-name"></span>
+                            <span class="block truncate text-rule" id="resolved-reader-login"></span>
+                        </span>
+                    </div>
+                </div>
+                <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="add-reader-error" role="alert"></p>
+            </form>
+        </section>
+        <footer>
+            <button type="button" class="btn-outline" id="cancel-add-reader">Cancel</button>
+            <button type="submit" form="add-reader-form" class="btn hidden" id="confirm-add-reader">Give access</button>
+        </footer>
+    </div>
+</dialog>
+
+<dialog id="remove-reader-dialog" class="dialog dialog-confirm" role="alertdialog" aria-labelledby="remove-reader-title" aria-describedby="remove-reader-description">
+    <div>
+        <header>
+            <h2 id="remove-reader-title">Remove access?</h2>
+            <p id="remove-reader-description"><strong id="remove-reader-login"></strong> will lose access to this private site immediately.</p>
+            <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="remove-reader-error" role="alert"></p>
+        </header>
+        <footer>
+            <button type="button" class="btn-outline" id="cancel-remove-reader">Cancel</button>
+            <button type="button" class="btn-destructive" id="confirm-remove-reader">Remove access</button>
+        </footer>
+    </div>
+</dialog>
+{% endif %}
+
+{% if custom_domain_can_add %}
+<dialog id="add-domain-dialog" class="dialog" aria-labelledby="add-domain-title" aria-describedby="add-domain-description">
+    <div>
+        <header>
+            <h2 id="add-domain-title">Add custom domain</h2>
+            <p id="add-domain-description">Enter one hostname. Buzz detects direct and Cloudflare connections automatically.</p>
         </header>
         <section>
             <form id="add-domain-form">
@@ -388,11 +484,11 @@
 {% endif %}
 
 {% if domain_claims %}
-<dialog id="remove-domain-dialog" class="dialog">
+<dialog id="remove-domain-dialog" class="dialog dialog-confirm" role="alertdialog" aria-labelledby="remove-domain-title" aria-describedby="remove-domain-description">
     <div>
         <header>
-            <h2>Remove custom domain</h2>
-            <p>Remove <strong id="remove-domain-hostname"></strong> from this site? Buzz will stop serving this hostname after safely withdrawing its route. Your DNS records will not change.</p>
+            <h2 id="remove-domain-title">Remove custom domain?</h2>
+            <p id="remove-domain-description">Buzz will stop serving <strong id="remove-domain-hostname"></strong> after withdrawing its route. DNS records will not change.</p>
             <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="remove-domain-error" role="alert"></p>
         </header>
         <footer>
@@ -404,18 +500,18 @@
 {% endif %}
 
 <!-- Delete site dialog -->
-<dialog id="delete-site-dialog" class="dialog">
+<dialog id="delete-site-dialog" class="dialog dialog-confirm" role="alertdialog" aria-labelledby="delete-site-title" aria-describedby="delete-site-description">
     <div>
         <header>
-            <h2>Delete site</h2>
-            <p>Are you sure you want to delete <strong>{{ site.name }}</strong>? This will remove all deployed files and cannot be undone.</p>
+            <h2 id="delete-site-title">Delete site</h2>
+            <p id="delete-site-description">Deleting <strong>{{ site.name }}</strong> removes all deployed files and cannot be undone.</p>
             {% if domain_claims %}
             <p class="mt-3 border-l-4 border-danger pl-3 text-danger-dark">Remove all {{ domain_claims | length }} custom domain aliases and wait for route withdrawal before deleting this site.</p>
             {% endif %}
             <p class="mt-3 hidden border-l-4 border-danger pl-3 text-danger-dark" id="delete-site-error" role="alert"></p>
         </header>
         <footer>
-            <button class="btn-outline" onclick="document.getElementById('delete-site-dialog').close()">Cancel</button>
+            <button class="btn-outline" id="cancel-delete-site">Cancel</button>
             <button class="btn-destructive" id="confirm-delete-site">Delete</button>
         </footer>
     </div>
@@ -423,418 +519,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/format.js"></script>
-<script>
-const SITE_NAME = {{ site.name | tojson }};
-let analyticsChart;
-window.onDeploySuccess = function() { setTimeout(() => location.reload(), 800); };
-
-function esc(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
-}
-
-function formatSize(bytes) {
-    if (!bytes) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
-}
-
-async function domainRequest(path, options = {}) {
-    const response = await fetch('/sites/' + encodeURIComponent(SITE_NAME) + '/domains' + path, options);
-    if (response.ok) return response;
-    let message = 'Buzz could not update this custom domain.';
-    try {
-        const data = await response.json();
-        if (data.detail) message = data.detail;
-    } catch {}
-    throw new Error(message);
-}
-
-async function copyDomainValue(button) {
-    const target = document.getElementById(button.dataset.copyTarget);
-    try {
-        await navigator.clipboard.writeText(target.textContent.trim());
-        button.textContent = 'Copied';
-        setTimeout(() => { button.textContent = 'Copy'; }, 1500);
-    } catch {
-        showClaimError(button, 'Could not copy the DNS value. Select it and copy it manually.');
-    }
-}
-
-function showClaimError(button, message) {
-    const error = button.closest('[data-domain-claim]').querySelector('.claim-action-error');
-    error.textContent = message;
-    error.classList.remove('hidden');
-}
-
-function initBuzzAccess() {
-    const trigger = document.getElementById('visibility-trigger');
-    const popover = document.getElementById('visibility-popover');
-    const error = document.getElementById('visibility-error');
-
-    // The popover lives in the top layer, so it cannot be positioned by an
-    // ancestor. Anchor it to the trigger in viewport coordinates. Pin the right
-    // edge rather than deriving a left offset: the popover has no width yet
-    // while beforetoggle runs.
-    popover.addEventListener('beforetoggle', (event) => {
-        if (event.newState !== 'open') return;
-        error.classList.add('hidden');
-        const box = trigger.getBoundingClientRect();
-        popover.style.top = (box.bottom + 8) + 'px';
-        popover.style.right = Math.max(8, document.documentElement.clientWidth - box.right) + 'px';
-    });
-
-    popover.querySelectorAll('.visibility-option').forEach(option => {
-        option.addEventListener('click', async () => {
-            const wantsPrivate = option.dataset.private === 'true';
-            if (option.getAttribute('aria-current') === 'true') {
-                popover.hidePopover();
-                return;
-            }
-            popover.querySelectorAll('.visibility-option').forEach(o => o.disabled = true);
-            try {
-                const response = await fetch('/sites/' + encodeURIComponent(SITE_NAME) + '/access', {
-                    method: wantsPrivate ? 'PUT' : 'DELETE',
-                });
-                if (!response.ok) {
-                    const body = await response.json().catch(() => ({}));
-                    throw new Error(body.detail || 'Buzz could not change who can view this site.');
-                }
-                location.reload();
-            } catch (failure) {
-                error.textContent = failure.message;
-                error.classList.remove('hidden');
-                popover.querySelectorAll('.visibility-option').forEach(o => o.disabled = false);
-            }
-        });
-    });
-}
-
-function initCustomDomains() {
-    document.querySelectorAll('.copy-domain-value').forEach(button => {
-        button.addEventListener('click', () => copyDomainValue(button));
-    });
-
-    const dialog = document.getElementById('add-domain-dialog');
-    const openButton = document.getElementById('open-domain-dialog');
-    const cancelButton = document.getElementById('cancel-domain-dialog');
-    const form = document.getElementById('add-domain-form');
-    if (dialog && openButton && cancelButton && form) {
-        openButton.addEventListener('click', () => dialog.showModal());
-        cancelButton.addEventListener('click', () => dialog.close());
-        form.addEventListener('submit', async event => {
-            event.preventDefault();
-            const submit = document.getElementById('submit-domain');
-            const error = document.getElementById('add-domain-error');
-            submit.disabled = true;
-            error.classList.add('hidden');
-            try {
-                await domainRequest('', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        hostname: form.elements.hostname.value,
-                    }),
-                });
-                location.reload();
-            } catch (requestError) {
-                error.textContent = requestError.message;
-                error.classList.remove('hidden');
-                submit.disabled = false;
-            }
-        });
-    }
-
-    document.querySelectorAll('.check-domain').forEach(button => {
-        button.addEventListener('click', async () => {
-            const originalText = button.textContent;
-            const error = button.closest('[data-domain-claim]').querySelector('.claim-action-error');
-            button.disabled = true;
-            button.textContent = 'Checking...';
-            error.classList.add('hidden');
-            try {
-                await domainRequest('/' + button.dataset.claimId + '/check', { method: 'POST' });
-                location.reload();
-            } catch (requestError) {
-                showClaimError(button, requestError.message);
-                button.disabled = false;
-                button.textContent = originalText;
-            }
-        });
-    });
-
-    document.querySelectorAll('.transition-action').forEach(button => {
-        button.addEventListener('click', async () => {
-            const originalText = button.textContent;
-            const error = button.closest('[data-domain-claim]').querySelector('.claim-action-error');
-            button.disabled = true;
-            button.textContent = button.dataset.action === 'retry' ? 'Retrying...' : 'Cancelling...';
-            error.classList.add('hidden');
-            try {
-                await domainRequest('/' + button.dataset.claimId + '/transition/' + button.dataset.action, { method: 'POST' });
-                location.reload();
-            } catch (requestError) {
-                error.textContent = requestError.message;
-                error.classList.remove('hidden');
-                button.disabled = false;
-                button.textContent = originalText;
-            }
-        });
-    });
-
-    const removeDialog = document.getElementById('remove-domain-dialog');
-    const cancelRemove = document.getElementById('cancel-remove-domain');
-    const confirmRemove = document.getElementById('confirm-remove-domain');
-    let removeButton;
-    if (removeDialog && cancelRemove && confirmRemove) {
-        cancelRemove.addEventListener('click', () => removeDialog.close());
-        document.querySelectorAll('.remove-domain').forEach(button => {
-            button.addEventListener('click', () => {
-                removeButton = button;
-                document.getElementById('remove-domain-hostname').textContent = button.dataset.hostname;
-                document.getElementById('remove-domain-error').classList.add('hidden');
-                removeDialog.showModal();
-            });
-        });
-        confirmRemove.addEventListener('click', async () => {
-            if (!removeButton) return;
-            confirmRemove.disabled = true;
-            try {
-                await domainRequest('/' + removeButton.dataset.claimId, { method: 'DELETE' });
-                location.reload();
-            } catch (error) {
-                const removeError = document.getElementById('remove-domain-error');
-                removeError.textContent = error.message;
-                removeError.classList.remove('hidden');
-                confirmRemove.disabled = false;
-            }
-        });
-    }
-}
-
-function renderDimension(title, rows) {
-    if (!rows || rows.length === 0) return '';
-    let html = '<div class="break-inside-avoid pb-5"><div class="border-2 border-ink"><div class="border-b-2 border-ink px-4 py-2.5 font-bold">' + title + '</div>';
-    html += '<div class="divide-y-2 divide-ink">';
-    for (const row of rows) {
-        html += '<div class="flex items-center justify-between gap-4 px-4 py-2.5">';
-        html += '<span class="truncate text-rule">' + esc(row.value) + '</span>';
-        html += '<span class="font-bold tabular-nums">' + row.views.toLocaleString() + '</span>';
-        html += '</div>';
-    }
-    html += '</div></div></div>';
-    return html;
-}
-
-function renderChart(series) {
-    const canvas = document.getElementById('analytics-chart');
-    const empty = document.getElementById('analytics-chart-empty');
-    const max = Math.max(...series.map(d => Math.max(d.views, d.visitors)), 0);
-    if (analyticsChart) {
-        analyticsChart.destroy();
-        analyticsChart = null;
-    }
-    if (max === 0) {
-        canvas.classList.add('hidden');
-        empty.classList.remove('hidden');
-        empty.classList.add('flex');
-        return;
-    }
-    if (!window.Chart) {
-        throw new Error('Chart.js failed to load');
-    }
-    canvas.classList.remove('hidden');
-    empty.classList.add('hidden');
-    empty.classList.remove('flex');
-    Chart.defaults.font.family = 'Arial, sans-serif';
-    Chart.defaults.color = '#0b0c0c';
-    const labels = series.map(day => new Date(day.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-    analyticsChart = new Chart(canvas, {
-        type: 'line',
-        data: {
-            labels,
-            datasets: [
-                {
-                    label: 'Views',
-                    data: series.map(day => day.views),
-                    borderColor: '#1d70b8',
-                    backgroundColor: '#1d70b8',
-                    tension: 0,
-                    fill: false,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                },
-                {
-                    label: 'Visitors',
-                    data: series.map(day => day.visitors),
-                    borderColor: '#505a5f',
-                    backgroundColor: '#505a5f',
-                    tension: 0,
-                    fill: false,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8 }
-                },
-                tooltip: {
-                    callbacks: {
-                        title: items => series[items[0].dataIndex].day,
-                        label: item => item.dataset.label + ': ' + item.parsed.y.toLocaleString()
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { maxTicksLimit: 6 }
-                },
-                y: {
-                    beginAtZero: true,
-                    suggestedMax: Math.max(max, 5),
-                    ticks: { precision: 0 }
-                }
-            }
-        }
-    });
-}
-
-function renderSearchTerms(terms) {
-    let html = '<div class="border-2 border-ink">';
-    html += '<div class="flex flex-wrap items-baseline justify-between gap-3 border-b-2 border-ink px-5 py-2.5">';
-    html += '<span class="font-bold">Google search terms</span>';
-    html += '<span class="text-rule">2-day lag</span>';
-    html += '</div>';
-    if (!terms || terms.length === 0) {
-        return html + '<div class="px-5 py-8 text-center text-rule">No search data yet</div></div>';
-    }
-    html += '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-    html += '<th>Term</th><th class="text-right">Clicks</th><th class="text-right">Impressions</th><th class="text-right">CTR</th><th class="text-right">Position</th>';
-    html += '</tr></thead><tbody>';
-    for (const row of terms) {
-        html += '<tr>';
-        html += '<td class="truncate">' + esc(row.term) + '</td>';
-        html += '<td class="text-right font-bold tabular-nums">' + row.clicks.toLocaleString() + '</td>';
-        html += '<td class="text-right tabular-nums text-rule">' + row.impressions.toLocaleString() + '</td>';
-        html += '<td class="text-right tabular-nums text-rule">' + row.ctr + '%</td>';
-        html += '<td class="text-right tabular-nums text-rule">' + row.position + '</td>';
-        html += '</tr>';
-    }
-    return html + '</tbody></table></div></div>';
-}
-
-let searchTermsRequested = false;
-let breakdownHasData = false;
-
-function updateBreakdownEmpty() {
-    const empty = document.getElementById('analytics-breakdown-empty');
-    if (empty) empty.classList.toggle('hidden', breakdownHasData);
-}
-
-async function loadSearchTerms() {
-    if (searchTermsRequested) return;
-    searchTermsRequested = true;
-    const container = document.getElementById('analytics-search-terms');
-    try {
-        const res = await fetch('/dashboard/sites/' + encodeURIComponent(SITE_NAME) + '/search-terms');
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        if (!data.configured) return;
-        container.innerHTML = renderSearchTerms(data.terms);
-        container.classList.remove('hidden');
-        breakdownHasData = true;
-        updateBreakdownEmpty();
-    } catch {
-        container.innerHTML = '<div class="border-2 border-ink px-4 py-4 text-center text-rule">Couldn\'t load search terms.</div>';
-        container.classList.remove('hidden');
-    }
-}
-
-function initDeployedAt() {
-    document.getElementById('site-deployed-at').textContent = timeAgo({{ site.created_at | tojson }});
-}
-
-function initRelativeTimes() {
-    document.querySelectorAll('[data-relative-time]').forEach(el => {
-        el.textContent = timeAgo(el.dataset.relativeTime);
-    });
-}
-
-function initDisclosure(id, storageKey, onOpen) {
-    const el = document.getElementById(id);
-    try {
-        if (localStorage.getItem(storageKey) === '1') el.open = true;
-    } catch {}
-    el.addEventListener('toggle', () => {
-        try {
-            localStorage.setItem(storageKey, el.open ? '1' : '0');
-        } catch {}
-        if (el.open && onOpen) onOpen();
-    });
-    if (el.open && onOpen) onOpen();
-}
-
-async function loadAnalytics() {
-    try {
-        const res = await fetch('/dashboard/sites/' + encodeURIComponent(SITE_NAME) + '/analytics');
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        document.getElementById('analytics-views').textContent = data.totals.views.toLocaleString();
-        document.getElementById('analytics-visitors').textContent = data.totals.visitors.toLocaleString();
-        document.getElementById('analytics-bytes').textContent = formatSize(data.totals.bytes);
-        document.getElementById('analytics-not-found').textContent = data.totals.not_found.toLocaleString();
-        renderChart(data.series);
-        const dimensions = document.getElementById('analytics-dimensions');
-        dimensions.innerHTML = renderDimension('Top pages', data.top_pages)
-            + renderDimension('Referrers', data.referrers)
-            + renderDimension('Campaigns', data.campaigns)
-            + renderDimension('Countries', data.countries);
-        const hasDimensions = dimensions.innerHTML !== '';
-        dimensions.classList.toggle('hidden', !hasDimensions);
-        if (hasDimensions) {
-            breakdownHasData = true;
-        }
-        updateBreakdownEmpty();
-    } catch {
-        document.getElementById('analytics-container').innerHTML = '<div class="px-4 py-8 text-center text-rule">Failed to load analytics.</div>';
-    }
-}
-
-document.getElementById('confirm-delete-site').addEventListener('click', async function() {
-    this.disabled = true;
-    this.textContent = 'Deleting...';
-    const res = await fetch('/sites/{{ site.name }}', { method: 'DELETE' });
-    if (res.ok) {
-        window.location.href = '/';
-    } else {
-        this.disabled = false;
-        this.textContent = 'Delete';
-        const error = document.getElementById('delete-site-error');
-        const body = await res.json().catch(() => ({}));
-        error.textContent = body.detail || 'Could not delete this site.';
-        error.classList.remove('hidden');
-    }
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-    initDeployedAt();
-    initRelativeTimes();
-    initBuzzAccess();
-    initCustomDomains();
-    loadAnalytics();
-    initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown', loadSearchTerms);
-    initDisclosure('files-details', 'buzz:' + SITE_NAME + ':files');
-});
-</script>
+<script type="module" src="/static/site-detail.js?v={{ asset_version }}"></script>
 {% endblock %}

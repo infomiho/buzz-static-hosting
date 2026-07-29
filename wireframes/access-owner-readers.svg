@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800"
+     font-family="-apple-system, system-ui, sans-serif" fill="#fff" stroke="#000" stroke-width="1.5">
+  <!-- Desktop 1280x800. Existing site detail with the visibility popover open. -->
+  <rect x="0" y="0" width="1280" height="800" />
+
+  <!-- 1: existing Buzz header -->
+  <g transform="translate(0,0)" data-region="header">
+    <rect width="1280" height="64" fill="#000" />
+    <text x="144" y="40" font-size="20" font-weight="600" stroke="none" fill="#fff">Buzz</text>
+    <circle cx="1096" cy="32" r="16" fill="#e6e6e6" stroke="#fff" />
+    <text x="1120" y="40" font-size="14" font-weight="600" stroke="none" fill="#fff">owner</text>
+  </g>
+
+  <!-- 2: existing site header -->
+  <g transform="translate(144,104)" data-region="site-header">
+    <text x="0" y="16" font-size="14" text-decoration="underline" stroke="none" fill="#000">Back to dashboard</text>
+    <text x="0" y="80" font-size="28" font-weight="700" text-decoration="underline" stroke="none" fill="#000">annual-report.buzz.example</text>
+    <text x="0" y="112" font-size="14" stroke="none" fill="#666">Last deployed today  ·  42 files  ·  3.2 MB</text>
+    <g transform="translate(720,48)">
+      <rect width="112" height="40" />
+      <text x="16" y="25" font-size="14" font-weight="600" stroke="none" fill="#000">▣  Private ⌄</text>
+    </g>
+    <g transform="translate(848,48)">
+      <rect width="112" height="40" />
+      <text x="56" y="25" font-size="14" font-weight="600" text-anchor="middle" stroke="none" fill="#000">Redeploy</text>
+    </g>
+  </g>
+
+  <!-- 3: existing visibility popover plus one new action -->
+  <defs><g id="visibility-popover-layer" transform="translate(736,208)" data-region="visibility-popover">
+    <rect width="368" height="328" />
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Who can view this site</text>
+    <line x1="0" y1="56" x2="368" y2="56" />
+    <g transform="translate(0,56)">
+      <rect width="368" height="96" />
+      <circle cx="32" cy="32" r="12" />
+      <text x="56" y="32" font-size="14" font-weight="600" stroke="none" fill="#000">Public</text>
+      <text x="56" y="56" font-size="12" stroke="none" fill="#666">Anyone can view this site.</text>
+    </g>
+    <g transform="translate(0,152)">
+      <rect width="368" height="104" fill="#e6e6e6" />
+      <rect x="20" y="20" width="24" height="24" />
+      <text x="56" y="32" font-size="14" font-weight="600" stroke="none" fill="#000">Private</text>
+      <text x="328" y="32" font-size="14" font-weight="600" stroke="none" fill="#000">✓</text>
+      <text x="56" y="56" font-size="12" stroke="none" fill="#666">Only you and people you share with</text>
+      <text x="56" y="80" font-size="12" stroke="none" fill="#666">can view this site.</text>
+    </g>
+    <g transform="translate(0,256)">
+      <rect width="368" height="72" />
+      <text x="24" y="32" font-size="14" font-weight="600" text-decoration="underline" stroke="none" fill="#000">Manage access</text>
+      <text x="344" y="32" font-size="14" text-anchor="end" stroke="none" fill="#000">›</text>
+      <text x="24" y="56" font-size="12" stroke="none" fill="#666">2 people can currently view.</text>
+    </g>
+  </g></defs>
+
+  <!-- 4: existing Stats card -->
+  <g transform="translate(144,296)" data-region="stats">
+    <rect width="992" height="392" />
+    <text x="24" y="40" font-size="20" font-weight="600" stroke="none" fill="#000">Stats</text>
+    <line x1="0" y1="64" x2="992" y2="64" />
+    <text x="24" y="104" font-size="20" font-weight="600" stroke="none" fill="#000">All time</text>
+    <g transform="translate(24,128)">
+      <line x1="0" y1="0" x2="208" y2="0" stroke-width="3" />
+      <text x="0" y="40" font-size="28" font-weight="700" stroke="none" fill="#000">1,284</text>
+      <text x="0" y="64" font-size="14" font-weight="600" stroke="none" fill="#000">Views</text>
+    </g>
+    <g transform="translate(256,128)">
+      <line x1="0" y1="0" x2="208" y2="0" stroke-width="3" />
+      <text x="0" y="40" font-size="28" font-weight="700" stroke="none" fill="#000">320</text>
+      <text x="0" y="64" font-size="14" font-weight="600" stroke="none" fill="#000">Visitors</text>
+    </g>
+    <rect x="24" y="232" width="944" height="128" fill="#e6e6e6" />
+  </g>
+
+  <!-- Popovers render in the top layer above page cards. -->
+  <use href="#visibility-popover-layer" />
+
+  <!-- 5: annotation marks only the addition -->
+  <g data-region="annotations">
+    <rect x="736" y="464" width="368" height="72" fill="none" stroke="#d33" stroke-dasharray="6 3" />
+    <circle cx="1120" cy="472" r="12" fill="#fff" stroke="#d33" stroke-dasharray="4 2" />
+    <text x="1120" y="476" font-size="12" font-weight="700" text-anchor="middle" stroke="none" fill="#d33">1</text>
+  </g>
+</svg>

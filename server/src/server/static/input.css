@@ -251,10 +251,28 @@
 
   .dialog {
     @apply m-auto w-full max-w-lg border-4 border-ink bg-paper p-0 text-ink;
+    width: calc(100% - 2rem);
+    max-height: calc(100dvh - 2rem);
+    overflow: hidden;
+    overflow-wrap: anywhere;
   }
 
   .dialog::backdrop {
     background: rgb(11 12 12 / 0.6);
+  }
+
+  .dialog[data-dialog-child]::backdrop {
+    background: transparent;
+  }
+
+  .dialog[data-dialog-child-open] > div {
+    opacity: 0.2;
+  }
+
+  .dialog > div {
+    display: flex;
+    max-height: calc(100dvh - 2.5rem);
+    flex-direction: column;
   }
 
   .dialog > div > header {
@@ -269,12 +287,27 @@
     @apply mt-1 text-rule;
   }
 
+  .dialog-confirm > div > header {
+    @apply border-b-0;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
   .dialog > div > section {
     @apply px-5 py-4;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .dialog > div > footer {
-    @apply flex flex-wrap justify-end gap-3 px-5 pb-5 pt-2;
+    @apply flex flex-wrap justify-end gap-3 border-t-2 border-ink px-5 py-4;
+    flex: none;
+  }
+
+  @media (max-width: 24rem) {
+    .dialog > div > footer > button {
+      width: 100%;
+    }
   }
 
   .visibility-popover {

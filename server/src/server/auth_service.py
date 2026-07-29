@@ -22,6 +22,7 @@ class User:
     id: int
     github_login: str
     github_name: str | None
+    control_admitted: bool = True
 
 
 @dataclass(frozen=True)
@@ -147,19 +148,25 @@ class AuthService:
         return None
 
     def user_is_allowed(self, user_id: int) -> bool:
+        """Return whether a Principal is admitted to the control plane."""
         with self._db() as conn:
             row = conn.execute(
-                "SELECT github_id, github_login FROM users WHERE id = ?", (user_id,)
+                "SELECT github_login, control_admitted FROM users WHERE id = ?",
+                (user_id,),
             ).fetchone()
-        if not row:
+        return bool(row and self._control_allowed_row(row))
+
+    def _control_allowed_row(self, row) -> bool:
+        if not row["control_admitted"]:
             return False
-        try:
-            self._ensure_allowed(
-                row["github_login"], is_new_user=False, github_id=row["github_id"]
-            )
-        except AccessDenied:
-            return False
-        return True
+        return not self._allowed_github_users or (
+            row["github_login"].lower() in self._allowed_github_users
+        )
+
+    def _can_gain_control(self, login: str) -> bool:
+        if self._allowed_github_users:
+            return login.lower() in self._allowed_github_users
+        return self._allow_registration
 
     def login_with_github(self, github_user: GitHubUser) -> LoginResult:
         """Resolve a GitHub identity to a Buzz user and mint a session."""
@@ -168,40 +175,114 @@ class AuthService:
 
     def _upsert_user(self, github_user: GitHubUser) -> User:
         with self._db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute(
-                "SELECT id FROM users WHERE github_id = ?", (github_user.id,)
+                "SELECT id, control_admitted FROM users WHERE github_id = ?",
+                (github_user.id,),
             ).fetchone()
-
-            self._ensure_allowed(
-                github_user.login, is_new_user=existing is None, github_id=github_user.id
-            )
 
             if existing:
                 user_id = existing["id"]
+                control_admitted = bool(existing["control_admitted"])
+                if not control_admitted and self._can_gain_control(github_user.login):
+                    control_admitted = True
                 conn.execute(
-                    "UPDATE users SET github_login = ?, github_name = ? WHERE id = ?",
-                    (github_user.login, github_user.name, user_id),
+                    "UPDATE users SET github_login = ?, github_name = ?, "
+                    "control_admitted = ? WHERE id = ?",
+                    (
+                        github_user.login,
+                        github_user.name,
+                        int(control_admitted),
+                        user_id,
+                    ),
                 )
             else:
+                self._ensure_allowed(
+                    github_user.login, is_new_user=True, github_id=github_user.id
+                )
                 cursor = conn.execute(
-                    "INSERT INTO users (github_id, github_login, github_name) VALUES (?, ?, ?)",
+                    "INSERT INTO users "
+                    "(github_id, github_login, github_name, control_admitted) "
+                    "VALUES (?, ?, ?, 1)",
                     (github_user.id, github_user.login, github_user.name),
                 )
                 user_id = cursor.lastrowid
+                control_admitted = True
 
-        return User(id=user_id, github_login=github_user.login, github_name=github_user.name)
+            self._upsert_github_identity(conn, user_id, github_user, authenticated=True)
+
+        return User(
+            id=user_id,
+            github_login=github_user.login,
+            github_name=github_user.name,
+            control_admitted=control_admitted,
+        )
+
+    def ensure_github_principal(self, github_user: GitHubUser) -> User:
+        """Resolve a selected GitHub account without granting control access."""
+        with self._db() as conn:
+            principal = conn.execute(
+                "INSERT INTO users "
+                "(github_id, github_login, github_name, control_admitted) "
+                "VALUES (?, ?, ?, 0) "
+                "ON CONFLICT(github_id) DO UPDATE SET "
+                "github_login = excluded.github_login, "
+                "github_name = excluded.github_name "
+                "RETURNING id, control_admitted",
+                (github_user.id, github_user.login, github_user.name),
+            ).fetchone()
+            user_id = principal["id"]
+            control_admitted = bool(principal["control_admitted"])
+            self._upsert_github_identity(conn, user_id, github_user, authenticated=False)
+        return User(
+            id=user_id,
+            github_login=github_user.login,
+            github_name=github_user.name,
+            control_admitted=control_admitted,
+        )
+
+    @staticmethod
+    def _upsert_github_identity(
+        conn, user_id: int, github_user: GitHubUser, *, authenticated: bool
+    ) -> None:
+        conn.execute(
+            "INSERT INTO principal_identities "
+            "(user_id, provider, subject, login_snapshot, name_snapshot, "
+            "avatar_url_snapshot, last_authenticated_at) "
+            "VALUES (?, 'github', ?, ?, ?, ?, ?) "
+            "ON CONFLICT(provider, subject) DO UPDATE SET "
+            "login_snapshot = excluded.login_snapshot, "
+            "name_snapshot = excluded.name_snapshot, "
+            "avatar_url_snapshot = excluded.avatar_url_snapshot, "
+            "last_authenticated_at = COALESCE(excluded.last_authenticated_at, last_authenticated_at)",
+            (
+                user_id,
+                str(github_user.id),
+                github_user.login,
+                github_user.name,
+                github_user.avatar_url,
+                datetime.now().isoformat() if authenticated else None,
+            ),
+        )
 
     def login_by_user_id(self, user_id: int) -> LoginResult:
         """Session for an already-authenticated user (passkey or device grant)."""
         with self._db() as conn:
             row = conn.execute(
-                "SELECT id, github_login, github_name FROM users WHERE id = ?",
+                "SELECT id, github_login, github_name, control_admitted "
+                "FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
         if not row:
             raise InvalidSession()
-        self._ensure_allowed(row["github_login"], is_new_user=False)
-        user = User(id=row["id"], github_login=row["github_login"], github_name=row["github_name"])
+        if not self._control_allowed_row(row):
+            raise AccessDenied(row["github_login"])
+        user = User(
+            id=row["id"],
+            github_login=row["github_login"],
+            github_name=row["github_name"],
+            control_admitted=bool(row["control_admitted"]),
+        )
         return LoginResult(token=self._create_session(user.id), user=user)
 
     def _create_session(self, user_id: int) -> str:
@@ -218,16 +299,20 @@ class AuthService:
     def _resolve_session(self, token_hash: str, now: str) -> Identity | None:
         with self._db() as conn:
             row = conn.execute(
-                "SELECT s.user_id, u.github_login, u.github_name "
+                "SELECT s.user_id, u.github_login, u.github_name, u.control_admitted "
                 "FROM sessions s JOIN users u ON s.user_id = u.id "
                 "WHERE s.id = ? AND s.expires_at > ?",
                 (token_hash, now),
             ).fetchone()
         if not row:
             return None
-        self._ensure_allowed(row["github_login"], is_new_user=False)
         return Identity(
-            user=User(id=row["user_id"], github_login=row["github_login"], github_name=row["github_name"]),
+            user=User(
+                id=row["user_id"],
+                github_login=row["github_login"],
+                github_name=row["github_name"],
+                control_admitted=bool(row["control_admitted"]),
+            ),
             token_type="session",
             session_id=token_hash,
         )
@@ -288,20 +373,27 @@ class AuthService:
     def _resolve_deploy_token(self, token_hash: str, now: str) -> Identity | None:
         with self._db() as conn:
             row = conn.execute(
-                "SELECT dt.user_id, dt.site_name, u.github_login, u.github_name "
+                "SELECT dt.user_id, dt.site_name, u.github_login, u.github_name, "
+                "u.control_admitted "
                 "FROM deployment_tokens dt JOIN users u ON dt.user_id = u.id "
                 "WHERE dt.id = ? AND (dt.expires_at IS NULL OR dt.expires_at > ?)",
                 (token_hash, now),
             ).fetchone()
             if not row:
                 return None
-            self._ensure_allowed(row["github_login"], is_new_user=False)
+            if not self._control_allowed_row(row):
+                raise AccessDenied(row["github_login"])
             conn.execute(
                 "UPDATE deployment_tokens SET last_used_at = ? WHERE id = ?",
                 (now, token_hash),
             )
         return Identity(
-            user=User(id=row["user_id"], github_login=row["github_login"], github_name=row["github_name"]),
+            user=User(
+                id=row["user_id"],
+                github_login=row["github_login"],
+                github_name=row["github_name"],
+                control_admitted=bool(row["control_admitted"]),
+            ),
             token_type="deploy",
             site_name=row["site_name"],
         )

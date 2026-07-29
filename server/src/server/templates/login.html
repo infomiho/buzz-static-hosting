@@ -7,14 +7,19 @@
 
     <!-- Hero -->
     <div>
+        {% if access_host %}
+        <h1 class="heading-xl">Sign in to continue</h1>
+        <p class="lead mt-4 max-w-2xl break-all text-rule">Open {{ access_host }}</p>
+        {% else %}
         <h1 class="heading-xl">Deploy static sites in seconds</h1>
         <p class="lead mt-4 max-w-2xl text-rule">Buzz is self-hosted static site hosting. GitHub auth, CLI-first, zero config.</p>
+        {% endif %}
     </div>
 
     <!-- Login panel -->
     <div class="border-4 border-ink p-6 sm:p-8">
         <h2 class="heading-m">Sign in</h2>
-        <p class="mt-1 text-rule">Sign in with GitHub or a passkey to manage your sites.</p>
+        <p class="mt-1 text-rule">{% if access_host %}Sign in to check whether your account has access.{% else %}Sign in with GitHub or a passkey to manage your sites.{% endif %}</p>
         <div class="mt-6">
             <div id="login-idle">
                 <div class="flex flex-wrap gap-4">
@@ -46,17 +51,19 @@
         </div>
     </div>
 
+    {% if not access_host %}
     <!-- CLI instructions -->
     <div>
         <h2 class="heading-m">Or use the CLI</h2>
         <div class="mt-5">{% include "_cli_quickstart.html" %}</div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/simplewebauthn-browser.js"></script>
-<script src="/static/passkeys.js"></script>
+<script src="/static/simplewebauthn-browser.js?v={{ asset_version }}"></script>
+<script src="/static/passkeys.js?v={{ asset_version }}"></script>
 <script>
 let pollTimer = null;
 let deviceCode = null;

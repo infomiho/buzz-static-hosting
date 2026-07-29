@@ -158,6 +158,11 @@ async def site_detail(
 
     custom_domain_can_add = capability.automatic_ready and not domain_quota.error
     access_policy = request.app.state.access.get_policy(name, identity.user.id)
+    access_readers = (
+        request.app.state.access.list_readers(name, identity.user.id)
+        if access_policy
+        else []
+    )
     domain_routing_targets = [
         {
             "type": "A" if ipaddress.ip_address(address).version == 4 else "AAAA",
@@ -190,6 +195,7 @@ async def site_detail(
         "domain_tasks": domain_tasks,
         "cloudflare_diagnostics": cloudflare_diagnostics,
         "access_policy": access_policy,
+        "access_readers": access_readers,
     })
 
 

@@ -1,8 +1,8 @@
-function formatDate(iso) {
+export function formatDate(iso) {
     return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function timeAgo(iso) {
+export function timeAgo(iso) {
     const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
     if (minutes < 1) return 'just now';
     if (minutes < 60) return minutes + 'm ago';
@@ -11,4 +11,11 @@ function timeAgo(iso) {
     if (days === 1) return 'yesterday';
     if (days < 30) return days + 'd ago';
     return formatDate(iso);
+}
+
+export function formatSize(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    return (bytes / Math.pow(1024, index)).toFixed(index > 0 ? 1 : 0) + ' ' + units[index];
 }

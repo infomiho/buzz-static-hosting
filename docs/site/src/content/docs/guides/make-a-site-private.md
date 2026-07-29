@@ -1,11 +1,11 @@
 ---
 title: Make A Site Private
-description: Restrict a site to its owner using the normal Buzz login.
+description: Restrict a site to its owner and selected GitHub users.
 sidebar:
   order: 7
 ---
 
-A site is either public or private. A private site is visible only to its owner, who signs in with the normal Buzz login. Protection covers the whole site: every path, every asset.
+A site is either public or private. A private site is visible to its owner and any GitHub users the owner adds. Protection covers the whole site: every path, every asset.
 
 ## Make A Site Private
 
@@ -34,7 +34,13 @@ buzz access public
 
 In the dashboard, use the visibility button next to the site's address. The site list shows the same state in its **Visibility** column.
 
-Making a site public takes effect immediately and ends every Access session, so anyone who was signed in must sign in again if you make the site private later.
+## Share A Private Site
+
+Open the site in the dashboard, choose **Private**, then select **Manage access**. Enter an exact GitHub username and confirm the account. Buzz does not send invitations; share the site URL yourself.
+
+Readers sign in with GitHub. They can view the shared site but cannot manage it or use the Buzz dashboard. Removal takes effect on their next request.
+
+Making a site public takes effect immediately, ends every Access session, and clears the reader list. If you make the site private later, it starts owner-only.
 
 ## Why Whole Sites
 

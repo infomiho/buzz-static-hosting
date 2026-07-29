@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from server.access import AccessService, InvalidAccessCode
 from server.db import Database
+from server.github import FakeGitHubClient
+from server.github_login import GitHubUser
 from server.site_store import SiteStore
 
 SITE_HOST = {"host": "private-site.localhost:8080"}
@@ -65,6 +67,18 @@ def _site_archive() -> bytes:
     with zipfile.ZipFile(archive, "w") as zipped:
         zipped.writestr("index.html", "private from first publish")
     return archive.getvalue()
+
+
+def _github_reader(app, *, github_id: int = 2, login: str = "reader") -> None:
+    github = FakeGitHubClient()
+    github.user = {
+        "id": github_id,
+        "login": login,
+        "name": "Site Reader",
+        "avatar_url": f"https://avatars.example/{login}",
+        "type": "User",
+    }
+    app.state.github_client = github
 
 
 # What every URL reaches while the fixture site is public, covering the aliases
@@ -130,6 +144,239 @@ def test_access_api_reports_and_toggles_visibility(make_app, database, tmp_path)
     assert private.json() == {"private": True}
     assert still_private.json() == {"private": True}
     assert deleted.status_code == 204
+
+
+def test_owner_can_resolve_add_and_list_reader(make_app, database, tmp_path):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    app = make_app(allow_registration=False)
+    _github_reader(app)
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+
+    preview = client.get(
+        "/sites/private-site/access/github-users/reader",
+        headers=_auth(owner_token),
+    )
+    added = client.post(
+        "/sites/private-site/access/readers",
+        headers=_auth(owner_token),
+        json={"github_login": "reader"},
+    )
+    readers = client.get(
+        "/sites/private-site/access/readers", headers=_auth(owner_token)
+    )
+    detail = client.get(
+        "/dashboard/sites/private-site", headers=_auth(owner_token)
+    )
+
+    assert preview.status_code == 200
+    assert preview.json() == {
+        "github_id": 2,
+        "github_login": "reader",
+        "github_name": "Site Reader",
+        "avatar_url": "https://avatars.example/reader",
+    }
+    assert added.status_code == 200
+    assert readers.json() == [added.json()]
+    assert detail.status_code == 200
+    assert "Manage access" in detail.text
+    assert "@reader" in detail.text
+    assert "Add GitHub user" in detail.text
+    assert "View on GitHub" not in detail.text
+    assert "Remove access" in detail.text
+    with database.connect() as conn:
+        principal = conn.execute(
+            "SELECT id, control_admitted FROM users WHERE github_id = 2"
+        ).fetchone()
+        identity = conn.execute(
+            "SELECT subject FROM principal_identities WHERE user_id = ?",
+            (principal["id"],),
+        ).fetchone()
+    assert principal["control_admitted"] == 0
+    assert identity["subject"] == "2"
+
+
+def test_invalid_github_profile_fails_without_creating_reader(
+    make_app, database, tmp_path
+):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    app = make_app()
+    github = FakeGitHubClient()
+    github.user = {"login": "alice", "type": "User"}
+    app.state.github_client = github
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+
+    response = client.get(
+        "/sites/private-site/access/github-users/alice",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 502
+    assert client.get(
+        "/sites/private-site/access/readers", headers=_auth(owner_token)
+    ).json() == []
+
+
+def test_github_profile_without_account_type_is_rejected(make_app, database, tmp_path):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    app = make_app()
+    github = FakeGitHubClient()
+    github.user = {"id": 2, "login": "reader"}
+    app.state.github_client = github
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+
+    response = client.get(
+        "/sites/private-site/access/github-users/reader",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 400
+
+
+def test_site_deleted_during_reader_lookup_returns_not_found(
+    make_app, database, tmp_path
+):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    app = make_app()
+    _github_reader(app)
+    github = app.state.github_client
+
+    def delete_site_during_lookup(login):
+        with database.connect() as conn:
+            conn.execute("DELETE FROM sites WHERE name = 'private-site'")
+        return github.user
+
+    github.get_user_by_login = delete_site_during_lookup
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+
+    response = client.post(
+        "/sites/private-site/access/readers",
+        headers=_auth(owner_token),
+        json={"github_login": "reader"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Site not found"}
+
+
+def test_reader_can_sign_in_when_registration_is_closed_but_cannot_manage(
+    make_app, database, tmp_path
+):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    app = make_app(allow_registration=False)
+    _github_reader(app)
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+    client.post(
+        "/sites/private-site/access/readers",
+        headers=_auth(owner_token),
+        json={"github_login": "reader"},
+    )
+
+    login = app.state.auth_service.login_with_github(
+        GitHubUser(id=2, login="reader", name="Renamed Reader")
+    )
+    authorize_page = client.get(
+        "/access/authorize",
+        headers={"host": "localhost:8080", **_auth(login.token)},
+        params={
+            "site": "private-site",
+            "host": "private-site.localhost",
+            "path": "/",
+        },
+    )
+    session_id = hashlib.sha256(login.token.encode()).hexdigest()
+    code = app.state.access.authorize(
+        "private-site", "private-site.localhost", "/", login.user.id, session_id
+    )
+    grant = app.state.access.exchange_code(
+        code, "private-site", "private-site.localhost"
+    )
+
+    assert asyncio.run(
+        app.state.access.check_request(
+            "private-site", "private-site.localhost", grant.token
+        )
+    ).authorized
+    assert authorize_page.status_code == 200
+    assert client.get("/sites", headers=_auth(login.token)).status_code == 403
+    assert client.post(
+        "/deploy",
+        headers={**_auth(login.token), "x-buzz-site": "reader-site"},
+        files={"file": ("site.zip", _site_archive(), "application/zip")},
+    ).status_code == 403
+
+
+def test_removing_reader_immediately_invalidates_grant(
+    make_app, database, tmp_path
+):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    app = make_app(allow_registration=False)
+    _github_reader(app)
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+    added = client.post(
+        "/sites/private-site/access/readers",
+        headers=_auth(owner_token),
+        json={"github_login": "reader"},
+    ).json()
+    login = app.state.auth_service.login_with_github(
+        GitHubUser(id=2, login="reader", name="Site Reader")
+    )
+    code = app.state.access.authorize(
+        "private-site",
+        "private-site.localhost",
+        "/",
+        login.user.id,
+        hashlib.sha256(login.token.encode()).hexdigest(),
+    )
+    grant = app.state.access.exchange_code(
+        code, "private-site", "private-site.localhost"
+    )
+
+    removed = client.delete(
+        f"/sites/private-site/access/readers/{added['id']}",
+        headers=_auth(owner_token),
+    )
+
+    assert removed.status_code == 204
+    assert not asyncio.run(
+        app.state.access.check_request(
+            "private-site", "private-site.localhost", grant.token
+        )
+    ).authorized
+    with database.connect() as conn:
+        assert conn.execute("SELECT 1 FROM site_access_grants").fetchone() is None
+
+
+def test_making_site_public_clears_readers(make_app, database, tmp_path):
+    owner_token = _session_token(database)
+    _create_site(database, tmp_path, owner_token)
+    app = make_app()
+    _github_reader(app)
+    client = TestClient(app)
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+    client.post(
+        "/sites/private-site/access/readers",
+        headers=_auth(owner_token),
+        json={"github_login": "reader"},
+    )
+
+    client.delete("/sites/private-site/access", headers=_auth(owner_token))
+    client.put("/sites/private-site/access", headers=_auth(owner_token))
+
+    assert client.get(
+        "/sites/private-site/access/readers", headers=_auth(owner_token)
+    ).json() == []
 
 
 def test_making_a_site_private_is_idempotent(make_app, database, tmp_path):
@@ -287,13 +534,13 @@ def test_publication_guard_closes_the_file_publish_window(
     assert not errors
 
 
-def test_access_grant_respects_current_operator_allowlist(make_app, database, tmp_path):
+def test_access_grant_is_independent_of_control_allowlist(make_app, database, tmp_path):
     token = _session_token(database)
     _create_site(database, tmp_path, token)
     allowed_app = make_app(allowed_github_users=frozenset({"owner"}))
     allowed_app.state.access.set_policy("private-site", 1)
     session_id = hashlib.sha256(token.encode()).hexdigest()
-    code = allowed_app.state.access.authorize_owner(
+    code = allowed_app.state.access.authorize(
         "private-site", "private-site.localhost", "/", 1, session_id
     )
     grant = allowed_app.state.access.exchange_code(
@@ -307,7 +554,7 @@ def test_access_grant_respects_current_operator_allowlist(make_app, database, tm
             headers={**SITE_HOST, "cookie": f"__Host-buzz_access={grant.token}"},
         )
 
-    assert response.status_code == 401
+    assert response.status_code == 200
 
 
 def test_private_site_requires_owner_handoff(make_app, database, tmp_path):
@@ -320,6 +567,7 @@ def test_private_site_requires_owner_handoff(make_app, database, tmp_path):
     assert gated.status_code == 401
     assert "Private site" in gated.text
     assert "private-site.localhost" in gated.text
+    assert "whether your GitHub account has access" in gated.text
     assert gated.headers["cache-control"] == "private, no-store"
     assert gated.headers["x-robots-tag"] == "noindex, nofollow"
 
@@ -390,7 +638,7 @@ def test_going_public_then_private_invalidates_an_existing_grant(
     app = make_app()
     app.state.access.set_policy("private-site", 1)
     session_id = hashlib.sha256(token.encode()).hexdigest()
-    code = app.state.access.authorize_owner(
+    code = app.state.access.authorize(
         "private-site", "private-site.localhost", "/", 1, session_id
     )
     grant = app.state.access.exchange_code(
@@ -474,7 +722,7 @@ def test_access_code_is_single_use(make_app, database, tmp_path):
     app = make_app()
     app.state.access.set_policy("private-site", 1)
     session_id = hashlib.sha256(token.encode()).hexdigest()
-    code = app.state.access.authorize_owner(
+    code = app.state.access.authorize(
         "private-site", "private-site.localhost", "/", 1, session_id
     )
 
@@ -507,6 +755,7 @@ def test_denied_visitor_is_given_a_way_out(make_app, database, tmp_path):
 
     assert response.status_code == 403
     assert "private-site.localhost" in response.text
+    assert "@stranger does not have access" in response.text
     assert "Sign in as someone else" in response.text
 
 

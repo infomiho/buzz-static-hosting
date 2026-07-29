@@ -1,8 +1,10 @@
 {
   "private": true,
+  "type": "module",
   "scripts": {
     "css:build": "tailwindcss -i src/server/static/input.css -o src/server/static/style.css --minify",
-    "css:watch": "tailwindcss -i src/server/static/input.css -o src/server/static/style.css --watch"
+    "css:watch": "tailwindcss -i src/server/static/input.css -o src/server/static/style.css --watch",
+    "js:check": "node --check src/server/static/actions.js && node --check src/server/static/dashboard.js && node --check src/server/static/deploy.js && node --check src/server/static/dialogs.js && node --check src/server/static/format.js && node --check src/server/static/http.js && node --check src/server/static/passkeys.js && node --check src/server/static/site-detail.js"
   },
   "dependencies": {
     "@tailwindcss/cli": "^4.2.2",

@@ -21,6 +21,7 @@ class GitHubUser:
     id: int
     login: str
     name: str | None
+    avatar_url: str | None = None
 
 
 class GitHubDeviceFlowPending(Exception):
@@ -104,4 +105,5 @@ class GitHubDeviceFlow:
             id=github_user["id"],
             login=github_user["login"],
             name=github_user.get("name"),
+            avatar_url=github_user.get("avatar_url"),
         )

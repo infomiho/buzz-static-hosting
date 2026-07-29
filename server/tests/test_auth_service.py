@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 import pytest
@@ -180,6 +181,56 @@ class TestLoginWithGitHub:
             row = conn.execute("SELECT github_login FROM users WHERE github_id = 42").fetchone()
         assert row["github_login"] == "new_login"
 
+    @pytest.mark.parametrize(
+        "auth_kwargs",
+        [
+            {"allow_registration": True},
+            {
+                "allow_registration": False,
+                "allowed_github_users": frozenset({"reader"}),
+            },
+        ],
+    )
+    def test_reader_is_promoted_when_control_policy_allows(self, database, auth_kwargs):
+        auth = AuthService(db=database.connect, **auth_kwargs)
+        reader = GitHubUser(id=77, login="reader", name="Reader")
+        principal = auth.ensure_github_principal(reader)
+
+        result = auth.login_with_github(reader)
+
+        assert principal.control_admitted is False
+        assert result.user.control_admitted is True
+        assert auth.user_is_allowed(result.user.id) is True
+
+    def test_concurrent_principal_resolution_reuses_one_principal(self, database):
+        auth = AuthService(db=database.connect)
+        reader = GitHubUser(id=77, login="reader", name="Reader")
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            principals = list(pool.map(auth.ensure_github_principal, [reader] * 8))
+
+        assert len({principal.id for principal in principals}) == 1
+        with database.connect() as conn:
+            assert conn.execute(
+                "SELECT COUNT(*) FROM users WHERE github_id = 77"
+            ).fetchone()[0] == 1
+            assert conn.execute(
+                "SELECT COUNT(*) FROM principal_identities WHERE subject = '77'"
+            ).fetchone()[0] == 1
+
+    def test_concurrent_first_login_reuses_one_principal(self, database):
+        auth = AuthService(db=database.connect)
+        user = GitHubUser(id=88, login="new-reader", name="New Reader")
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(auth.login_with_github, [user] * 8))
+
+        assert len({result.user.id for result in results}) == 1
+        with database.connect() as conn:
+            assert conn.execute(
+                "SELECT COUNT(*) FROM users WHERE github_id = 88"
+            ).fetchone()[0] == 1
+
 
 class TestLogout:
     def test_logout_invalidates_session(self, database):
@@ -332,7 +383,7 @@ class TestAccessControl:
 
         assert result.user.github_login == "AlIcE"
 
-    def test_allowlist_revokes_existing_session(self, database):
+    def test_allowlist_revokes_control_access_not_authentication(self, database):
         token = "buzz_sess_" + secrets.token_urlsafe(32)
         with database.connect() as conn:
             user_id = _insert_user(conn)
@@ -340,8 +391,10 @@ class TestAccessControl:
 
         auth = AuthService(db=database.connect, allowed_github_users=frozenset({"bob"}))
 
-        with pytest.raises(AccessDenied):
-            auth.authenticate(f"Bearer {token}")
+        identity = auth.authenticate(f"Bearer {token}")
+
+        assert identity is not None
+        assert auth.user_is_allowed(user_id) is False
 
     def test_allowlist_revokes_existing_deploy_token(self, database):
         token = "buzz_deploy_" + secrets.token_urlsafe(32)

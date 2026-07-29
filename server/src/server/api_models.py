@@ -61,6 +61,24 @@ class SiteAccessResponse(BaseModel):
     private: bool
 
 
+class AddSiteReaderRequest(BaseModel):
+    github_login: str
+
+
+class SiteReaderResponse(BaseModel):
+    id: int
+    github_login: str
+    github_name: str | None
+    avatar_url: str | None
+
+
+class GitHubUserResponse(BaseModel):
+    github_id: int
+    github_login: str
+    github_name: str | None
+    avatar_url: str | None
+
+
 class CreateDomainClaimRequest(BaseModel):
     hostname: str
 

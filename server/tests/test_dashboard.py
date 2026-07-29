@@ -112,6 +112,81 @@ class TestCookieAuthOnApiRoutes:
         assert res.status_code == 401
 
 
+def test_dialog_controller_loads_before_site_detail_module(
+    client, database, user_and_token, tmp_path
+):
+    user_id, token = user_and_token
+    with database.connect() as conn:
+        conn.execute(
+            "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('my-site', ?, 0)",
+            (user_id,),
+        )
+    (tmp_path / "my-site").mkdir()
+    client.cookies.set(COOKIE_NAME, token)
+
+    response = client.get("/dashboard/sites/my-site")
+
+    assert response.status_code == 200
+    assert response.text.index('/static/dialogs.js?v=') < response.text.index(
+        '/static/site-detail.js?v='
+    )
+
+
+def test_dashboard_module_owns_server_data_and_deploy_handler(
+    client, database, user_and_token
+):
+    user_id, token = user_and_token
+    with database.connect() as conn:
+        conn.execute(
+            "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('a-site', ?, 1)",
+            (user_id,),
+        )
+    client.cookies.set(COOKIE_NAME, token)
+
+    response = client.get("/")
+
+    assert re.search(r'<script type="module" src="/static/dashboard\.js\?v=[^" ]+"', response.text)
+    assert 'id="dashboard-root" data-domain="localhost:8080"' in response.text
+    assert 'id="deploy-site"' in response.text
+    assert "onclick=\"openDeployDialog" not in response.text
+    assert "const DOMAIN" not in response.text
+
+
+def test_first_run_references_dashboard_module_and_data_root(client, user_and_token):
+    _, token = user_and_token
+    client.cookies.set(COOKIE_NAME, token)
+
+    response = client.get("/")
+
+    assert re.search(r'<script type="module" src="/static/dashboard\.js\?v=[^" ]+"', response.text)
+    assert 'id="dashboard-root" data-domain="localhost:8080"' in response.text
+    assert 'id="first-run-deploy"' in response.text
+
+
+def test_site_detail_module_owns_site_data_and_redeploy_handler(
+    client, database, user_and_token, tmp_path
+):
+    user_id, token = user_and_token
+    with database.connect() as conn:
+        conn.execute(
+            "INSERT INTO sites (name, owner_id, size_bytes) VALUES ('my-site', ?, 0)",
+            (user_id,),
+        )
+    (tmp_path / "my-site").mkdir()
+    client.cookies.set(COOKIE_NAME, token)
+
+    response = client.get("/dashboard/sites/my-site")
+
+    assert re.search(r'<script type="module" src="/static/site-detail\.js\?v=[^" ]+"', response.text)
+    assert re.search(
+        r'id="site-detail-root"[^>]+data-site-name="my-site"[^>]+data-created-at="[^"]+"',
+        response.text,
+    )
+    assert 'id="redeploy-site"' in response.text
+    assert "onclick=\"openDeployDialog" not in response.text
+    assert "const SITE_NAME" not in response.text
+
+
 class TestCustomDomains:
     def test_site_detail_hides_domains_section_when_feature_disabled(
         self, client, database, user_and_token, tmp_path
@@ -252,8 +327,6 @@ class TestCustomDomains:
         assert 'aria-label="Copy TXT record value"' in response.text
         assert "If this setup expires, add the domain again." in response.text
         assert "The TXT record does not match yet" in response.text
-        assert "navigator.clipboard.writeText(target.textContent.trim())" in response.text
-        assert "button.textContent = 'Copied'" in response.text
 
         def domain_tag(claim_id):
             match = re.search(
@@ -331,7 +404,8 @@ class TestCustomDomains:
         assert response.text.index(">Stats<") < response.text.index(">Files<")
         assert response.text.index(">Files<") < response.text.index(">Custom domains<")
         assert 'id="remove-domain-dialog"' in response.text
-        assert "Buzz will stop serving this hostname" in response.text
+        assert "Buzz will stop serving" in response.text
+        assert "after withdrawing its route" in response.text
         assert 'id="remove-domain-error"' in response.text
         assert "removeDialog.close();\n                showDomainError" not in response.text
         assert "Add custom domain" in response.text

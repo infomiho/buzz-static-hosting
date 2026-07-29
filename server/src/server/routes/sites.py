@@ -13,7 +13,7 @@ from ..dependencies import (
     Identity,
     get_database,
     get_settings,
-    require_identity,
+    require_deploy_identity,
     require_user,
 )
 from ..exceptions import BadRequest, Forbidden, PayloadTooLarge
@@ -114,7 +114,7 @@ async def deploy(
     request: Request,
     database: Annotated[Database, Depends(get_database)],
     settings: Annotated[Settings, Depends(get_settings)],
-    identity: Identity = Depends(require_identity),
+    identity: Identity = Depends(require_deploy_identity),
     x_buzz_site: str | None = Header(
         default=None,
         description="Site name to create or replace. Buzz generates a name when omitted.",

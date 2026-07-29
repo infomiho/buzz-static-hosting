@@ -64,23 +64,23 @@
     </section>
 </div>
 
-<dialog id="remove-passkey-dialog" class="dialog">
+<dialog id="remove-passkey-dialog" class="dialog dialog-confirm" role="alertdialog" aria-labelledby="remove-passkey-title" aria-describedby="remove-passkey-text">
     <div>
         <header>
-            <h2>Remove passkey</h2>
+            <h2 id="remove-passkey-title">Remove passkey</h2>
             <p id="remove-passkey-text">This passkey will no longer be able to sign in to this server.</p>
         </header>
         <footer>
-            <button class="btn-outline" onclick="document.getElementById('remove-passkey-dialog').close()">Cancel</button>
-            <button class="btn-destructive" id="confirm-remove-passkey">Remove</button>
+            <button class="btn-outline" id="cancel-remove-passkey">Cancel</button>
+            <button class="btn-destructive" id="confirm-remove-passkey">Remove passkey</button>
         </footer>
     </div>
 </dialog>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/simplewebauthn-browser.js"></script>
-<script src="/static/passkeys.js"></script>
+<script src="/static/simplewebauthn-browser.js?v={{ asset_version }}"></script>
+<script src="/static/passkeys.js?v={{ asset_version }}"></script>
 <script>
 if (!SimpleWebAuthnBrowser.browserSupportsWebAuthn()) {
     document.getElementById('add-passkey').disabled = true;
@@ -106,14 +106,18 @@ document.getElementById('add-passkey-form').addEventListener('submit', async (ev
 
 const removeDialog = document.getElementById('remove-passkey-dialog');
 const confirmRemove = document.getElementById('confirm-remove-passkey');
+const closeRemoveDialog = () => BuzzDialogs.close(removeDialog);
 let pendingRemoveId = null;
+
+document.getElementById('cancel-remove-passkey').addEventListener('click', closeRemoveDialog);
+BuzzDialogs.onCancel(removeDialog, closeRemoveDialog);
 
 document.querySelectorAll('[data-remove-passkey]').forEach((button) => {
     button.addEventListener('click', () => {
         pendingRemoveId = button.dataset.id;
         document.getElementById('remove-passkey-text').textContent =
             `"${button.dataset.name}" will no longer be able to sign in to this server.`;
-        removeDialog.showModal();
+        BuzzDialogs.open(removeDialog, button);
     });
 });
 

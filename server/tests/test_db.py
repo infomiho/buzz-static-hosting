@@ -324,7 +324,12 @@ def test_site_level_access_migration_widens_existing_policies(tmp_path):
     path = tmp_path / "data.db"
     conn = sqlite3.connect(path)
     _configure_connection(conn)
-    for version, migration in enumerate(MIGRATIONS[:-1], start=1):
+    site_level_version = next(
+        version
+        for version, migration in enumerate(MIGRATIONS, start=1)
+        if migration.__name__ == "_buzz_access_site_level"
+    )
+    for version, migration in enumerate(MIGRATIONS[: site_level_version - 1], start=1):
         migration(conn)
         conn.execute(f"PRAGMA user_version = {version}")
     conn.execute("INSERT INTO users (id, github_id, github_login) VALUES (1, 5, 'owner')")

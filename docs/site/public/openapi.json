@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "AddSiteReaderRequest": {
+        "properties": {
+          "github_login": {
+            "title": "Github Login",
+            "type": "string"
+          }
+        },
+        "required": [
+          "github_login"
+        ],
+        "title": "AddSiteReaderRequest",
+        "type": "object"
+      },
       "ApiUser": {
         "properties": {
           "login": {
@@ -957,6 +970,48 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "GitHubUserResponse": {
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "github_id": {
+            "title": "Github Id",
+            "type": "integer"
+          },
+          "github_login": {
+            "title": "Github Login",
+            "type": "string"
+          },
+          "github_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github Name"
+          }
+        },
+        "required": [
+          "github_id",
+          "github_login",
+          "github_name",
+          "avatar_url"
+        ],
+        "title": "GitHubUserResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1009,6 +1064,48 @@
           "private"
         ],
         "title": "SiteAccessResponse",
+        "type": "object"
+      },
+      "SiteReaderResponse": {
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "github_login": {
+            "title": "Github Login",
+            "type": "string"
+          },
+          "github_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "github_login",
+          "github_name",
+          "avatar_url"
+        ],
+        "title": "SiteReaderResponse",
         "type": "object"
       },
       "SiteResponse": {
@@ -1769,6 +1866,407 @@
           }
         ],
         "summary": "Make a site private",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
+    "/sites/{site_name}/access/github-users/{github_login}": {
+      "get": {
+        "operationId": "resolveGitHubUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "github_login",
+            "required": true,
+            "schema": {
+              "title": "Github Login",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The GitHub username is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Site ownership is required."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The site or GitHub user was not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The site is not private."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "GitHub lookup failed."
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Resolve a GitHub user for private-site access",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
+    "/sites/{site_name}/access/readers": {
+      "get": {
+        "operationId": "listSiteReaders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SiteReaderResponse"
+                  },
+                  "title": "Response Listsitereaders",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Site ownership is required."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The site was not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List private-site readers",
+        "tags": [
+          "Access"
+        ]
+      },
+      "post": {
+        "operationId": "addSiteReader",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSiteReaderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteReaderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The GitHub username is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Site ownership is required."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The site or GitHub user was not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The site is not private."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "GitHub lookup failed."
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Add a private-site reader",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
+    "/sites/{site_name}/access/readers/{reader_id}": {
+      "delete": {
+        "operationId": "removeSiteReader",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "site_name",
+            "required": true,
+            "schema": {
+              "title": "Site Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reader_id",
+            "required": true,
+            "schema": {
+              "title": "Reader Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Site ownership is required."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The site was not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The site is not private."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Remove a private-site reader",
         "tags": [
           "Access"
         ]
@@ -2541,7 +3039,7 @@
       "name": "Deployment Tokens"
     },
     {
-      "description": "Owner-only protection for hosted sites.",
+      "description": "Private-site protection and reader access.",
       "name": "Access"
     },
     {

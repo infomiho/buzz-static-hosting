@@ -1,6 +1,9 @@
+import io
+from urllib.error import URLError
+
 import pytest
 
-from server.github import FakeGitHubClient
+from server.github import FakeGitHubClient, GitHubLookupFailed, HttpGitHubClient
 from server.github_login import (
     GitHubDeviceFlow,
     GitHubDeviceFlowDenied,
@@ -47,6 +50,8 @@ class TestPoll:
         start = flow.start()
         with pytest.raises(GitHubDeviceFlowPending):
             flow.poll(start["device_code"])
+        with pytest.raises(GitHubDeviceFlowPending):
+            flow.poll(start["device_code"])
 
     def test_slow_down_carries_interval(self):
         flow = make_flow(poll_response={"error": "slow_down", "interval": 10})
@@ -90,5 +95,22 @@ class TestPoll:
         start = flow.start()
         with pytest.raises(GitHubDeviceFlowPending):
             flow.poll(start["device_code"])
-        with pytest.raises(GitHubDeviceFlowPending):
-            flow.poll(start["device_code"])
+
+
+class TestUserLookup:
+    def test_transport_failure_is_normalized(self, monkeypatch):
+        def fail(*_args, **_kwargs):
+            raise URLError("offline")
+
+        monkeypatch.setattr("server.github.urlopen", fail)
+
+        with pytest.raises(GitHubLookupFailed):
+            HttpGitHubClient().get_user_by_login("alice")
+
+    def test_invalid_json_is_normalized(self, monkeypatch):
+        monkeypatch.setattr(
+            "server.github.urlopen", lambda *_args, **_kwargs: io.BytesIO(b"not-json")
+        )
+
+        with pytest.raises(GitHubLookupFailed):
+            HttpGitHubClient().get_user_by_login("alice")

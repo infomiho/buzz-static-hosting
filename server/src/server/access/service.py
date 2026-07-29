@@ -39,6 +39,10 @@ class InvalidAccessCode(Exception):
     pass
 
 
+class AccessReaderIsOwner(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class AccessPolicy:
     id: int
@@ -59,6 +63,14 @@ class AccessDecision:
 class AccessGrant:
     token: str
     return_path: str
+
+
+@dataclass(frozen=True)
+class AccessReader:
+    user_id: int
+    github_login: str
+    github_name: str | None
+    avatar_url: str | None
 
 
 def hash_access_token(token: str) -> str:
@@ -146,11 +158,9 @@ class AccessService:
         self,
         db: Callable,
         reader: ReadConnection,
-        user_allowed: Callable[[int], bool] | None = None,
     ):
         self._db = db
         self._reader = reader
-        self._user_allowed = user_allowed or (lambda user_id: True)
         self._visibility = _VisibilityCache()
 
     def load_visibility(self) -> None:
@@ -237,6 +247,83 @@ class AccessService:
         self._visibility.discard(site_name, seen)
         return deleted
 
+    def list_readers(self, site_name: str, owner_id: int) -> list[AccessReader]:
+        with self._db() as conn:
+            self._require_owner(conn, site_name, owner_id)
+            policy = self._policy(conn, site_name)
+            if not policy:
+                return []
+            rows = conn.execute(
+                "SELECT r.user_id, u.github_login, u.github_name, "
+                "i.avatar_url_snapshot "
+                "FROM site_access_readers r "
+                "JOIN users u ON u.id = r.user_id "
+                "LEFT JOIN principal_identities i "
+                "ON i.user_id = u.id AND i.provider = 'github' "
+                "WHERE r.policy_id = ? ORDER BY r.created_at, r.user_id",
+                (policy.id,),
+            ).fetchall()
+        return [
+            AccessReader(
+                user_id=row["user_id"],
+                github_login=row["github_login"],
+                github_name=row["github_name"],
+                avatar_url=row["avatar_url_snapshot"],
+            )
+            for row in rows
+        ]
+
+    def add_reader(
+        self, site_name: str, owner_id: int, reader_id: int, login_snapshot: str
+    ) -> None:
+        with self._db() as conn:
+            self._require_owner(conn, site_name, owner_id)
+            policy = self._policy(conn, site_name)
+            if not policy:
+                raise AccessPolicyNotFound()
+            if reader_id == owner_id:
+                raise AccessReaderIsOwner()
+            conn.execute(
+                "INSERT INTO site_access_readers "
+                "(policy_id, user_id, added_by_user_id, added_login_snapshot) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(policy_id, user_id) DO NOTHING",
+                (policy.id, reader_id, owner_id, login_snapshot),
+            )
+
+    def remove_reader(self, site_name: str, owner_id: int, reader_id: int) -> bool:
+        with self._db() as conn:
+            self._require_owner(conn, site_name, owner_id)
+            policy = self._policy(conn, site_name)
+            if not policy:
+                raise AccessPolicyNotFound()
+            cursor = conn.execute(
+                "DELETE FROM site_access_readers WHERE policy_id = ? AND user_id = ?",
+                (policy.id, reader_id),
+            )
+            conn.execute(
+                "DELETE FROM site_access_codes WHERE policy_id = ? AND user_id = ?",
+                (policy.id, reader_id),
+            )
+            conn.execute(
+                "DELETE FROM site_access_grants WHERE policy_id = ? AND user_id = ?",
+                (policy.id, reader_id),
+            )
+            return cursor.rowcount > 0
+
+    def reader_policy(self, site_name: str, user_id: int) -> AccessPolicy | None:
+        with self._db() as conn:
+            if not conn.execute(
+                "SELECT 1 FROM sites WHERE name = ?", (site_name,)
+            ).fetchone():
+                raise AccessSiteNotFound()
+            policy = self._policy(conn, site_name)
+            if not policy:
+                return None
+            if not self._may_read(conn, policy.id, site_name, user_id):
+                raise AccessNotSiteOwner()
+            return policy
+
     async def check_request(
         self, site_name: str, hostname: str, raw_grant: str | None
     ) -> AccessDecision:
@@ -287,7 +374,10 @@ class AccessService:
                 "JOIN sites s ON s.name = p.site_name "
                 "JOIN sessions ss ON ss.id = g.session_id "
                 "WHERE g.id = ? AND g.policy_id = ? AND g.generation = p.generation "
-                "AND g.hostname = ? AND g.user_id = s.owner_id "
+                "AND g.hostname = ? "
+                "AND (g.user_id = s.owner_id OR EXISTS ("
+                "SELECT 1 FROM site_access_readers r "
+                "WHERE r.policy_id = p.id AND r.user_id = g.user_id)) "
                 "AND g.expires_at > ? AND ss.expires_at > ?",
                 (
                     hash_access_token(raw_grant),
@@ -298,12 +388,9 @@ class AccessService:
                 ),
             ).fetchone()
             user_id = row["user_id"] if row else None
-        # user_allowed opens its own connection; never call it holding the
-        # reader, or every protected-site request serializes on that too.
-        authorized = user_id is not None and self._user_allowed(user_id)
-        return AccessDecision(protected=True, authorized=authorized)
+        return AccessDecision(protected=True, authorized=user_id is not None)
 
-    def authorize_owner(
+    def authorize(
         self,
         site_name: str,
         hostname: str,
@@ -313,10 +400,11 @@ class AccessService:
     ) -> str:
         now = datetime.now()
         with self._db() as conn:
-            self._require_owner(conn, site_name, user_id)
             policy = self._policy(conn, site_name)
             if not policy:
                 raise AccessPolicyNotFound()
+            if not self._may_read(conn, policy.id, site_name, user_id):
+                raise AccessNotSiteOwner()
             conn.execute(
                 "DELETE FROM site_access_codes WHERE expires_at <= ?",
                 (now.isoformat(),),
@@ -357,7 +445,10 @@ class AccessService:
                 "JOIN sites s ON s.name = p.site_name "
                 "JOIN sessions ss ON ss.id = c.session_id "
                 "WHERE c.id = ? AND p.site_name = ? AND c.hostname = ? "
-                "AND c.generation = p.generation AND c.user_id = s.owner_id "
+                "AND c.generation = p.generation "
+                "AND (c.user_id = s.owner_id OR EXISTS ("
+                "SELECT 1 FROM site_access_readers r "
+                "WHERE r.policy_id = p.id AND r.user_id = c.user_id)) "
                 "AND c.expires_at > ? AND ss.expires_at > ?",
                 (
                     hash_access_token(raw_code),
@@ -389,6 +480,18 @@ class AccessService:
                 ),
             )
             return AccessGrant(raw_grant, row["return_path"])
+
+    @staticmethod
+    def _may_read(conn, policy_id: int, site_name: str, user_id: int) -> bool:
+        return bool(
+            conn.execute(
+                "SELECT 1 FROM sites s WHERE s.name = ? AND "
+                "(s.owner_id = ? OR EXISTS ("
+                "SELECT 1 FROM site_access_readers r "
+                "WHERE r.policy_id = ? AND r.user_id = ?))",
+                (site_name, user_id, policy_id, user_id),
+            ).fetchone()
+        )
 
     @staticmethod
     def _require_owner(conn, site_name: str, user_id: int) -> None:

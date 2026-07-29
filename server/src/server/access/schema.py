@@ -62,3 +62,16 @@ def _buzz_access_site_level(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE site_access_patterns")
     conn.execute("DELETE FROM site_access_codes")
     conn.execute("DELETE FROM site_access_grants")
+
+
+def _buzz_access_readers(conn: sqlite3.Connection) -> None:
+    conn.execute("""CREATE TABLE site_access_readers (
+        policy_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        added_by_user_id INTEGER NOT NULL,
+        added_login_snapshot TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (policy_id, user_id),
+        FOREIGN KEY (policy_id) REFERENCES site_access_policies(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (added_by_user_id) REFERENCES users(id) ON DELETE CASCADE)""")
