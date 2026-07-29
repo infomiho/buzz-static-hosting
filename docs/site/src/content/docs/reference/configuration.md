@@ -24,8 +24,6 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_MAX_SITE_BYTES` | Maximum extracted size of one deployed site in bytes. | Buzz server | `524288000` | Optional |
 | `BUZZ_MAX_SITE_FILES` | Maximum number of files and directories in one deployed site. | Buzz server | `10000` | Optional |
 | `BUZZ_MAX_ARCHIVE_PATH_BYTES` | Maximum UTF-8 byte length of a path in a deployment archive. | Buzz server | `1024` | Optional |
-| `BUZZ_GSC_CREDENTIALS` | Google service-account JSON or a path to a readable credentials file. | Buzz server | Not set | Optional |
-| `BUZZ_GSC_PROPERTY` | Google Search Console property. Defaults to `sc-domain:<BUZZ_DOMAIN>`. | Buzz server | Not set | Optional |
 | `BUZZ_ALLOW_REGISTRATION` | Whether new GitHub users can sign up. Existing users keep access when disabled. | Buzz server | `true` | Optional |
 | `BUZZ_ALLOWED_GITHUB_USERS` | Comma-separated GitHub usernames allowed to sign in. When set, unlisted users are denied on every request and listed users may sign up even when registration is disabled. | Buzz server | Not set | Optional |
 | `BUZZ_CUSTOM_DOMAINS_ENABLED` | Whether this Buzz server enables the optional custom-domain control plane. | Buzz server | `false` | Optional |
@@ -51,4 +49,4 @@ Command-line options take precedence where noted. Values used only by the bundle
 
 The CLI reads `BUZZ_SERVER` and `BUZZ_TOKEN`. The root `--server` and `--token` options take precedence, followed by environment variables, then saved configuration.
 
-Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.
+Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.

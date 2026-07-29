@@ -57,7 +57,6 @@ docs/
         |   |-- configure-github-authentication.md
         |   |-- manage-data-and-backups.md
         |   |-- configure-deployment-limits.md
-        |   `-- connect-google-search-console.md
         |   `-- security.md
         |-- reference/
         |   |-- cli/index.md        # Generated from Commander
@@ -109,7 +108,6 @@ Move from `README.md`:
 | GitHub OAuth | Configure GitHub authentication |
 | Docker deployment | Docker Compose |
 | Optional deployment limits | Configuration reference and deployment limits |
-| Google search terms | Connect Google Search Console |
 | Coolify | Coolify |
 | CLI development setup | Contributing development guide |
 | How it works | Self-hosting overview |

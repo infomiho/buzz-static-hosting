@@ -1,7 +1,5 @@
-import asyncio
 import ipaddress
 import logging
-from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -32,13 +30,8 @@ from ..github_login import (
     GitHubDeviceFlowSlowDown,
 )
 from ..passkeys import AuthenticationFailed, ChallengeExpired, PasskeyService
-from ..search_console import SearchConsoleError
 from ..settings import Settings
 from ..site_store import SiteStore
-
-SEARCH_TERMS_LAG_DAYS = 2
-SEARCH_TERMS_WINDOW_DAYS = 30
-
 
 logger = logging.getLogger(__name__)
 
@@ -209,31 +202,6 @@ async def site_analytics(
     with database.connect() as conn:
         SiteStore(conn, settings.sites_dir).get_by_name(name, identity.user.id)
         return AnalyticsStore(conn).summary(name)
-
-
-@router.get("/sites/{name}/search-terms")
-async def site_search_terms(
-    request: Request,
-    name: str,
-    identity: Annotated[Identity, Depends(require_user)],
-    database: Annotated[Database, Depends(get_database)],
-    settings: Annotated[Settings, Depends(get_settings)],
-):
-    with database.connect() as conn:
-        SiteStore(conn, settings.sites_dir).get_by_name(name, identity.user.id)
-
-    client = request.app.state.search_console
-    if not client:
-        return {"configured": False, "terms": []}
-
-    end = date.today() - timedelta(days=SEARCH_TERMS_LAG_DAYS)
-    start = end - timedelta(days=SEARCH_TERMS_WINDOW_DAYS - 1)
-    domain = settings.control_host
-    try:
-        terms = await asyncio.to_thread(client.query_search_terms, f"{name}.{domain}", start, end)
-    except SearchConsoleError:
-        raise HTTPException(status_code=502, detail="Search Console request failed")
-    return {"configured": True, "terms": terms}
 
 
 @router.post("/logout")

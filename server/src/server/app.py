@@ -36,7 +36,6 @@ from .github_login import GitHubDeviceFlow
 from .passkeys import PasskeyService
 from .pending_store import PendingStore
 from .routes import access, account, auth, dashboard, device, domains, sites, tokens
-from .search_console import create_search_console_client
 from .settings import Settings
 from .site_store import SiteStore
 from .site_path import (
@@ -233,9 +232,6 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         verification_uri=f"{control_origin}/device",
     )
     app.state.analytics = AnalyticsRecorder(database.connect)
-    app.state.search_console = create_search_console_client(
-        settings.gsc_credentials, settings.gsc_property, settings.domain
-    )
     app.state.custom_domains = custom_domains
 
     @app.exception_handler(BadRequest)

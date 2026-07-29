@@ -25,7 +25,7 @@ A site owner can attach a domain, prove ownership, obtain HTTPS, serve the stati
 
 ## Exclusions
 
-- Cloudflare orange-cloud, arbitrary CDNs, multiple aliases, primary redirects, wildcard domains, CLI management, and custom-domain Search Console data.
+- Cloudflare orange-cloud, arbitrary CDNs, multiple aliases, primary redirects, wildcard domains, and CLI management.
 
 ## Implementation
 

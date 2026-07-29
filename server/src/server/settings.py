@@ -45,8 +45,6 @@ class Settings:
     max_site_bytes: int
     max_site_files: int
     max_archive_path_bytes: int
-    gsc_credentials: str | None
-    gsc_property: str | None
 
     @property
     def control_origin(self) -> str:
@@ -100,6 +98,4 @@ class Settings:
             max_site_bytes=environment_value("BUZZ_MAX_SITE_BYTES"),
             max_site_files=environment_value("BUZZ_MAX_SITE_FILES"),
             max_archive_path_bytes=environment_value("BUZZ_MAX_ARCHIVE_PATH_BYTES"),
-            gsc_credentials=environment_value("BUZZ_GSC_CREDENTIALS"),
-            gsc_property=environment_value("BUZZ_GSC_PROPERTY"),
         )

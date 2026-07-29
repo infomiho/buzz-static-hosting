@@ -8,7 +8,7 @@ Buzz is a self-hosted static site server with a CLI for deploying directories.
 - Serve clean URLs, custom `404.html` pages, and single-page apps with a `200.html` fallback.
 - Manage sites through the CLI and browser dashboard.
 - Sign in with GitHub or use site-scoped deployment tokens for automation.
-- Record site traffic and optionally include Google Search Console queries.
+- Record site traffic and view analytics in the dashboard.
 
 ## Quick Start
 

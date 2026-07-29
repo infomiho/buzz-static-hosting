@@ -22,7 +22,7 @@ Set these variables before creating public DNS records or starting the deploymen
 
 ## Protect Credentials
 
-- Store `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, and Cloudflare API tokens outside source control.
+- Store `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, and Cloudflare API tokens outside source control.
 - Restrict secret-file and deployment-console access to operators.
 - Use site-scoped deployment tokens for automation instead of a user session.
 - Revoke a deployment token when its workflow no longer needs access.

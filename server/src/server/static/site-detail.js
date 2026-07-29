@@ -390,51 +390,13 @@ function renderChart(series) {
     });
 }
 
-function renderSearchTerms(terms) {
-    let html = '<div class="border-2 border-ink">';
-    html += '<div class="flex flex-wrap items-baseline justify-between gap-3 border-b-2 border-ink px-5 py-2.5">';
-    html += '<span class="font-bold">Google search terms</span><span class="text-rule">2-day lag</span></div>';
-    if (!terms?.length) {
-        return html + '<div class="px-5 py-8 text-center text-rule">No search data yet</div></div>';
-    }
-    html += '<div class="overflow-x-auto"><table class="table"><thead><tr>';
-    html += '<th>Term</th><th class="text-right">Clicks</th><th class="text-right">Impressions</th><th class="text-right">CTR</th><th class="text-right">Position</th>';
-    html += '</tr></thead><tbody>';
-    for (const row of terms) {
-        html += '<tr><td class="truncate">' + esc(row.term) + '</td>';
-        html += '<td class="text-right font-bold tabular-nums">' + row.clicks.toLocaleString() + '</td>';
-        html += '<td class="text-right tabular-nums text-rule">' + row.impressions.toLocaleString() + '</td>';
-        html += '<td class="text-right tabular-nums text-rule">' + row.ctr + '%</td>';
-        html += '<td class="text-right tabular-nums text-rule">' + row.position + '</td></tr>';
-    }
-    return html + '</tbody></table></div></div>';
-}
-
-let searchTermsRequested = false;
 let breakdownHasData = false;
 
 function updateBreakdownEmpty() {
     document.getElementById('analytics-breakdown-empty')?.classList.toggle('hidden', breakdownHasData);
 }
 
-async function loadSearchTerms() {
-    if (searchTermsRequested) return;
-    searchTermsRequested = true;
-    const container = document.getElementById('analytics-search-terms');
-    try {
-        const data = await request('/dashboard/sites/' + encodeURIComponent(SITE_NAME) + '/search-terms');
-        if (!data.configured) return;
-        container.innerHTML = renderSearchTerms(data.terms);
-        container.classList.remove('hidden');
-        breakdownHasData = true;
-        updateBreakdownEmpty();
-    } catch {
-        container.innerHTML = '<div class="border-2 border-ink px-4 py-4 text-center text-rule">Couldn\'t load search terms.</div>';
-        container.classList.remove('hidden');
-    }
-}
-
-function initDisclosure(id, storageKey, onOpen) {
+function initDisclosure(id, storageKey) {
     const element = document.getElementById(id);
     try {
         if (localStorage.getItem(storageKey) === '1') element.open = true;
@@ -443,9 +405,7 @@ function initDisclosure(id, storageKey, onOpen) {
         try {
             localStorage.setItem(storageKey, element.open ? '1' : '0');
         } catch {}
-        if (element.open && onOpen) onOpen();
     });
-    if (element.open && onOpen) onOpen();
 }
 
 async function loadAnalytics() {
@@ -499,6 +459,6 @@ document.querySelectorAll('[data-relative-time]').forEach(element => {
 initBuzzAccess();
 initCustomDomains();
 loadAnalytics();
-initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown', loadSearchTerms);
+initDisclosure('analytics-details', 'buzz:' + SITE_NAME + ':breakdown');
 initDisclosure('files-details', 'buzz:' + SITE_NAME + ':files');
 initDeleteSite();

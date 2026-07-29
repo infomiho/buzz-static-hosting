@@ -11,8 +11,6 @@ REPOSITORY_ROOT = SCRIPT_DIR.parents[2]
 SERVER_ROOT = REPOSITORY_ROOT / "server"
 sys.path.insert(0, str(SERVER_ROOT / "src"))
 
-os.environ.pop("BUZZ_GSC_CREDENTIALS", None)
-
 from server.app import create_app  # noqa: E402
 from server.environment import ENVIRONMENT_VARIABLES, EnvironmentVariable  # noqa: E402
 
@@ -67,7 +65,7 @@ Command-line options take precedence where noted. Values used only by the bundle
 
 The CLI reads `BUZZ_SERVER` and `BUZZ_TOKEN`. The root `--server` and `--token` options take precedence, followed by environment variables, then saved configuration.
 
-Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_GSC_CREDENTIALS`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.
+Keep secrets outside source control. `GITHUB_CLIENT_SECRET`, `BUZZ_ANALYTICS_SECRET`, `BUZZ_TRAEFIK_CONTROL_TOKEN`, `BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN`, `BUZZ_TRAEFIK_API_AUTHORIZATION`, `CF_API_TOKEN`, and `BUZZ_TOKEN` contain sensitive values.
 """
 
 
@@ -117,10 +115,6 @@ def render_env_example() -> str:
 {setting('CF_API_TOKEN')}
 {setting('ACME_EMAIL')}
 {setting('BUZZ_CUSTOM_DOMAIN_ACME_CA_SERVER', commented=True)}
-
-# Google Search Console
-{setting('BUZZ_GSC_CREDENTIALS', commented=True)}
-{setting('BUZZ_GSC_PROPERTY', commented=True)}
 """
 
 

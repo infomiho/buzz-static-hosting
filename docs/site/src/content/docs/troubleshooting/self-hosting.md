@@ -114,13 +114,3 @@ docker volume inspect buzz_buzz-data
 ```
 
 Do not run `docker compose down --volumes`, `docker system prune --volumes`, or `docker volume prune` during routine maintenance. In Coolify, also check whether optional unused-volume cleanup ran while Buzz was stopped. If the volume was removed, restore the latest checksum-verified backup using [Manage Data And Backups](../../self-hosting/manage-data-and-backups/). Buzz can't reconstruct `data.db` ownership, sessions, tokens, and analytics from site files alone.
-
-## Google Search Terms Don't Appear
-
-1. Check server startup logs for a credential-loading error.
-2. Confirm `BUZZ_GSC_CREDENTIALS` contains valid service-account JSON or a readable container path.
-3. Confirm the service account appears under Search Console **Settings > Users and permissions** for `sc-domain:buzz.example.com`.
-4. Confirm **Google Search Console API** is enabled in the credential's Google Cloud project.
-5. Allow for Search Console's reporting delay. Buzz queries a window ending two days before the current date.
-
-An empty result can be valid for a new or low-traffic site. A dashboard error and an HTTP `502` from the search-terms endpoint indicate that the Search Console request failed.

@@ -53,6 +53,4 @@ The base hostname and wildcard hostname must both resolve to the server. TLS mus
 6. [Configure deployment limits](../configure-deployment-limits/) for the host.
 7. [Create and verify a backup](../manage-data-and-backups/).
 
-[Google Search Console](../connect-google-search-console/) is an optional advanced integration. It isn't required to deploy or operate Buzz.
-
 Use the [configuration reference](../../reference/configuration/) for the complete environment variable list.

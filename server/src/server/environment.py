@@ -129,17 +129,6 @@ ENVIRONMENT_VARIABLES = (
         parser=int,
     ),
     EnvironmentVariable(
-        "BUZZ_GSC_CREDENTIALS",
-        "Google service-account JSON or a path to a readable credentials file.",
-        sensitive=True,
-        example='{"type":"service_account",...}',
-    ),
-    EnvironmentVariable(
-        "BUZZ_GSC_PROPERTY",
-        "Google Search Console property. Defaults to `sc-domain:<BUZZ_DOMAIN>`.",
-        example="sc-domain:buzz.example.com",
-    ),
-    EnvironmentVariable(
         "BUZZ_ALLOW_REGISTRATION",
         "Whether new GitHub users can sign up. Existing users keep access when disabled.",
         default=True,

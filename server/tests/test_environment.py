@@ -27,8 +27,6 @@ def test_environment_registry_covers_server_and_deployment_settings():
         "BUZZ_MAX_SITE_BYTES",
         "BUZZ_MAX_SITE_FILES",
         "BUZZ_MAX_ARCHIVE_PATH_BYTES",
-        "BUZZ_GSC_CREDENTIALS",
-        "BUZZ_GSC_PROPERTY",
         "BUZZ_ALLOW_REGISTRATION",
         "BUZZ_ALLOWED_GITHUB_USERS",
         "BUZZ_CUSTOM_DOMAINS_ENABLED",
@@ -121,7 +119,6 @@ def test_sensitive_settings_are_marked():
     assert sensitive == {
         "GITHUB_CLIENT_SECRET",
         "BUZZ_ANALYTICS_SECRET",
-        "BUZZ_GSC_CREDENTIALS",
         "BUZZ_TRAEFIK_CONTROL_TOKEN",
         "BUZZ_TRAEFIK_API_AUTHORIZATION",
         "BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN",
