@@ -83,7 +83,7 @@ ENVIRONMENT_VARIABLES = (
     ),
     EnvironmentVariable(
         "GITHUB_CLIENT_ID",
-        "Client ID for the GitHub OAuth app with Device Flow enabled.",
+        "Client ID for the GitHub OAuth app used for dashboard sign-in.",
         required="Required unless the server runs with --dev.",
         example="Iv1.example",
     ),

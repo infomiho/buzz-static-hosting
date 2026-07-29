@@ -32,7 +32,7 @@ from .dependencies import get_identity
 from .device_authorization import DeviceAuthorizationService
 from .exceptions import BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge
 from .github import HttpGitHubClient
-from .github_login import GitHubDeviceFlow
+from .github_login import GitHubOAuth
 from .passkeys import PasskeyService
 from .pending_store import PendingStore
 from .routes import access, account, auth, dashboard, device, domains, sites, tokens
@@ -173,7 +173,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         openapi_tags=[
             {
                 "name": "Authentication",
-                "description": "GitHub device authorization and sessions.",
+                "description": "Buzz device authorization and sessions.",
             },
             {"name": "Sites", "description": "Site deployment and ownership."},
             {
@@ -216,8 +216,13 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         database.connect,
         reader=database.reader(),
     )
-    app.state.github_device_flow = GitHubDeviceFlow(github_client, settings.github_client_id)
     control_origin = settings.control_origin
+    app.state.github_oauth = GitHubOAuth(
+        PendingStore(),
+        settings.github_client_id,
+        settings.github_client_secret,
+        f"{control_origin}/dashboard/login/github/callback",
+    )
     app.state.passkeys = PasskeyService(
         db=database.connect,
         store=PendingStore(),

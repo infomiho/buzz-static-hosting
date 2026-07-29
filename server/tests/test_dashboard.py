@@ -7,9 +7,21 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.auth_service import AuthService
-from server.cookies import COOKIE_NAME
-from server.github import FakeGitHubClient
-from server.github_login import GitHubDeviceFlow
+from server.cookies import COOKIE_NAME, OAUTH_BROWSER_COOKIE_NAME
+from server.github_login import GitHubOAuth
+from server.pending_store import PendingStore
+
+
+class FakeOAuthClient:
+    async def get_authorization_url(self, _redirect_uri, **kwargs):
+        return "https://github.com/login/oauth/authorize?state=" + kwargs["state"]
+
+    async def get_access_token(self, _code, _redirect_uri, code_verifier=None):
+        assert code_verifier
+        return {"access_token": "token"}
+
+    async def get_profile(self, _token):
+        return {"id": 42, "login": "alice", "name": "Alice"}
 
 
 def _hash(token: str) -> str:
@@ -19,7 +31,13 @@ def _hash(token: str) -> str:
 @pytest.fixture
 def app(make_app, database):
     application = make_app()
-    application.state.github_device_flow = GitHubDeviceFlow(FakeGitHubClient(), "test-id")
+    application.state.github_oauth = GitHubOAuth(
+        PendingStore(),
+        "test-id",
+        "test-secret",
+        "http://localhost:8080/dashboard/login/github/callback",
+        oauth_client=FakeOAuthClient(),
+    )
     return application
 
 
@@ -50,6 +68,9 @@ class TestRootRoute:
         res = client.get("/")
         assert res.status_code == 200
         assert "Login with GitHub" in res.text
+        assert 'id="github-login" href="/dashboard/login/github?next="' in res.text
+        assert "login-pending" not in res.text
+        assert "login/github/start" not in res.text
 
     def test_authenticated_without_sites_shows_first_run(self, client, user_and_token):
         _, token = user_and_token
@@ -413,34 +434,107 @@ class TestCustomDomains:
 
 
 class TestLoginFlow:
-    def test_github_login_start_returns_device_code(self, client):
-        res = client.post("/dashboard/login/github/start")
-        assert res.status_code == 200
-        data = res.json()
-        assert "device_code" in data
-        assert "user_code" in data
-        assert "verification_uri" in data
+    @staticmethod
+    def _start(client, next_path="/"):
+        response = client.get(
+            "/dashboard/login/github",
+            params={"next": next_path},
+            follow_redirects=False,
+        )
+        state = response.headers["location"].split("state=", 1)[1]
+        return response, state
 
-    def test_github_login_poll_pending(self, app, client):
-        app.state.github_device_flow._github.poll_response = {"error": "authorization_pending"}
-        start = client.post("/dashboard/login/github/start").json()
-        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
-        assert res.status_code == 200
-        assert res.json()["status"] == "pending"
-        assert COOKIE_NAME not in res.cookies
+    def test_github_login_start_redirects_with_state_cookie(self, app):
+        client = TestClient(app, base_url="https://testserver")
 
-    def test_github_login_poll_success_sets_cookie(self, client):
-        start = client.post("/dashboard/login/github/start").json()
-        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
-        assert res.status_code == 200
-        assert res.json()["status"] == "complete"
-        assert COOKIE_NAME in res.cookies
+        response, state = self._start(client, "/device")
 
-    def test_github_login_poll_expired(self, app, client):
-        app.state.github_device_flow._github.poll_response = {"error": "expired_token"}
-        start = client.post("/dashboard/login/github/start").json()
-        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
-        assert res.status_code == 400
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://github.com/login/oauth/authorize?state=" + state
+        assert OAUTH_BROWSER_COOKIE_NAME in response.headers["set-cookie"]
+
+    def test_github_callback_sets_session_and_returns_to_next_path(self, app):
+        client = TestClient(app, base_url="https://testserver")
+        _, state = self._start(client, "/device")
+
+        response = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": state, "code": "code"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/device"
+        assert COOKIE_NAME in response.headers["set-cookie"]
+        assert OAUTH_BROWSER_COOKIE_NAME not in response.headers["set-cookie"]
+        assert client.get("/device").status_code == 200
+
+    def test_github_callback_rejects_external_next_path(self, app):
+        client = TestClient(app, base_url="https://testserver")
+        _, state = self._start(client, "https://evil.example")
+
+        response = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": state, "code": "code"},
+            follow_redirects=False,
+        )
+
+        assert response.headers["location"] == "/"
+
+    def test_github_callback_rejects_invalid_or_replayed_state(self, app):
+        client = TestClient(app, base_url="https://testserver")
+        _, state = self._start(client)
+
+        invalid = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": "other", "code": "code"},
+            follow_redirects=False,
+        )
+        completed = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": state, "code": "code"},
+            follow_redirects=False,
+        )
+        replayed = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": state, "code": "code"},
+            follow_redirects=False,
+        )
+
+        assert "login_error=" in invalid.headers["location"]
+        assert completed.status_code == 303
+        assert "login_error=" in replayed.headers["location"]
+
+    def test_parallel_github_logins_share_a_browser_binding(self, app):
+        client = TestClient(app, base_url="https://testserver")
+        _, first_state = self._start(client)
+        _, second_state = self._start(client)
+
+        first = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": first_state, "code": "first"},
+            follow_redirects=False,
+        )
+        second = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": second_state, "code": "second"},
+            follow_redirects=False,
+        )
+
+        assert first.status_code == 303
+        assert second.status_code == 303
+
+    def test_github_callback_handles_denial(self, app):
+        client = TestClient(app, base_url="https://testserver")
+        _, state = self._start(client)
+
+        response = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": state, "error": "access_denied"},
+            follow_redirects=False,
+        )
+
+        assert "GitHub+sign-in+was+cancelled" in response.headers["location"]
 
 
 class TestLogout:
@@ -466,15 +560,19 @@ class TestAccessControl:
             allowed_github_users=frozenset({"someone-else"}),
         )
 
-    def test_github_login_poll_denied_returns_403_with_login(self, app, database):
+    def test_github_callback_denied_returns_login_error(self, app, database):
         app.state.auth_service = self._lockout_auth(database.connect)
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
 
-        start = client.post("/dashboard/login/github/start").json()
-        res = client.post("/dashboard/login/github/poll", json={"device_code": start["device_code"]})
+        _, state = TestLoginFlow._start(client)
+        res = client.get(
+            "/dashboard/login/github/callback",
+            params={"state": state, "code": "code"},
+            follow_redirects=False,
+        )
 
-        assert res.status_code == 403
-        assert "alice" in res.json()["detail"]
+        assert res.status_code == 303
+        assert "not+allowed" in res.headers["location"]
 
     def test_revoked_session_cookie_shows_login_page(self, app, database, user_and_token):
         _, token = user_and_token

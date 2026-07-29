@@ -17,7 +17,7 @@ Command-line options take precedence where noted. Values used only by the bundle
 | `BUZZ_PORT` | Port used by the Buzz server. The `--port` option takes precedence. | Buzz server | `8080` | Optional |
 | `BUZZ_DATA_DIR` | Directory containing deployed sites and the SQLite database. | Buzz server | Server package directory | Optional |
 | `BUZZ_DOMAIN` | Base hostname for the dashboard and site subdomains. | Buzz server | Not set | Required for production hosting. |
-| `GITHUB_CLIENT_ID` | Client ID for the GitHub OAuth app with Device Flow enabled. | Buzz server | Not set | Required unless the server runs with --dev. |
+| `GITHUB_CLIENT_ID` | Client ID for the GitHub OAuth app used for dashboard sign-in. | Buzz server | Not set | Required unless the server runs with --dev. |
 | `GITHUB_CLIENT_SECRET` | Client secret for the GitHub OAuth app. | Buzz server | Not set | Required unless the server runs with --dev. |
 | `BUZZ_ANALYTICS_SECRET` | Secret used to hash analytics visitors. Falls back to `GITHUB_CLIENT_SECRET`, then a process-local random value. | Buzz server | Not set | Optional |
 | `BUZZ_MAX_ARCHIVE_BYTES` | Maximum compressed deployment archive size in bytes. | Buzz server | `524288000` | Optional |

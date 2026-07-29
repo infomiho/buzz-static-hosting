@@ -39,7 +39,7 @@
   <g transform="translate(304,504)"><line x1="0" y1="0" x2="48" y2="0" /><polygon points="48,0 40,-6 40,6" fill="#000" stroke="none" /></g>
   <g transform="translate(368,432)">
     <rect width="280" height="144" />
-    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">Existing GitHub device flow</text>
+    <text x="24" y="40" font-size="14" font-weight="600" stroke="none" fill="#000">GitHub OAuth dashboard sign-in</text>
     <text x="24" y="72" font-size="12" stroke="none" fill="#666">Reuse code, GitHub link, and polling.</text>
     <text x="24" y="96" font-size="12" stroke="none" fill="#666">Add the requested site as context.</text>
   </g>
