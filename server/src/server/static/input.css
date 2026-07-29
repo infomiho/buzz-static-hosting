@@ -1,5 +1,8 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @source "../templates";
+@source "./dashboard.js";
+@source "./deploy.js";
+@source "./site-detail.js";
 
 @theme {
   --color-ink: #0b0c0c;

@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from server.app import STATIC_DIR
+
 def test_every_page_fingerprints_the_stylesheet(make_app, database, tmp_path):
     """A per-router Jinja environment silently drops shared globals, so the
     fingerprint must be present on pages served by every router."""
@@ -36,3 +38,13 @@ def test_first_party_scripts_are_fingerprinted(make_app, database, tmp_path):
     for script in ("simplewebauthn-browser.js", "passkeys.js"):
         assert f"/static/{script}?v=" in login
         assert f"/static/{script}?v=\"" not in login
+
+
+def test_production_css_scans_javascript_renderers():
+    source = (STATIC_DIR / "input.css").read_text()
+    dockerfile = (STATIC_DIR.parents[2] / "Dockerfile").read_text()
+
+    assert '@import "tailwindcss" source(none);' in source
+    for script in ("dashboard.js", "deploy.js", "site-detail.js"):
+        assert f'@source "./{script}";' in source
+        assert f"src/server/static/{script}" in dockerfile

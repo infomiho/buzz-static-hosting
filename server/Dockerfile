@@ -4,6 +4,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY src/server/static/input.css src/server/static/input.css
+COPY src/server/static/dashboard.js src/server/static/deploy.js src/server/static/site-detail.js src/server/static/
 COPY src/server/templates/ src/server/templates/
 RUN npx @tailwindcss/cli -i src/server/static/input.css -o src/server/static/style.css --minify
 
