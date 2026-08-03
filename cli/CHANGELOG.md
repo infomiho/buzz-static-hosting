@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/infomiho/buzzstatic/compare/buzz-cli-v0.14.0...buzz-cli-v0.14.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* point at the server and CI in CLI version-check errors ([#26](https://github.com/infomiho/buzzstatic/issues/26)) ([3f61d62](https://github.com/infomiho/buzzstatic/commit/3f61d621a5d2a9c0a3cab819495603d3c9489abc))
+
 ## [0.14.0](https://github.com/infomiho/buzzstatic/compare/buzz-cli-v0.13.0...buzz-cli-v0.14.0) (2026-08-03)
 
 
