@@ -17,6 +17,8 @@ Commits merged into `main` use [Conventional Commits](https://www.conventionalco
 
 Use the type that describes the change. Do not label a change as `fix` or `feat` only to force a release.
 
+Pull requests are squash-merged and the pull request title becomes the commit on `main`, so give the pull request a conventional-commit title. Keep each pull request scoped to one package; a title like `feat:` on a pull request that touches both `cli/` and `server/` releases both.
+
 ## Verify A Release Change
 
 Before merging a CLI change, run:
