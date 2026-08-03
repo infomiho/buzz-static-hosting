@@ -5,14 +5,17 @@ sidebar:
   order: 6
 ---
 
-Deploy Buzz as a Docker Compose application while Coolify manages the host and Traefik proxy. The repository's Coolify file connects Buzz to the external `coolify` network and stores data in `buzz_buzz-data`.
+import { Code } from '@astrojs/starlight/components';
+import composeFile from '../../../../../../server/docker-compose.coolify.yml?raw';
+
+Deploy Buzz as a Docker Compose application while Coolify manages the host and Traefik proxy. A deployment repository you control holds the Compose file, which connects Buzz to the external `coolify` network and stores data in `buzz_buzz-data`.
 
 ## Before You Start
 
 You need:
 
 - A working Coolify installation with its proxy enabled.
-- A repository connection that can read the Buzz repository.
+- A git repository you control for the deployment, readable by Coolify.
 - DNS control for `buzz.example.com`.
 - A Cloudflare API token with permission to edit DNS records for the zone.
 - A configured GitHub OAuth app.
@@ -27,9 +30,12 @@ Complete the access decision in the [Self-Hosting Overview](../overview/) before
 
 ## Create The Application
 
-1. Create a Docker Compose application from the Buzz repository.
-2. Set the Compose file to `server/docker-compose.coolify.yml`. It runs the published server image pinned to the exact current release; every release updates the pin.
-3. Enable **Raw Docker Compose Deployment** in the application settings. The repository Compose file supplies the routing labels directly. Coolify documents this mode in [Raw Docker Compose Deployment](https://coolify.io/docs/knowledge-base/docker/compose#raw-docker-compose-deployment).
+1. Create a deployment repository containing this Compose file as `docker-compose.yml`. It runs `ghcr.io/infomiho/buzzstatic` pinned to the current release:
+
+   <Code code={composeFile} lang="yaml" title="docker-compose.yml" />
+
+2. Create a Docker Compose application from your deployment repository with the Compose file set to `docker-compose.yml`.
+3. Enable **Raw Docker Compose Deployment** in the application settings. The Compose file supplies the routing labels directly. Coolify documents this mode in [Raw Docker Compose Deployment](https://coolify.io/docs/knowledge-base/docker/compose#raw-docker-compose-deployment).
 4. Leave **FQDN/Domains** empty. The Compose labels define both the base and wildcard routes.
 5. Add these environment variables:
 
@@ -234,6 +240,8 @@ If Coolify replaces the proxy settings, return to **Servers > Proxy**, restore t
 
 ## Update Or Roll Back
 
-The Compose file pins the exact current server release, and every release updates the pin. To update, create a [cold backup](../manage-data-and-backups/#back-up-a-coolify-deployment), read the [release notes](https://github.com/infomiho/buzzstatic/releases) for the versions you skip past, then redeploy the application; Coolify reads the Compose file from the repository and pulls the newly pinned image.
+To update, create a [cold backup](../manage-data-and-backups/#back-up-a-coolify-deployment), read the [release notes](https://github.com/infomiho/buzzstatic/releases) for the versions you skip past, then set the `image:` tag to the new release, push, and redeploy the application in Coolify.
 
-Database migrations run automatically when the new server starts and are forward-only: an older image refuses to start against the migrated database. To roll back, restore the pre-update backup per [Restore A Coolify Deployment](../manage-data-and-backups/#restore-a-coolify-deployment).
+Renovate's docker-compose manager reads the inline tag and opens a pull request per release. Copy the Compose file from this page again when the release notes mention deployment changes.
+
+Database migrations run automatically when the new server starts and are forward-only: an older image refuses to start against the migrated database. To roll back, restore the pre-update backup per [Restore A Coolify Deployment](../manage-data-and-backups/#restore-a-coolify-deployment), set the `image:` tag back to the previous release, and redeploy.
