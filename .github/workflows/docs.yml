@@ -55,7 +55,7 @@ jobs:
       - name: Verify server
         working-directory: server
         run: |
-          uv sync --frozen
+          uv sync --locked
           uv run pytest tests/ -q
 
       - name: Build documentation

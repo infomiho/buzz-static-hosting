@@ -45,7 +45,7 @@ Update user guides when behavior changes. The generated [CLI reference](../../re
 
 The release workflow runs after a push to `main`:
 
-1. Release Please opens or updates a release pull request for `cli/`.
+1. Release Please opens or updates a single release pull request covering every package with unreleased changes; merging it releases only those packages.
 2. The release pull request updates the package version, release manifest, and `cli/CHANGELOG.md`.
 3. Review the version and changelog, then merge the release pull request.
 4. Release Please creates the GitHub release and the `buzz-cli-v<version>` tag.
@@ -57,7 +57,7 @@ npm publication uses GitHub Actions trusted publishing through OpenID Connect. T
 
 Server releases follow the same flow:
 
-1. Release Please opens or updates a release pull request for `server/`.
+1. Release Please includes the server in the same release pull request when `server/` has unreleased changes.
 2. The release pull request updates `server/pyproject.toml`, `server/src/server/__init__.py`, the release manifest, and `server/CHANGELOG.md`.
 3. Review the version and changelog, then merge the release pull request.
 4. Release Please creates the GitHub release and the `server-v<version>` tag.

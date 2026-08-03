@@ -50,8 +50,9 @@ from .utils import extract_subdomain, is_control_host
 
 logger = logging.getLogger(__name__)
 
-# Oldest CLI the current API still supports. Raise it only in the release that
-# drops or changes an endpoint the older CLI depends on.
+# Enforced client-side: only CLIs with the version check (0.14.0+) consult this,
+# so it binds future CLIs, not old ones. Raise it only in the release that drops
+# or changes an endpoint an older CLI depends on.
 MIN_CLI_VERSION = "0.12.0"
 
 CONTENT_TYPES = {
