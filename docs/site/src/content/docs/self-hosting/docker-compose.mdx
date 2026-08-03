@@ -5,9 +5,12 @@ sidebar:
   order: 5
 ---
 
-Deploy Buzz with the repository's standalone Docker Compose file. This path runs the published Buzz server image and Traefik on the same host and obtains a wildcard certificate through Cloudflare DNS.
+import { Code } from '@astrojs/starlight/components';
+import composeFile from '../../../../../../server/docker-compose.yml?raw';
 
-The Compose file pins an exact server release, `ghcr.io/infomiho/buzzstatic:<version>`, and every release updates the pin in the repository. Pulling the repository is therefore also how you receive server updates.
+Deploy Buzz with the Docker Compose file on this page. It runs the published Buzz server image and Traefik on the same host and obtains a wildcard certificate through Cloudflare DNS.
+
+The Compose file pins the exact current server release, `ghcr.io/infomiho/buzzstatic:<version>`. Every release updates the pin, so this page always shows the newest version.
 
 ## Before You Start
 
@@ -23,21 +26,17 @@ Follow [Configure DNS And TLS](../configure-dns-and-tls/) and [Configure GitHub 
 
 ## Configure The Deployment
 
-1. Clone the repository and open the server directory:
+1. Create a directory for the deployment:
 
    ```bash
-   git clone https://github.com/infomiho/buzzstatic.git buzz
-   cd buzz/server
+   mkdir buzz && cd buzz
    ```
 
-2. Create the environment file and restrict access to it:
+2. Save this Compose file as `docker-compose.yml`:
 
-   ```bash
-   cp .env.example .env
-   chmod 600 .env
-   ```
+   <Code code={composeFile} lang="yaml" title="docker-compose.yml" />
 
-3. Set at least these values in `.env`:
+3. Create a `.env` file next to it with at least these values:
 
    ```text
    BUZZ_DOMAIN=buzz.example.com
@@ -47,7 +46,7 @@ Follow [Configure DNS And TLS](../configure-dns-and-tls/) and [Configure GitHub 
    ACME_EMAIL=admin@example.com
    ```
 
-   Keep `.env` out of source control. Set `ACME_EMAIL` to an address that can receive Let's Encrypt notices.
+   Restrict access with `chmod 600 .env` and keep it out of source control. Set `ACME_EMAIL` to an address that can receive Let's Encrypt notices. The [configuration reference](../../reference/configuration/) lists every variable.
 
 ## Start Buzz
 
@@ -154,10 +153,9 @@ See [Troubleshoot Self-Hosting](../../troubleshooting/self-hosting/) for common 
 
 ## Update Or Roll Back
 
-Create a [cold backup](../manage-data-and-backups/) before an update and read the [release notes](https://github.com/infomiho/buzzstatic/releases) for the versions you skip past. Then pull the new pin and recreate the services:
+Create a [cold backup](../manage-data-and-backups/) before an update and read the [release notes](https://github.com/infomiho/buzzstatic/releases) for the versions you skip past. Update the `image:` tag in `docker-compose.yml` to the new release, or copy the Compose file above again when the release notes mention deployment changes. Then recreate the services:
 
 ```bash
-git pull --ff-only
 docker compose pull
 docker compose up -d
 ```
@@ -170,8 +168,8 @@ The published image carries several tags:
 
 | Tag | Meaning | Use |
 | --- | --- | --- |
-| `<major>.<minor>.<patch>` | Exact release, immutable | Recommended. The repository pins this form. |
+| `<major>.<minor>.<patch>` | Exact release, immutable | Recommended. The Compose file above pins this form. |
 | `<major>.<minor>` | Latest patch release in the series | Unattended patch updates. |
 | `latest` | Latest release | Not recommended. Deployments stop being reproducible. |
 
-To manage the pin yourself instead of following the repository, copy `server/docker-compose.yml` into a repository you control and keep the tag inline. Renovate's docker-compose manager reads the inlined tag and opens a pull request per release, including the release notes. For notification-only updates, point [Diun](https://github.com/crazy-max/diun) at the running containers. Avoid tools that auto-pull and restart running containers: an unattended update can run a database migration you did not plan for.
+To automate updates, commit the deployment directory (without `.env`) to a repository you control. The tag stays inline in `docker-compose.yml`, so Renovate's docker-compose manager opens a pull request per release, including the release notes. For notification-only updates, point [Diun](https://github.com/crazy-max/diun) at the running containers. Avoid tools that auto-pull and restart running containers: an unattended update can run a database migration you did not plan for.
