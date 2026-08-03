@@ -1,10 +1,13 @@
 import sqlite3
+from datetime import date
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from server.analytics import AnalyticsEvent, AnalyticsStore, build_analytics_event
 from server.site_store import SiteStore
+
+RECENT_DAY = date.today().isoformat()
 
 
 def request(path: str = "/", headers: dict[str, str] | None = None):
@@ -141,7 +144,7 @@ class TestAnalyticsStore:
             event = AnalyticsEvent(
                 site_name="my-site",
                 path="/",
-                day="2026-06-30",
+                day=RECENT_DAY,
                 bytes_sent=100,
                 is_pageview=True,
                 is_not_found=False,
@@ -156,7 +159,7 @@ class TestAnalyticsStore:
             store.record(AnalyticsEvent(
                 site_name="my-site",
                 path="/missing",
-                day="2026-06-30",
+                day=RECENT_DAY,
                 bytes_sent=10,
                 is_pageview=False,
                 is_not_found=True,
@@ -189,7 +192,7 @@ class TestAnalyticsStore:
             store.record(AnalyticsEvent(
                 site_name="my-site",
                 path="/",
-                day="2026-06-30",
+                day=RECENT_DAY,
                 bytes_sent=100,
                 is_pageview=True,
                 is_not_found=False,
@@ -198,7 +201,7 @@ class TestAnalyticsStore:
             store.record(AnalyticsEvent(
                 site_name="my-site",
                 path="/about",
-                day="2026-06-30",
+                day=RECENT_DAY,
                 bytes_sent=100,
                 is_pageview=True,
                 is_not_found=False,
@@ -290,7 +293,7 @@ class TestAnalyticsIntegration:
             AnalyticsStore(conn).record(AnalyticsEvent(
                 site_name="my-site",
                 path="/",
-                day="2026-06-30",
+                day=RECENT_DAY,
                 bytes_sent=100,
                 is_pageview=True,
                 is_not_found=False,
@@ -311,7 +314,7 @@ class TestAnalyticsIntegration:
             AnalyticsStore(conn).record(AnalyticsEvent(
                 site_name="my-site",
                 path="/",
-                day="2026-06-30",
+                day=RECENT_DAY,
                 bytes_sent=100,
                 is_pageview=True,
                 is_not_found=False,
@@ -332,7 +335,7 @@ class TestAnalyticsIntegration:
             AnalyticsStore(conn).record(AnalyticsEvent(
                 site_name="my-site",
                 path="/",
-                day="2026-06-30",
+                day=RECENT_DAY,
                 bytes_sent=100,
                 is_pageview=True,
                 is_not_found=False,
