@@ -32,7 +32,6 @@
 * manage custom domains from the CLI ([6bb3735](https://github.com/infomiho/buzzstatic/commit/6bb37357d6f74662d226cf0514746bf82f99f594))
 * migrate from Caddy to Traefik v3 and add Coolify support ([5429fb4](https://github.com/infomiho/buzzstatic/commit/5429fb480d44476f738c70b33cb7f2f2efa14584))
 * progressive disclosure on site detail page ([5be6a2d](https://github.com/infomiho/buzzstatic/commit/5be6a2dd95ed100692d7392228762ad70695bf41))
-* publish versioned server Docker images ([af9346b](https://github.com/infomiho/buzzstatic/commit/af9346b4c71898a828e10cf7fdc419040a7e78b6))
 * publish versioned server Docker images ([3f61bbd](https://github.com/infomiho/buzzstatic/commit/3f61bbde312f2688e18aba998e19631fe2d56105))
 * redesign dashboard in gov.uk style ([9ced831](https://github.com/infomiho/buzzstatic/commit/9ced831c94a0cd1b9fdaa224cef5e786db14e924))
 * redesign dashboard UI with warm amber theme, refined typography, and polished interactions ([93d5fcd](https://github.com/infomiho/buzzstatic/commit/93d5fcd06c176386752ceaccec6c5ba04b1102c3))

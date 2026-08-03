@@ -5,7 +5,7 @@
 
 ### Features
 
-* publish versioned server Docker images ([af9346b](https://github.com/infomiho/buzzstatic/commit/af9346b4c71898a828e10cf7fdc419040a7e78b6))
+* point package metadata at the renamed buzzstatic repository ([af9346b](https://github.com/infomiho/buzzstatic/commit/af9346b4c71898a828e10cf7fdc419040a7e78b6))
 
 ## [0.12.0](https://github.com/infomiho/buzz-static-hosting/compare/buzz-cli-v0.11.0...buzz-cli-v0.12.0) (2026-07-26)
 
