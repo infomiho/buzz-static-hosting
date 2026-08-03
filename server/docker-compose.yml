@@ -43,7 +43,7 @@ services:
       - traefik.http.routers.buzz-runtime-api.service=api@internal
 
   server:
-    image: ghcr.io/infomiho/buzzstatic:0.4.0 # x-release-please-version
+    image: ghcr.io/infomiho/buzzstatic:0.4.1 # x-release-please-version
     restart: unless-stopped
     environment:
       - BUZZ_DATA_DIR=/data

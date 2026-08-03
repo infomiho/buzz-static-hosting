@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/infomiho/buzzstatic/compare/buzz-cli-v0.14.1...buzz-cli-v0.14.2) (2026-08-03)
+
+
+### Bug Fixes
+
+* fail the deploy when a private request is published publicly ([#29](https://github.com/infomiho/buzzstatic/issues/29)) ([6cbf492](https://github.com/infomiho/buzzstatic/commit/6cbf49232c4b6e5fe2e2b624885ae03e61be494e))
+
 ## [0.14.1](https://github.com/infomiho/buzzstatic/compare/buzz-cli-v0.14.0...buzz-cli-v0.14.1) (2026-08-03)
 
 
