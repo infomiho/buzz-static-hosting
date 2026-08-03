@@ -162,7 +162,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Database migrations run automatically when the new server starts, and the instance is unavailable while they run. Migrations are forward-only: starting an older image again does not reverse database changes, so the pre-update backup is the rollback path.
+Database migrations run automatically when the new server starts, and the instance is unavailable while they run. Migrations are forward-only: if the newer release added one, an older image refuses to start against the migrated database and exits, so the pre-update backup is the only rollback path.
 
 ### Choose An Image Tag
 
@@ -170,8 +170,8 @@ The published image carries several tags:
 
 | Tag | Meaning | Use |
 | --- | --- | --- |
-| `0.2.0` | Exact release, immutable | Recommended. The repository pins this form. |
-| `0.2` | Latest patch release in the series | Unattended patch updates. |
+| `<major>.<minor>.<patch>` | Exact release, immutable | Recommended. The repository pins this form. |
+| `<major>.<minor>` | Latest patch release in the series | Unattended patch updates. |
 | `latest` | Latest release | Not recommended. Deployments stop being reproducible. |
 
 To manage the pin yourself instead of following the repository, copy `server/docker-compose.yml` into a repository you control and keep the tag inline. Renovate's docker-compose manager reads the inlined tag and opens a pull request per release, including the release notes. For notification-only updates, point [Diun](https://github.com/crazy-max/diun) at the running containers. Avoid tools that auto-pull and restart running containers: an unattended update can run a database migration you did not plan for.

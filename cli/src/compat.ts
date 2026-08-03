@@ -1,9 +1,6 @@
-import { createRequire } from "node:module";
-import { apiFetch, isRecord, type CliOptions } from "./client.js";
+import { isRecord, requestJson, type CliOptions } from "./client.js";
 import { CliError } from "./errors.js";
-
-const require = createRequire(import.meta.url);
-const { version: cliVersion } = require("../package.json");
+import { cliVersion } from "./version.js";
 
 interface ServerVersionInfo {
   version: string;
@@ -18,16 +15,19 @@ function isServerVersionInfo(value: unknown): value is ServerVersionInfo {
   );
 }
 
-function versionParts(version: string): number[] {
-  return version.split(".").map((part) => Number.parseInt(part, 10) || 0);
+function versionParts(version: string): [number, number, number] {
+  const [major = 0, minor = 0, patch = 0] = version
+    .split(".")
+    .map((part) => Number.parseInt(part, 10) || 0);
+  return [major, minor, patch];
 }
 
 function isOlderVersion(version: string, than: string): boolean {
   const left = versionParts(version);
   const right = versionParts(than);
   for (let i = 0; i < 3; i++) {
-    if ((left[i] ?? 0) !== (right[i] ?? 0)) {
-      return (left[i] ?? 0) < (right[i] ?? 0);
+    if (left[i] !== right[i]) {
+      return left[i] < right[i];
     }
   }
   return false;
@@ -37,18 +37,16 @@ export async function checkServerCompatibility(
   cliOptions: CliOptions = {},
   fetchFn?: typeof fetch
 ): Promise<void> {
-  let response: Response;
+  let info: ServerVersionInfo;
   try {
-    response = await apiFetch("/version", {}, { auth: "none", cliOptions, fetchFn });
+    info = await requestJson(
+      "/version",
+      { guard: isServerVersionInfo, invalid: "Invalid version response" },
+      {},
+      { auth: "none", cliOptions, fetchFn }
+    );
   } catch {
-    return; // An unreachable server fails the real request with a better error.
-  }
-  if (!response.ok) {
-    return; // Servers older than 0.3.0 have no /version endpoint.
-  }
-
-  const info: unknown = await response.json().catch(() => undefined);
-  if (!isServerVersionInfo(info)) {
+    // Unreachable, pre-0.3.0, or non-Buzz server: the real request reports it.
     return;
   }
 
