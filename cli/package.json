@@ -17,9 +17,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/infomiho/buzz-static-hosting.git"
+    "url": "git+https://github.com/infomiho/buzzstatic.git"
   },
-  "homepage": "https://github.com/infomiho/buzz-static-hosting#readme",
+  "homepage": "https://github.com/infomiho/buzzstatic#readme",
   "keywords": [
     "static-site",
     "hosting",

@@ -10,7 +10,7 @@ permissions:
   pull-requests: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}/server
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   release-please:

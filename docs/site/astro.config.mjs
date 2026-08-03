@@ -29,11 +29,11 @@ export default defineConfig({
 				{
 					icon: 'github',
 					label: 'Buzz on GitHub',
-					href: 'https://github.com/infomiho/buzz-static-hosting',
+					href: 'https://github.com/infomiho/buzzstatic',
 				},
 			],
 			editLink: {
-				baseUrl: 'https://github.com/infomiho/buzz-static-hosting/edit/main/docs/site/',
+				baseUrl: 'https://github.com/infomiho/buzzstatic/edit/main/docs/site/',
 			},
 			customCss: ['./src/styles/achroma.css'],
 			components: {

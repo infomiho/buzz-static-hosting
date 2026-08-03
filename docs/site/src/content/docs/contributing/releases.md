@@ -61,8 +61,8 @@ Server releases follow the same flow:
 4. Release Please creates the GitHub release and the `server-v<version>` tag.
 5. The `build-server-image` jobs build the image natively for `linux/amd64` and `linux/arm64`, and the `publish-server-image` job assembles the multi-arch manifest.
 
-The image is published to `ghcr.io/infomiho/buzz-static-hosting/server` with `<major>.<minor>.<patch>`, `<major>.<minor>`, and `latest` tags. The rolling `<major>` tag is added once the server reaches 1.0.
+The image is published to `ghcr.io/infomiho/buzzstatic` with `<major>.<minor>.<patch>`, `<major>.<minor>`, and `latest` tags. The rolling `<major>` tag is added once the server reaches 1.0.
 
 If publication fails, inspect the failed job for that release. Fix the underlying workflow, package, or registry configuration rather than changing the released tag.
 
-The authoritative release history is [`cli/CHANGELOG.md`](https://github.com/infomiho/buzz-static-hosting/blob/main/cli/CHANGELOG.md) for the CLI and [`server/CHANGELOG.md`](https://github.com/infomiho/buzz-static-hosting/blob/main/server/CHANGELOG.md) for the server.
+The authoritative release history is [`cli/CHANGELOG.md`](https://github.com/infomiho/buzzstatic/blob/main/cli/CHANGELOG.md) for the CLI and [`server/CHANGELOG.md`](https://github.com/infomiho/buzzstatic/blob/main/server/CHANGELOG.md) for the server.

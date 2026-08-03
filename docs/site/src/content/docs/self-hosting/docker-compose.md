@@ -24,7 +24,7 @@ Follow [Configure DNS And TLS](../configure-dns-and-tls/) and [Configure GitHub 
 1. Clone the repository and open the server directory:
 
    ```bash
-   git clone https://github.com/infomiho/buzz-static-hosting.git buzz
+   git clone https://github.com/infomiho/buzzstatic.git buzz
    cd buzz/server
    ```
 
