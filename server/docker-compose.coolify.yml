@@ -1,0 +1,60 @@
+services:
+  server:
+    image: ghcr.io/infomiho/buzzstatic:0.3.0 # x-release-please-version
+    restart: unless-stopped
+    environment:
+      - BUZZ_DATA_DIR=/data
+      - BUZZ_DOMAIN=${BUZZ_DOMAIN}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - BUZZ_ANALYTICS_SECRET=${BUZZ_ANALYTICS_SECRET:-}
+      - BUZZ_MAX_ARCHIVE_BYTES=${BUZZ_MAX_ARCHIVE_BYTES:-524288000}
+      - BUZZ_MAX_SITE_BYTES=${BUZZ_MAX_SITE_BYTES:-524288000}
+      - BUZZ_MAX_SITE_FILES=${BUZZ_MAX_SITE_FILES:-10000}
+      - BUZZ_MAX_ARCHIVE_PATH_BYTES=${BUZZ_MAX_ARCHIVE_PATH_BYTES:-1024}
+      - BUZZ_ALLOW_REGISTRATION=${BUZZ_ALLOW_REGISTRATION:-true}
+      - BUZZ_ALLOWED_GITHUB_USERS=${BUZZ_ALLOWED_GITHUB_USERS:-}
+      - BUZZ_CUSTOM_DOMAINS_ENABLED=${BUZZ_CUSTOM_DOMAINS_ENABLED:-false}
+      - BUZZ_TRAEFIK_CONTROL_TOKEN=${BUZZ_TRAEFIK_CONTROL_TOKEN:-}
+      - BUZZ_TRAEFIK_API_URL=http://coolify-proxy:8082/api
+      - "BUZZ_TRAEFIK_API_AUTHORIZATION=Bearer ${BUZZ_TRAEFIK_CONTROL_TOKEN:-}"
+      - BUZZ_TRAEFIK_HTTPS_ENTRYPOINT=https
+      - BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED=${BUZZ_CUSTOM_DOMAIN_ROUTING_ENABLED:-false}
+      - BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED=${BUZZ_CUSTOM_DOMAIN_ADMISSION_ENABLED:-false}
+      - BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED=${BUZZ_CLOUDFLARE_DIAGNOSTICS_ENABLED:-false}
+      - BUZZ_CLOUDFLARE_ACTIVATION_ENABLED=${BUZZ_CLOUDFLARE_ACTIVATION_ENABLED:-false}
+      - BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED=${BUZZ_AUTOMATIC_DOMAIN_TRANSITION_ADMISSION_ENABLED:-false}
+      - BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN=${BUZZ_CUSTOM_DOMAIN_OPERATOR_TOKEN:-}
+      - BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE=${BUZZ_MAX_CUSTOM_DOMAINS_PER_SITE:-5}
+      - BUZZ_MAX_CUSTOM_DOMAINS_PER_USER=${BUZZ_MAX_CUSTOM_DOMAINS_PER_USER:-20}
+      - BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE=${BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE:-1000}
+      - BUZZ_CUSTOM_DOMAIN_INGRESS_IPS=${BUZZ_CUSTOM_DOMAIN_INGRESS_IPS:-}
+      - BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST=${BUZZ_CUSTOM_DOMAIN_ORIGIN_HOST:-coolify-proxy}
+      - BUZZ_TRAEFIK_CERT_RESOLVER=${BUZZ_TRAEFIK_CERT_RESOLVER:-buzz-custom}
+      - BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS=${BUZZ_CUSTOM_DOMAIN_RECONCILE_SECONDS:-5}
+    volumes:
+      - buzz-data:/data
+    expose:
+      - "8080"
+      - "8081"
+    networks:
+      coolify:
+        aliases:
+          - buzz-traefik-control
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.buzz.rule=Host(`${BUZZ_DOMAIN}`)"
+      - traefik.http.routers.buzz.entrypoints=https
+      - traefik.http.routers.buzz.tls=true
+      - "traefik.http.routers.buzz-wildcard.rule=HostRegexp(`.+\\.${BUZZ_DOMAIN}`)"
+      - traefik.http.routers.buzz-wildcard.entrypoints=https
+      - traefik.http.routers.buzz-wildcard.tls=true
+      - traefik.http.services.buzz.loadbalancer.server.port=8080
+
+networks:
+  coolify:
+    external: true
+
+volumes:
+  buzz-data:
+    name: buzz_buzz-data

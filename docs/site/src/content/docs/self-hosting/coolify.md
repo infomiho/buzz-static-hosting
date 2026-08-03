@@ -28,7 +28,7 @@ Complete the access decision in the [Self-Hosting Overview](../overview/) before
 ## Create The Application
 
 1. Create a Docker Compose application from the Buzz repository.
-2. Set the Compose file to `docker-compose.coolify.yml`.
+2. Set the Compose file to `server/docker-compose.coolify.yml`. It runs the published server image pinned to the exact current release; every release updates the pin.
 3. Enable **Raw Docker Compose Deployment** in the application settings. The repository Compose file supplies the routing labels directly. Coolify documents this mode in [Raw Docker Compose Deployment](https://coolify.io/docs/knowledge-base/docker/compose#raw-docker-compose-deployment).
 4. Leave **FQDN/Domains** empty. The Compose labels define both the base and wildcard routes.
 5. Add these environment variables:
@@ -231,3 +231,9 @@ If the proxy fails to restart, Buzz has no valid certificate, or another applica
 6. Open one existing application that also uses the `letsencrypt` resolver and confirm that its certificate and route still work.
 
 If Coolify replaces the proxy settings, return to **Servers > Proxy**, restore the saved configuration there, and restart the proxy. See [Troubleshoot Self-Hosting](../../troubleshooting/self-hosting/) for routing and certificate failures.
+
+## Update Or Roll Back
+
+The Compose file pins the exact current server release, and every release updates the pin. To update, create a [cold backup](../manage-data-and-backups/#back-up-a-coolify-deployment), read the [release notes](https://github.com/infomiho/buzzstatic/releases) for the versions you skip past, then redeploy the application; Coolify reads the Compose file from the repository and pulls the newly pinned image.
+
+Database migrations run automatically when the new server starts and are forward-only: an older image refuses to start against the migrated database. To roll back, restore the pre-update backup per [Restore A Coolify Deployment](../manage-data-and-backups/#restore-a-coolify-deployment).
