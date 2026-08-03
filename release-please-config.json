@@ -10,7 +10,10 @@
       "release-type": "python",
       "package-name": "buzz-server",
       "component": "server",
-      "extra-files": ["src/server/__init__.py"]
+      "extra-files": [
+        "src/server/__init__.py",
+        { "type": "generic", "path": "docker-compose.yml" }
+      ]
     }
   }
 }

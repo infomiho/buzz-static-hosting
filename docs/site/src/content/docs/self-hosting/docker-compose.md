@@ -5,7 +5,9 @@ sidebar:
   order: 5
 ---
 
-Deploy Buzz with the repository's standalone Docker Compose file. This path runs Buzz and Traefik on the same host and obtains a wildcard certificate through Cloudflare DNS.
+Deploy Buzz with the repository's standalone Docker Compose file. This path runs the published Buzz server image and Traefik on the same host and obtains a wildcard certificate through Cloudflare DNS.
+
+The Compose file pins an exact server release, `ghcr.io/infomiho/buzzstatic:<version>`, and every release updates the pin in the repository. Pulling the repository is therefore also how you receive server updates.
 
 ## Before You Start
 
@@ -49,10 +51,10 @@ Follow [Configure DNS And TLS](../configure-dns-and-tls/) and [Configure GitHub 
 
 ## Start Buzz
 
-Build and start the services:
+Pull the pinned images and start the services:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 The Compose project creates two named volumes:
@@ -107,7 +109,7 @@ BUZZ_MAX_CUSTOM_DOMAINS_SERVER_WIDE=1000
 Recreate the services:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 The bundled Compose configuration then enables Traefik's HTTP provider, which polls the private Buzz listener on port `8081`. The port is exposed only to the Compose network. It also prepares:
@@ -152,11 +154,24 @@ See [Troubleshoot Self-Hosting](../../troubleshooting/self-hosting/) for common 
 
 ## Update Or Roll Back
 
-Create a [cold backup](../manage-data-and-backups/) before an update. Then update and rebuild:
+Create a [cold backup](../manage-data-and-backups/) before an update and read the [release notes](https://github.com/infomiho/buzzstatic/releases) for the versions you skip past. Then pull the new pin and recreate the services:
 
 ```bash
 git pull --ff-only
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-To roll back application code, check out the previous known-good revision and run `docker compose up -d --build` again. Code rollback doesn't reverse database changes. Buzz doesn't currently provide database migration rollback tooling, so retain a pre-update backup.
+Database migrations run automatically when the new server starts, and the instance is unavailable while they run. Migrations are forward-only: starting an older image again does not reverse database changes, so the pre-update backup is the rollback path.
+
+### Choose An Image Tag
+
+The published image carries several tags:
+
+| Tag | Meaning | Use |
+| --- | --- | --- |
+| `0.2.0` | Exact release, immutable | Recommended. The repository pins this form. |
+| `0.2` | Latest patch release in the series | Unattended patch updates. |
+| `latest` | Latest release | Not recommended. Deployments stop being reproducible. |
+
+To manage the pin yourself instead of following the repository, copy `server/docker-compose.yml` into a repository you control and keep the tag inline. Renovate's docker-compose manager reads the inlined tag and opens a pull request per release, including the release notes. For notification-only updates, point [Diun](https://github.com/crazy-max/diun) at the running containers. Avoid tools that auto-pull and restart running containers: an unattended update can run a database migration you did not plan for.
