@@ -19,12 +19,9 @@ You need:
 - DNS control for `buzz.example.com`.
 - A Cloudflare API token with permission to edit DNS records for the zone.
 - A configured GitHub OAuth app.
-- A Coolify server whose Traefik proxy is dedicated to Cloudflare-managed domains.
 - A backup of the current proxy configuration and a maintenance window for restarting it.
 
-The procedure below changes Coolify's server-wide `letsencrypt` resolver from HTTP validation to Cloudflare DNS validation. This affects certificate issuance and renewal for every application using that resolver. A mistake can interrupt TLS for all applications behind the proxy.
-
-Proceed only when this Coolify proxy is dedicated to Cloudflare-managed domains and all applications using `letsencrypt` can use the Cloudflare DNS challenge. If the proxy serves any other DNS provider or must retain HTTP validation, stop here. Deploy Buzz with [standalone Docker Compose](../docker-compose/) or design and test a separate resolver outside this guide. The repository doesn't provide a verified shared-proxy procedure.
+The procedure below adds a separate `cloudflare` resolver next to Coolify's default `letsencrypt` resolver, which stays untouched: existing applications keep their HTTP-validation certificates. Restarting the proxy still briefly interrupts routing for every application behind it.
 
 Complete the access decision in the [Self-Hosting Overview](../overview/) before deployment. Configure upstream controls first if Buzz is for a closed group.
 
@@ -60,20 +57,22 @@ Copy the complete current configuration to secure off-host storage before changi
      - CF_DNS_API_TOKEN=your-cloudflare-api-token
    ```
 
-2. Remove the existing `letsencrypt` HTTP challenge arguments and add these DNS challenge arguments to the Traefik service's `command` list:
+2. Add a `cloudflare` resolver to the Traefik service's `command` list. Leave every existing `letsencrypt` argument untouched:
 
    ```text
-    --certificatesresolvers.letsencrypt.acme.dnschallenge=true
-    --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare
-    --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
-    ```
+   --certificatesresolvers.cloudflare.acme.email=admin@example.com
+   --certificatesresolvers.cloudflare.acme.dnschallenge=true
+   --certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare
+   --certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+   --certificatesresolvers.cloudflare.acme.storage=/traefik/acme-cloudflare.json
+   ```
 
-   Keep Coolify's existing `--certificatesresolvers.letsencrypt.acme.storage=/traefik/acme.json` argument. It preserves the resolver's existing ACME state.
+   The separate storage file keeps this resolver's ACME state apart from the default resolver's `acme.json`.
 
 3. Add these labels to the Traefik service:
 
    ```text
-   traefik.http.routers.wildcard-certs.tls.certresolver=letsencrypt
+   traefik.http.routers.wildcard-certs.tls.certresolver=cloudflare
    traefik.http.routers.wildcard-certs.tls.domains[0].main=buzz.example.com
    traefik.http.routers.wildcard-certs.tls.domains[0].sans=*.buzz.example.com
    ```
