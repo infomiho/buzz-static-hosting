@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/infomiho/buzzstatic/compare/server-v0.3.0...server-v0.4.0) (2026-08-03)
+
+
+### Features
+
+* pin the Coolify operator deployment to releases ([#27](https://github.com/infomiho/buzzstatic/issues/27)) ([22dad60](https://github.com/infomiho/buzzstatic/commit/22dad602cc043d49d695251d384b29a0cc72d511))
+
 ## [0.3.0](https://github.com/infomiho/buzzstatic/compare/server-v0.2.0...server-v0.3.0) (2026-08-03)
 
 
