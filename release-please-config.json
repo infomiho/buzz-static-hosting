@@ -13,6 +13,7 @@
       "extra-files": [
         "src/server/__init__.py",
         { "type": "generic", "path": "docker-compose.yml" },
+        { "type": "generic", "path": "docker-compose.coolify.yml" },
         {
           "type": "toml",
           "path": "uv.lock",

@@ -75,7 +75,7 @@ jobs:
       - run: npm run build
       - name: Verify build output
         run: test -f ./dist/index.html
-      - run: npm install --global @infomiho/buzz-cli@0.7.0
+      - run: npm install --global @infomiho/buzz-cli@0.14.0
       - name: Deploy site
         run: buzz deploy ./dist --site my-site
         env:

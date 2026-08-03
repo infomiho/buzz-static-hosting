@@ -17,7 +17,7 @@ npm install --global @infomiho/buzz-cli
 buzz --version
 ```
 
-In CI, keep the install step in the same job as the deployment. If npm succeeds but the command remains unavailable, inspect npm's global binary path or use `npx --yes @infomiho/buzz-cli@0.7.0` for that job.
+In CI, keep the install step in the same job as the deployment. If npm succeeds but the command remains unavailable, inspect npm's global binary path or use `npx --yes @infomiho/buzz-cli@0.14.0` for that job.
 
 ## The Build Artifact Is Missing
 

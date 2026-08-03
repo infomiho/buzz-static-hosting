@@ -47,7 +47,7 @@ Commands: `deploy`, `list`, `delete`, `url`, `config`, `login`, `logout`, `whoam
 
 Docker Compose with Traefik v3 (wildcard SSL via Cloudflare DNS challenge). Required `.env` vars: `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `CF_API_TOKEN`, `ACME_EMAIL`.
 
-Coolify production uses `docker-compose.coolify.yml`. Enable Raw Docker Compose Deployment, leave the app FQDN empty, and set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET`. Pushes to `main` auto-deploy. Environment changes take effect on restart or redeployment.
+Coolify production uses the root `docker-compose.coolify.yml`, which builds from source; pushes to `main` auto-deploy, so production tracks `main` deliberately. Other Coolify operators use `server/docker-compose.coolify.yml`, which pins the published image and is bumped by every server release. Both: enable Raw Docker Compose Deployment, leave the app FQDN empty, and set `BUZZ_DOMAIN`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET`. Environment changes take effect on restart or redeployment.
 
 Coolify proxy config must be saved through **Servers > Proxy**. Direct edits to `/data/coolify/proxy/docker-compose.yml` are not durable; Coolify stores proxy config in its DB and rewrites the file during proxy actions or upgrades.
 
