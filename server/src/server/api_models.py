@@ -11,6 +11,11 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
 
 
+class VersionResponse(BaseModel):
+    version: str
+    min_cli_version: str
+
+
 class DeviceAuthorizationResponse(BaseModel):
     device_code: str = Field(json_schema_extra={"writeOnly": True})
     user_code: str
