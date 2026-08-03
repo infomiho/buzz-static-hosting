@@ -60,6 +60,11 @@ export async function deploy(
     console.log(
       `Deployed to ${result.url} (${result.private ? "private" : "public"})`
     );
+    if (makePrivate && !result.private) {
+      console.error(
+        "Warning: you asked for a private site but the server published it publicly. This server may be older than the CLI."
+      );
+    }
     writeFileSync(join(process.cwd(), "CNAME"), result.subdomain + "\n");
   } catch (error) {
     uploadSpinner.stop("✗ Upload failed");
