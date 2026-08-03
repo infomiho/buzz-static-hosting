@@ -10,7 +10,15 @@
       "release-type": "python",
       "package-name": "buzz-server",
       "component": "server",
-      "extra-files": ["src/server/__init__.py"]
+      "extra-files": [
+        "src/server/__init__.py",
+        { "type": "generic", "path": "docker-compose.yml" },
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name=='buzz-server')].version"
+        }
+      ]
     }
   }
 }
