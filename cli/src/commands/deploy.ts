@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { getOptions, CliError, type CliOptions } from "../client.js";
 import { checkServerCompatibility } from "../compat.js";
 import { createProgressBar, createSpinner, formatSize } from "../lib.js";
-import { resolveSubdomain, packSite, uploadSite } from "../deploy.js";
+import {
+  resolveSubdomain,
+  packSite,
+  uploadSite,
+  type UploadResult,
+} from "../deploy.js";
 
 export async function deploy(
   directory: string,
@@ -47,8 +52,9 @@ export async function deploy(
   const uploadSpinner = createSpinner("Uploading");
   uploadSpinner.start();
 
+  let result: UploadResult;
   try {
-    const result = await uploadSite(
+    result = await uploadSite(
       options.server,
       options.token,
       zipBuffer,
@@ -57,18 +63,21 @@ export async function deploy(
       makePrivate
     );
     uploadSpinner.stop("✓ Uploaded");
-    console.log(
-      `Deployed to ${result.url} (${result.private ? "private" : "public"})`
-    );
-    if (makePrivate && !result.private) {
-      console.error(
-        "Warning: you asked for a private site but the server published it publicly. This server may be older than the CLI."
-      );
-    }
-    writeFileSync(join(process.cwd(), "CNAME"), result.subdomain + "\n");
   } catch (error) {
     uploadSpinner.stop("✗ Upload failed");
     throw error;
+  }
+
+  console.log(
+    `Deployed to ${result.url} (${result.private ? "private" : "public"})`
+  );
+  writeFileSync(join(process.cwd(), "CNAME"), result.subdomain + "\n");
+
+  if (makePrivate && !result.private) {
+    throw new CliError(
+      `${result.url} was published publicly, but you asked for a private site.`,
+      `Run 'buzz access private --site ${result.subdomain}' to protect it, or 'buzz delete ${result.subdomain}' to remove the public copy.`
+    );
   }
 }
 
