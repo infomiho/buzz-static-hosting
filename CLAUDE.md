@@ -63,6 +63,8 @@ Staging and production custom-domain ACME resolvers need separate storage files.
 
 ## Releasing
 
+Squash-merge PRs: a merge commit carries the PR title in its body, so Release Please counts it as a second conventional commit and attributes the whole PR diff to every package it touches (duplicate changelog entries, spurious releases).
+
 Release Please versions two packages independently: the CLI (`@infomiho/buzz-cli` npm package, tags `buzz-cli-vX.Y.Z`) and the server (tags `server-vX.Y.Z`, version in `server/pyproject.toml` and `server/src/server/__init__.py`). Commits are routed by path, so `cli/` and `server/` changes release separately. Use conventional commits on `main`: `fix:` patch, `feat:` minor, `feat!:` minor while pre-1.0. `bump-minor-pre-major` keeps breaking changes off 1.0.0; without it Release Please promotes the first `feat!:` straight to 1.0.0. Merging a CLI release PR publishes to npm via OIDC trusted publishing. Merging a server release PR builds a multi-arch (amd64 + arm64, native runners) image and pushes it to `ghcr.io/infomiho/buzzstatic` with `X.Y.Z`, `X.Y`, and `latest` tags (`X` once the server reaches 1.0). Coolify production still builds from source on push to `main`, independent of server releases.
 
 ## Agent skills
