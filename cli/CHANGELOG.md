@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/infomiho/buzzstatic/compare/buzz-cli-v0.13.0...buzz-cli-v0.14.0) (2026-08-03)
+
+
+### Features
+
+* add a server version endpoint and CLI compatibility check ([#22](https://github.com/infomiho/buzzstatic/issues/22)) ([a9083a4](https://github.com/infomiho/buzzstatic/commit/a9083a41aa147bef9f5a853189fa26ee49ec8365))
+
 ## [0.13.0](https://github.com/infomiho/buzzstatic/compare/buzz-cli-v0.12.0...buzz-cli-v0.13.0) (2026-08-03)
 
 
