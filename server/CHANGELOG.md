@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/infomiho/buzzstatic/compare/server-v0.4.0...server-v0.4.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* guard version pins in tests and pin the uv builder image ([#30](https://github.com/infomiho/buzzstatic/issues/30)) ([0871b29](https://github.com/infomiho/buzzstatic/commit/0871b29e35e4b086addc02a15122268707528783))
+
 ## [0.4.0](https://github.com/infomiho/buzzstatic/compare/server-v0.3.0...server-v0.4.0) (2026-08-03)
 
 
