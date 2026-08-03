@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { CliError, isRecord, requestJson } from "./client.js";
 import { createZipBuffer } from "./lib.js";
 
-interface UploadResult {
+export interface UploadResult {
   url: string;
   subdomain: string;
   private: boolean;
