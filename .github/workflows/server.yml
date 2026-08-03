@@ -1,0 +1,44 @@
+name: Server
+
+on:
+  pull_request:
+    paths:
+      - "server/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "server/**"
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: ./server
+          load: true
+          tags: buzz-server:smoke
+          cache-from: type=gha,scope=server-linux-amd64
+          cache-to: type=gha,mode=max,scope=server-linux-amd64
+
+      - name: Boot the image and check /health
+        run: |
+          docker run -d --name buzz \
+            -e BUZZ_DOMAIN=buzz.localhost \
+            -e GITHUB_CLIENT_ID=dummy \
+            -e GITHUB_CLIENT_SECRET=dummy \
+            -e BUZZ_DATA_DIR=/data \
+            -p 8080:8080 \
+            buzz-server:smoke
+          if ! curl --fail --silent --show-error \
+            --retry 15 --retry-delay 2 --retry-all-errors \
+            --header "Host: buzz.localhost" \
+            http://localhost:8080/health; then
+            docker logs buzz
+            exit 1
+          fi
