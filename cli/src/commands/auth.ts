@@ -9,6 +9,7 @@ import {
   CliError,
   type CliOptions,
 } from "../client.js";
+import { checkServerCompatibility } from "../compat.js";
 import {
   clearCredential,
   getCredential,
@@ -83,6 +84,8 @@ function isUser(value: unknown): value is AuthUser {
 
 export async function login(cliOptions: CliOptions = {}) {
   const options = getOptions(cliOptions);
+
+  await checkServerCompatibility(cliOptions);
 
   const start = await requestJson(
     "/auth/device",

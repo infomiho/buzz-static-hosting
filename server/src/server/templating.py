@@ -11,6 +11,8 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from . import __version__
+
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -26,3 +28,4 @@ def _asset_version() -> str:
 
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 templates.env.globals["asset_version"] = _asset_version()
+templates.env.globals["server_version"] = __version__

@@ -24,6 +24,7 @@ def test_openapi_contains_only_public_api_paths():
         "/tokens",
         "/tokens/{token_id}",
         "/health",
+        "/version",
     }
 
 
@@ -60,6 +61,7 @@ def test_openapi_uses_stable_unique_operation_ids():
         "createDeploymentToken",
         "deleteDeploymentToken",
         "getHealth",
+        "getVersion",
     }
     assert len(operation_ids) == len(set(operation_ids))
 

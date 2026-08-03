@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getOptions, CliError, type CliOptions } from "../client.js";
+import { checkServerCompatibility } from "../compat.js";
 import { createProgressBar, createSpinner, formatSize } from "../lib.js";
 import { resolveSubdomain, packSite, uploadSite } from "../deploy.js";
 
@@ -16,6 +17,8 @@ export async function deploy(
   if (!options.token) {
     throw new CliError("Not authenticated", "Run 'buzz login' first");
   }
+
+  await checkServerCompatibility(cliOptions);
 
   subdomain = resolveSubdomain(process.cwd(), directory, subdomain);
 

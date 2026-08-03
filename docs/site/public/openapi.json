@@ -1180,6 +1180,24 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VersionResponse": {
+        "properties": {
+          "min_cli_version": {
+            "title": "Min Cli Version",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "min_cli_version"
+        ],
+        "title": "VersionResponse",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -3017,6 +3035,28 @@
         "summary": "Revoke a deployment token",
         "tags": [
           "Deployment Tokens"
+        ]
+      }
+    },
+    "/version": {
+      "get": {
+        "description": "Returns the running server version and the oldest CLI version the server still supports. The CLI compares itself against `min_cli_version` before deploying and asks the user to update when it falls behind.",
+        "operationId": "getVersion",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Report the server version",
+        "tags": [
+          "System"
         ]
       }
     }

@@ -16,7 +16,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .access import ACCESS_GRANT_LIFETIME, AccessService, InvalidAccessCode
 from .analytics import AnalyticsRecorder, build_analytics_event
-from .api_models import HealthResponse
+from . import __version__
+from .api_models import HealthResponse, VersionResponse
 from .auth_service import DEV_SESSION_ID, AuthService, Identity
 from .cookies import access_cookie_name, session_cookie_name, set_access_cookie
 from .custom_domains import (
@@ -48,6 +49,10 @@ from .templating import STATIC_DIR, templates
 from .utils import extract_subdomain, is_control_host
 
 logger = logging.getLogger(__name__)
+
+# Oldest CLI the current API still supports. Raise it only in the release that
+# drops or changes an endpoint the older CLI depends on.
+MIN_CLI_VERSION = "0.12.0"
 
 CONTENT_TYPES = {
     ".html": "text/html",
@@ -380,6 +385,22 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     )
     async def health():
         return {"status": "ok"}
+
+    @app.get(
+        "/version",
+        response_model=VersionResponse,
+        operation_id="getVersion",
+        summary="Report the server version",
+        description=(
+            "Returns the running server version and the oldest CLI version the"
+            " server still supports. The CLI compares itself against"
+            " `min_cli_version` before deploying and asks the user to update"
+            " when it falls behind."
+        ),
+        tags=["System"],
+    )
+    async def version():
+        return {"version": __version__, "min_cli_version": MIN_CLI_VERSION}
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing(request: Request, identity: Identity | None = Depends(get_identity)):
