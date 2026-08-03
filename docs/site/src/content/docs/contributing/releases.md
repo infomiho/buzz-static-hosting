@@ -1,13 +1,13 @@
 ---
 title: Releases
-description: How Buzz CLI versions, changelogs, and npm publication are managed.
+description: How Buzz CLI and server versions, changelogs, and publication are managed.
 ---
 
-Buzz uses Release Please to version and publish the `@infomiho/buzz-cli` npm package. The checked-in workflow does not create a separate server release.
+Buzz uses Release Please to version two packages independently: the `@infomiho/buzz-cli` npm package and the server Docker image. Commits are routed by path, so changes under `cli/` release the CLI and changes under `server/` release the server.
 
 ## Choose A Commit Type
 
-Commits merged into `main` use [Conventional Commits](https://www.conventionalcommits.org/). The type determines the next CLI version when the change belongs in a release:
+Commits merged into `main` use [Conventional Commits](https://www.conventionalcommits.org/). The type determines the next version of the package the commit touches:
 
 | Change | Example | Version |
 | --- | --- | --- |
@@ -28,6 +28,15 @@ npm test
 npm run build
 ```
 
+Before merging a server change, run:
+
+```bash
+cd server
+uv run pytest tests/ -v
+```
+
+The Server workflow additionally builds the Docker image and boots it against `/health` on every pull request touching `server/`.
+
 Update user guides when behavior changes. The generated [CLI reference](../../reference/cli/) reads the same Commander definitions as the executable.
 
 ## Publish The CLI
@@ -38,10 +47,22 @@ The release workflow runs after a push to `main`:
 2. The release pull request updates the package version, release manifest, and `cli/CHANGELOG.md`.
 3. Review the version and changelog, then merge the release pull request.
 4. Release Please creates the GitHub release and the `buzz-cli-v<version>` tag.
-5. The publish job runs `npm ci` and `npm publish --provenance --access public` from `cli/`.
+5. The `publish-cli` job runs `npm ci` and `npm publish --provenance --access public` from `cli/`.
 
 npm publication uses GitHub Actions trusted publishing through OpenID Connect. The workflow does not use an npm access token.
 
-If publication fails, inspect the `publish` job for that release. Fix the underlying workflow, package, or npm trusted-publisher configuration rather than changing the released tag.
+## Publish The Server Image
 
-The authoritative release history is [`cli/CHANGELOG.md`](https://github.com/infomiho/buzz-static-hosting/blob/main/cli/CHANGELOG.md).
+Server releases follow the same flow:
+
+1. Release Please opens or updates a release pull request for `server/`.
+2. The release pull request updates `server/pyproject.toml`, `server/src/server/__init__.py`, the release manifest, and `server/CHANGELOG.md`.
+3. Review the version and changelog, then merge the release pull request.
+4. Release Please creates the GitHub release and the `server-v<version>` tag.
+5. The `build-server-image` jobs build the image natively for `linux/amd64` and `linux/arm64`, and the `publish-server-image` job assembles the multi-arch manifest.
+
+The image is published to `ghcr.io/infomiho/buzzstatic` with `<major>.<minor>.<patch>`, `<major>.<minor>`, and `latest` tags. The rolling `<major>` tag is added once the server reaches 1.0.
+
+If publication fails, inspect the failed job for that release. Fix the underlying workflow, package, or registry configuration rather than changing the released tag.
+
+The authoritative release history is [`cli/CHANGELOG.md`](https://github.com/infomiho/buzzstatic/blob/main/cli/CHANGELOG.md) for the CLI and [`server/CHANGELOG.md`](https://github.com/infomiho/buzzstatic/blob/main/server/CHANGELOG.md) for the server.

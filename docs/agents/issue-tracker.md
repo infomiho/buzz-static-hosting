@@ -1,6 +1,6 @@
 # Issue Tracker
 
-Issues for this repo live in GitHub Issues for `infomiho/buzz-static-hosting`.
+Issues for this repo live in GitHub Issues for `infomiho/buzzstatic`.
 
 Use the `gh` CLI from the repo root.
 

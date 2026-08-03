@@ -63,10 +63,10 @@ Staging and production custom-domain ACME resolvers need separate storage files.
 
 ## Releasing
 
-Release Please versions only the CLI (`@infomiho/buzz-cli` npm package); server changes ship via the Coolify auto-deploy and produce no release PR. Use conventional commits on `main`: `fix:` patch, `feat:` minor, `feat!:` minor while the CLI is pre-1.0. `bump-minor-pre-major` keeps breaking changes off 1.0.0; without it Release Please promotes the first `feat!:` straight to 1.0.0. Merging the bot's release PR publishes to npm via OIDC trusted publishing.
+Release Please versions two packages independently: the CLI (`@infomiho/buzz-cli` npm package, tags `buzz-cli-vX.Y.Z`) and the server (tags `server-vX.Y.Z`, version in `server/pyproject.toml` and `server/src/server/__init__.py`). Commits are routed by path, so `cli/` and `server/` changes release separately. Use conventional commits on `main`: `fix:` patch, `feat:` minor, `feat!:` minor while pre-1.0. `bump-minor-pre-major` keeps breaking changes off 1.0.0; without it Release Please promotes the first `feat!:` straight to 1.0.0. Merging a CLI release PR publishes to npm via OIDC trusted publishing. Merging a server release PR builds a multi-arch (amd64 + arm64, native runners) image and pushes it to `ghcr.io/infomiho/buzzstatic` with `X.Y.Z`, `X.Y`, and `latest` tags (`X` once the server reaches 1.0). Coolify production still builds from source on push to `main`, independent of server releases.
 
 ## Agent skills
 
-- Issue tracker: GitHub Issues on `infomiho/buzz-static-hosting` via `gh`, see `docs/agents/issue-tracker.md`.
+- Issue tracker: GitHub Issues on `infomiho/buzzstatic` via `gh`, see `docs/agents/issue-tracker.md`.
 - No triage labels are used, see `docs/agents/triage-labels.md`.
 - No domain docs exist; use this file as project context, see `docs/agents/domain.md`.

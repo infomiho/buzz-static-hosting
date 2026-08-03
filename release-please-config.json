@@ -5,6 +5,12 @@
     "cli": {
       "release-type": "node",
       "package-name": "@infomiho/buzz-cli"
+    },
+    "server": {
+      "release-type": "python",
+      "package-name": "buzz-server",
+      "component": "server",
+      "extra-files": ["src/server/__init__.py"]
     }
   }
 }

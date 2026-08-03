@@ -29,7 +29,7 @@ npm ci
 - Put recognizable symptoms and checks in **Troubleshooting**.
 - Put repository workflows in **Contributing**.
 
-Follow the repository's [Documentation Writing Guide](https://github.com/infomiho/buzz-static-hosting/blob/main/docs/contributing/writing-guide.md). Keep one authoritative explanation for each behavior and link to it instead of copying it into several pages.
+Follow the repository's [Documentation Writing Guide](https://github.com/infomiho/buzzstatic/blob/main/docs/contributing/writing-guide.md). Keep one authoritative explanation for each behavior and link to it instead of copying it into several pages.
 
 ## Edit Hand-Written Pages
 

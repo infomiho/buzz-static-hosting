@@ -10,6 +10,10 @@ RUN npx @tailwindcss/cli -i src/server/static/input.css -o src/server/static/sty
 
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/infomiho/buzzstatic"
+LABEL org.opencontainers.image.description="Buzz server for self-hosted static site hosting"
+LABEL org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 
 # Install uv
